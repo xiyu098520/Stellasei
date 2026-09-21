@@ -1,0 +1,328 @@
+"use client";
+
+import { useEffect, useRef, type ReactNode } from "react";
+import { usePhone } from "@/context/PhoneContext";
+
+/**
+ * App 内页通用框架：返回列＋标题＋滚动内容，自动避开安全区。
+ * 支持 light（预设）／dark／paper（厚纸白）／cream（米白琥珀）／
+ * file（档案冷白纸：#F2F3F5 底、墨色标题，档案 App 专用）／
+ * arcana（世界书列表·塔罗桌：#0B0810 暗底、月白细线，2026-09-19）／
+ * pop（设置·撞色贴纸：#F6F4F1 浅底、无衬线粗字、黑描边返回钮，2026-09-20）七种主题。
+ */
+export function AppChrome({
+  title,
+  titleEn,
+  headerRight,
+  onBack,
+  theme = "light",
+  children,
+}: {
+  title: string;
+  titleEn?: string;
+  headerRight?: ReactNode;
+  /** 自订返回行为（如详情页返回列表）；未提供则关闭 App 回主屏幕。 */
+  onBack?: () => void;
+  theme?: "light" | "dark" | "paper" | "cream" | "file" | "arcana" | "pop";
+  children: ReactNode;
+}) {
+  const { closeApp } = usePhone();
+
+  const handleBack = onBack ?? closeApp;
+
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+
+  /* 键盘避让（真机·第六版，2026-09-18；五版的沿革都在下面，照时间读）：
+     第一版「给滚动容器补底部留白」，没治好「看得见『保存』、按下去没反应」。
+     真凶不是看不见，是**位置在动**：键盘弹起时 iOS 会把整页往上顶一段（系统原生
+     避让）；手指一按画面外面，系统先让输入框失焦→这个上顶立刻被撤销→整页往下弹
+     回去，按钮就从手指底下滑走，这一下点击被判成滑动丢掉——看着在眼前，点下去没
+     反应（也正因如此，只有已经聚焦的输入框还「能用」，它不需要再点一次）。
+     第二版改成把内容区的高度按键盘高度**压短**，内容确实躲到键盘上方了，但压短之
+     后底下空出一条，而 App 覆盖层自己没有底色（主屏幕就在它下面）——恩熙实测：设
+     置页「图文」点输入框，那条空白把主页面透了出来。
+     第三版把「压高度」换成「垫内边距」：这一层照旧满高、底色铺满整页，只是内容
+     底下垫出与键盘等高的一段空白。内容位置与第二版完全一样（还躲着键盘，位置不
+     动，第二版的目的保住），垫出来那段露的是本页自己的底色，主屏再也透不出来。
+     桌面预览、安卓键盘（innerHeight 跟着缩）两种情况下差值≈0，什么都不做。
+
+     ★ 第四版＝第三版去掉两句滚动指令（2026-09-18，恩熙报「点进输入框页面疯狂弹跳」）：
+     第三版沿用了第二版留下的 `window.scrollTo(0, 0)`（把 iOS 顶上来的那段抹平）和
+     `focused.scrollIntoView({ block: "nearest" })`（把输入框拉回视野），两句正是
+     AGENTS.md「键盘避让」铁律②点名的**文档滚动归零 jail**——键盘弹起时 iOS 原生把
+     整页往上顶（`vv.offsetTop > 0`），我们每帧按回 0，iOS 再顶、我们再按，两边拉锯
+     就是「疯狂弹跳」；`scrollIntoView` 还会连文档一起滚，再添一路拉锯。更糟的是
+     `vv` 的 `scroll` 也挂在这段逻辑上：弹跳本身触发 scroll→再跑一遍→自激成环。
+     第四版只留「垫内边距」一件事，并做成幂等：
+       · 撤掉 scrollTo 与 scrollIntoView——iOS 的原生顶页照旧生效（铁律本来就要求这样）；
+       · 输入框落到可视区外时，**只滚内层那条 overflow-y-auto**，绝不碰文档；量差额、
+         只补差额，进视野后即为空操作，不会来回拉锯；
+       · 去掉 `scroll` 监听：内边距只跟 `vv.height` 有关，scroll 触发全是无用功；
+       · 值没变就不写 style，连重排都省。
+     仍守住铁律：不碰壳子高度、不加文档滚动归零、不用 transform 手动上移。
+
+     ★ 第五版（已撤，2026-09-18）：为了「键盘一收就归零」加过 focusin／focusout 两道监听
+     与 `isEditingHere` 焦点闸——恩熙当场拦下：「不需要添加监听器，因为这一开始是不会有这种
+     情况的」。**她说得对**：键盘收起本来就会来一次 `visualViewport.resize`，`covered` 自己
+     回到 0，不必再开第二个信号源；那两道监听白加，已撤。真正让那条空白赖着不走的只有一件事
+     ——**内边距写在这个 `root` 节点的内联 style 上**：设置 App 四个页面（设置／API 设定／某
+     一类表单／存储体检）返回的都是同一个 `<AppChrome>`，React 复用**同一个 DOM 节点**，这个
+     `[]` 依赖的 effect 不会重跑——在表单页垫起来的内边距就这么跟着节点走到后面每一页（这就
+     是「底部的 padding 一直存在页面中」的字面解释）。
+
+     ★ 第六版＝撤掉那两道监听，只留「换页重来一遍」治它（2026-09-18）：监听器回到只有
+     `vv.resize` 这一个（本来就有的）；换页归零改用那个 `[title]` 依赖的 effect。
+
+     ★ 第七版（2026-09-18，恩熙：「在还没有点击输入框之前，页面都是正常的。但是点击输入框
+     之后，再收起键盘，底部的 padding 就会出现，一直在下面」）：第六版把「赖着不走」只判给
+     「换页时 DOM 复用」**一个**原因（靠 `[title]` 变化抹掉），真机上仍复现，而且**就在同一页
+     之内**（设置 → API 表单：点输入框、收起键盘，空白留在底下不动）。
+     这说明第六版信的那条前提不牢——「键盘收起必然来一次 `resize`，`covered` 自己回到 0」：
+     要么那次 resize 压根没送到，要么送到时 `vv.height` 还是收起前的旧值。既然复现了，
+     就不再猜它报不报，**改成不把「归零」押在任何事件上**：
+       · **逐帧核对**，不再挂 `resize` 监听：每帧读一次几何，**值没变就直接 return**（不写 style、
+         不做任何测量），等于既没有监听器、也不依赖任何事件是否送达——这正是聊天窗口里那条
+         贴底逻辑的做法（`ChatWindow.tsx` 里每帧读 `vv.height`，不是等事件）。
+       · **加一条判据**：键盘在 ⇔ **本层里有输入框正在编辑**（`document.activeElement`）。
+         几何值不可信时以焦点为准——没有输入框在编辑，内边距一律归零。
+         （这条判据就是第五版想要的「键盘一收就归零」，但不用挂 `focusin`／`focusout` 两个
+         监听器：每帧顺手读一下 activeElement 就够，也不会有第二个信号源跟几何拉锯。）
+       · **第六版那个「换页归零」effect 随之删掉**：逐帧核对本身就会在换页之后（焦点早已不在
+         输入框上）把上一页垫起来的内边距抹平，不必再挂一个 `[title]` 依赖的补丁。
+     三、四版的成果一条不动：只垫内边距、不碰壳子高度、不碰文档、值没变不写 style。 */
+  useEffect(() => {
+    const vv = window.visualViewport;
+    const root = rootRef.current;
+    if (!vv || !root) return;
+
+    /* 「键盘是否为我们而弹着」的唯一可信判据：这一层里有没有输入框正在编辑。 */
+    const editingHere = () => {
+      const el = document.activeElement;
+      if (!el || el === document.body) return false;
+      const field =
+        el instanceof HTMLInputElement ||
+        el instanceof HTMLTextAreaElement ||
+        el instanceof HTMLSelectElement ||
+        (el instanceof HTMLElement && el.isContentEditable);
+      return field && root.contains(el);
+    };
+
+    const apply = () => {
+      const covered = Math.round(window.innerHeight - vv.height);
+      const next = covered > 60 && editingHere() ? `${covered}px` : "";
+      /* 没变就到此为止：不写 style，也不做下面那两处测量。 */
+      if (root.style.paddingBottom === next) return;
+      root.style.paddingBottom = next;
+      if (!next) return;
+      /* 垫高之后内容区底部抬到键盘之上，正在编辑的输入框可能落到可视区外：
+         只滚这一层内容区（不碰文档、不碰壳子）。已经在视野里就什么都不做。 */
+      const box = contentRef.current;
+      const focused = document.activeElement;
+      if (!box || !(focused instanceof HTMLElement) || !box.contains(focused)) return;
+      const r = focused.getBoundingClientRect();
+      const br = box.getBoundingClientRect();
+      const margin = 16;
+      if (r.bottom > br.bottom - margin) box.scrollTop += r.bottom - (br.bottom - margin);
+      else if (r.top < br.top + margin) box.scrollTop -= br.top + margin - r.top;
+    };
+
+    /* ★ 第八版（2026-09-21，恩熙：「这个发烫延迟不只是聊天页面，以及记忆也会，其他地方
+     也会的」）：第七版这条 rAF 是「页面活着就一直跑」——每个 App 内页都按 60fps 醒着，
+     屏幕不休眠、CPU 不空闲，手机就是从这里开始热的（聊天页那条同款循环上一版已治）。
+     真需要逐帧盯着的只有两种时刻：
+       · 本层里有输入框在编辑（键盘可能正在动）；
+       · 内边距还挂着没归零（键盘刚收、几何值不可信的那一瞬）。
+     两者都不成立就**睡过去**，一个回调都不再排。
+     叫醒它只用 `vv.resize`（键盘弹起／收起、视口尺寸变都会来，第一至六版本来就在用这个
+     信号），不新增 focusin／focusout 那类监听——第五版被恩熙拦下的那条照旧遵守。
+     三、四版的成果一条不动：只垫内边距、不碰壳子高度、不碰文档、值没变不写 style。 */
+    let raf = 0;
+    let alive = true;
+    const tick = () => {
+      raf = 0;
+      if (!alive) return;
+      apply();
+      if (editingHere() || root.style.paddingBottom) {
+        raf = window.requestAnimationFrame(tick);
+      }
+    };
+    const wake = () => {
+      if (!alive || raf) return;
+      raf = window.requestAnimationFrame(tick);
+    };
+    vv.addEventListener("resize", wake);
+    wake();
+    return () => {
+      alive = false;
+      window.cancelAnimationFrame(raf);
+      vv.removeEventListener("resize", wake);
+      root.style.paddingBottom = "";
+    };
+  }, []);
+
+  const isDark = theme === "dark";
+  const isPaper = theme === "paper";
+  const isCream = theme === "cream";
+  /* 档案屏：2026-09-19 五审从近白 #F7F6F3 推到**纯白**——乙游的底是一块干净的屏，
+     不是一张旧纸（与 ContactsApp 的 A.bg 必须是同一个色：壳子底与内容底是同一张屏，
+     不然中间那幅大画的墨会浮在两块底之间）。纹理由档案页自己铺，这里只管底色与字色。 */
+  const isFile = theme === "file";
+  /* 塔罗桌：恩熙 2026-09-19「深色背景，占卜塔罗牌的感觉」。底不是纯黑，
+     是一间只点一盏灯的房间——顶上一点微光，往下沉进墨紫里。静态渐变，
+     不动、不模糊（手机省电铁律）。 */
+  const isArcana = theme === "arcana";
+  /* 撞色贴纸：恩熙 2026-09-20「排版设计很好、按钮很可爱、颜色很跳脱」。
+     底是一层浅暖灰（不是白）——白卡压在上面才浮得起来；字一律无衬线粗体，
+     贴纸的边与厚度由各页自己的黑描边＋硬阴影给，这里只管底色、字色与返回钮。 */
+  const isPop = theme === "pop";
+
+  return (
+    <div
+      ref={rootRef}
+      className={`flex h-full flex-col ${
+        isDark
+          ? "bg-[#0a0a0a]"
+          : isPaper
+            ? "bg-[#EDEBE5]"
+            : isCream
+              ? "bg-[#fdfcfb]"
+              : isFile
+                ? "bg-[#FFFFFF]"
+                : isArcana
+                  ? "bg-[#0B0810]"
+                  : isPop
+                    ? "bg-[#F6F4F1]"
+                    : "bg-[#fbf9ff]"
+      }`}
+      style={
+        isDark
+          ? {
+              backgroundImage:
+                "radial-gradient(circle, #1a1a1a 1px, transparent 1px)",
+              backgroundSize: "12px 12px",
+              fontFamily: "var(--font-serif-sc), Georgia, serif",
+            }
+          : isPaper
+            ? {
+                /* 请柬的底是**一张暖灰的桌**，不是白墙——白纸只有压在比它暗的
+                   桌面上才浮得起来（同白即为「简陋」的根源）。桌上不铺点阵、
+                   不泛黄，纸的质感交给世界书页自己。 */
+                fontFamily: "var(--font-serif-sc), Georgia, serif",
+              }
+            : isCream
+              ? {
+                  backgroundImage:
+                    "radial-gradient(circle, rgba(139,115,85,0.05) 1px, transparent 1px)",
+                  backgroundSize: "32px 32px",
+                  fontFamily: "var(--font-serif-sc), Georgia, serif",
+                }
+              : isFile
+                ? { fontFamily: "var(--font-serif-sc), Georgia, serif" }
+                : isArcana
+                  ? {
+                      /* 灯在正中上方，往下散开就没了——牌桌只被这一盏灯照着。
+                         三档取自**牌面自己那支渐变**（ARCANA_FACE 的
+                         #261B38 / #1C1230 / #110B1F），每档各沉 2 格：
+                         #241936 / #1A102E / #0F091D。
+                         恩熙 2026-09-19：「稍微调一下色调，就是让它更融合这张塔罗牌」——
+                         原先那支（#1B1428 / #100C18 / #08060C）越往下越黑越冷，
+                         牌摆上去像贴在黑板上；换成同一支紫，桌和牌才是一套东西，
+                         牌靠「亮两格」浮起来，不靠「底比它黑」。
+                         恩熙 2026-09-20：「整体的颜色太暗了……稍微亮一点点的紫」——
+                         牌面提了一档，桌跟着一起提（牌比桌亮两格这条关系不动）。 */
+                      backgroundImage:
+                        "radial-gradient(118% 76% at 50% 2%, #241936 0%, #1A102E 46%, #0F091D 100%)",
+                      fontFamily: "var(--font-serif-sc), Georgia, serif",
+                    }
+                  : isPop
+                    ? { fontFamily: "var(--font-sans)" }
+                    : undefined
+      }
+    >
+      <header
+        className="flex items-center gap-3 px-4"
+        style={{
+          paddingTop: "calc(var(--safe-area-top) + var(--sim-status-h))",
+          paddingBottom: 8,
+        }}
+      >
+        <button
+          type="button"
+          onClick={handleBack}
+          aria-label="返回"
+          className={`pressable flex h-9 w-9 items-center justify-center rounded-full ${
+            isDark
+              ? "bg-transparent text-[#aaa]"
+              : isPaper
+                ? "bg-transparent text-[#5E5A52]"
+                : isCream
+                  ? "bg-transparent text-[#78716c]"
+                  : isFile
+                      ? "bg-white text-[#1b1918]"
+                      : isArcana
+                        ? "bg-transparent text-[#B7AD9A]"
+                        : isPop
+                          ? "border-2 border-[#141414] bg-white text-[#141414] shadow-[2px_2px_0_#141414]"
+                          : "bg-[#efeaf8] text-[#5b4f86]"
+          }`}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+        </button>
+        <div className="flex-1 leading-tight">
+          <h2
+            className={`text-[16px] font-medium ${
+              isDark
+                ? "text-[#e5e5e5] tracking-[2px]"
+                : isPaper
+                  ? "text-[#141210] tracking-[2px]"
+                  : isCream
+                    ? "text-[#44403c] font-light tracking-[2px]"
+                    : isFile
+                      ? "text-[#1b1918] tracking-[2px]"
+                      : isArcana
+                        ? "text-[#EFE8DA] tracking-[2px]"
+                        : isPop
+                          ? "font-extrabold tracking-[1px] text-[#141414]"
+                          : "text-[#2c2742]"
+            }`}
+          >
+            {title}
+          </h2>
+          {titleEn ? (
+            <p
+              className={`text-[9px] tracking-[0.28em] ${
+                isDark
+                  ? "text-[#555]"
+                  : isPaper
+                    ? "font-serif text-[#9C978D]"
+                    : isCream
+                      ? "font-serif text-[#b45309]/60"
+                      : isFile
+                        ? "font-serif text-[#a79d98]"
+                        : isArcana
+                          ? "font-serif text-[#6D6353]"
+                          : isPop
+                            ? "font-extrabold text-[#B0AEA8]"
+                            : "font-serif text-[#9a92b5]"
+              }`}
+            >
+              {titleEn}
+            </p>
+          ) : null}
+        </div>
+        {headerRight}
+      </header>
+      <div
+        ref={contentRef}
+        className={`flex-1 overflow-y-auto px-4 pb-[calc(var(--safe-area-bottom)+24px)] ${
+          isDark ? "" : "pt-2"
+        }`}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}

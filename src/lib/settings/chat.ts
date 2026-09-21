@@ -1,0 +1,866 @@
+/**
+ * 星绥通讯持久化（IndexedDB KV）。
+ *
+ * 会话按「角色 × 面具」归档：换面具＝换身份重新聊，
+ * 每个面具对每个角色各有一份独立的聊天记录与每聊天设定。
+ *
+ * 三份数据：
+ * - chat-conversations —— 会话阵列（含置顶／背景／字号等每聊天设定）
+ * - chat-character-settings —— 角色级的三样（个别 API／语音参数／生图参考图），跟角色走
+ * - api-settings-bundle —— 三类 API 设定（文本／图文／语音，各自独立）
+ *   （旧版单份 chat-api-settings 读取时自动迁移为「文本 API」）
+ */
+
+import { kvGet, kvSet } from "@/lib/db/idb";
+import { uuid } from "@/lib/uuid";
+import { DEFAULT_MASK_ID, ensureMasks } from "@/lib/settings/mask";
+import { createArchive, getArchives, saveArchive, EMPTY_PROFILE, isAssistantOff } from "@/lib/settings/contact";
+import {
+  DEFAULT_API_SETTINGS,
+  DEFAULT_IMAGE_EXTRAS,
+  DEFAULT_VOICE_EXTRAS,
+  type ApiCategory,
+  type ApiPresetEntry,
+  type ApiSettingsBundle,
+  type ChatApiSettings,
+  type ChatMessage,
+  type ChatMoment,
+  type Conversation,
+  type ImageApiExtras,
+  type VoiceApiExtras,
+} from "@/types/chat";
+
+const CONVERSATIONS_KEY = "chat-conversations";
+const CHAR_SETTINGS_KEY = "chat-character-settings";
+const API_SETTINGS_KEY = "chat-api-settings";
+
+/** 会话 id ＝「角色id::面具id」（仅作唯一标识，查找一律走 characterId＋maskId）。
+ *  导出给「自动生图」用：聊天那边画完动态配图要按会话 id 回写（见 generateMomentImage）。 */
+export function convId(characterId: string, maskId: string): string {
+  return `${characterId}::${maskId}`;
+}
+
+/** 旧资料补齐 maskId：没有面具概念的旧会话全部归默认面具。 */
+function normalizeConv(c: Conversation): Conversation {
+  const maskId = c.maskId ?? DEFAULT_MASK_ID;
+  return {
+    ...c,
+    maskId,
+    id: c.id.includes("::") ? c.id : convId(c.characterId, maskId),
+  };
+}
+
+/** 在阵列里找「角色 × 面具」的会话下标。 */
+function findIdx(list: Conversation[], characterId: string, maskId: string): number {
+  return list.findIndex((c) => c.characterId === characterId && c.maskId === maskId);
+}
+
+/** 会话上可被局部更新的栏位（消息阵列另有专门入口）。 */
+export type ConversationPatch = Partial<
+  Pick<
+    Conversation,
+    | "isPinned"
+    | "isMuted"
+    | "manualReply"
+    | "bubbleLimit"
+    | "bubbleMax"
+    | "unreadCount"
+    | "chatBgUrl"
+    | "fontSize"
+    | "charAvatar"
+    | "myAvatar"
+    | "charRefImage"
+    | "signature"
+    | "friendStatus"
+    | "removedAt"
+    | "friendRequestMsg"
+    | "blocked"
+    | "blockCount"
+    | "apiOverrides"
+    | "voiceOverride"
+  >
+>;
+
+/* 会话写入串行链：本模组每个写接口都是「读整份会话阵列 → 改 → 写回」，
+   并发调用会互相覆盖（典型：媒体占位回填的同时用户又发了消息，
+   后写的把先写的抹掉——表现就是「刚生成好的语音/图片突然没了」）。
+   所有会写 chat-conversations 的入口统一排进这一条队，逐个执行。
+   链条吞掉错误继续排；错误仍抛给本次调用方。 */
+let convWriteChain: Promise<unknown> = Promise.resolve();
+
+function serializeConvWrite<T>(task: () => Promise<T>): Promise<T> {
+  const run = convWriteChain.then(task);
+  convWriteChain = run.catch(() => {});
+  return run;
+}
+
+/* --------------------------- 气泡条数（每聊天） --------------------------- */
+
+/** 气泡条数上限的默认值（没设过的会话按这个走）。 */
+export const DEFAULT_BUBBLE_MAX = 5;
+/** 气泡条数上限的可设范围（界面步进与夹取共用）。 */
+export const BUBBLE_MIN = 1;
+export const BUBBLE_MAX = 15;
+
+/** 气泡条数上限：取整并夹进 1–15，脏数据（NaN／小数／越界）一律拉回合法值。 */
+export function clampBubbleMax(value: number | undefined): number {
+  const n =
+    typeof value === "number" && Number.isFinite(value) ? Math.round(value) : DEFAULT_BUBBLE_MAX;
+  return Math.min(BUBBLE_MAX, Math.max(BUBBLE_MIN, n));
+}
+
+/**
+ * 某场对话一轮最多几条气泡：0＝不限。
+ *
+ * 每聊天设定（跟置顶／免打扰同一份存档，**这个角色归这个角色**）：
+ * 没设过的会话＝默认开、5 条——所以只有显式 `false` 才算「关」。
+ * 会话还没建立时也返回 0（没聊过就没什么可裁的）。
+ */
+export function bubbleCapOf(conv: Conversation | null | undefined): number {
+  if (!conv || conv.bubbleLimit === false) return 0;
+  return clampBubbleMax(conv.bubbleMax);
+}
+
+/* ----------------------- 角色级设置（跟角色走，不跟面具） ----------------------- */
+
+/** 角色级的三样：个别 API 覆盖、语音参数覆盖、角色生图参考图。
+ *
+ *  恩熙 2026-09-21：「角色设置里面，API、语音参数、参考图这些它是不会变的，就是跟着角色走的。」
+ *  —— 所以这三样从「角色 × 面具」提到角色身上：同一角色所有面具共用一份，
+ *  在 A 面具配好的，切到 B 面具进去还是那套。
+ *  （置顶／免打扰／背景／字号那些仍是每聊天设定，继续跟面具走，别混。）
+ *
+ *  存档：chat-character-settings ＝ { [角色id]: CharacterChatSettings }。 */
+export type CharacterChatSettings = Pick<
+  Conversation,
+  "apiOverrides" | "voiceOverride" | "charRefImage"
+>;
+
+/** 角色级的栏位名（迁移与清空时按这几个走）。 */
+const CHAR_LEVEL_KEYS = ["apiOverrides", "voiceOverride", "charRefImage"] as const;
+
+async function getAllCharSettings(): Promise<Record<string, CharacterChatSettings>> {
+  const saved = await kvGet<Record<string, CharacterChatSettings>>(CHAR_SETTINGS_KEY);
+  return saved && typeof saved === "object" ? saved : {};
+}
+
+/** 老数据迁移：这三样过去存在会话上，头一次读时从该角色的会话里把它们提上来。 */
+function seedCharSettings(list: Conversation[], characterId: string): CharacterChatSettings {
+  const found: CharacterChatSettings = {};
+  for (const c of list) {
+    if (c.characterId !== characterId) continue;
+    if (found.apiOverrides === undefined && c.apiOverrides !== undefined) {
+      found.apiOverrides = c.apiOverrides;
+    }
+    if (found.voiceOverride === undefined && c.voiceOverride !== undefined) {
+      found.voiceOverride = c.voiceOverride;
+    }
+    if (found.charRefImage === undefined && c.charRefImage !== undefined) {
+      found.charRefImage = c.charRefImage;
+    }
+  }
+  return found;
+}
+
+/** 把角色级的三样盖到会话上：**角色级是这几样的唯一出处**——角色级没有就是没有，
+ *  不回落会话上可能残留的旧副本（否则「关掉个别 API」会被旧值顶回来）。 */
+function applyCharSettings(c: Conversation, s: CharacterChatSettings | undefined): Conversation {
+  return {
+    ...c,
+    apiOverrides: s?.apiOverrides,
+    voiceOverride: s?.voiceOverride,
+    charRefImage: s?.charRefImage,
+  };
+}
+
+/** 写某角色的角色级设置（只收这三样；显式传 `undefined` ＝ 清掉那一项）。 */
+export async function updateCharChatSettings(
+  characterId: string,
+  patch: CharacterChatSettings,
+): Promise<CharacterChatSettings> {
+  const all = await getAllCharSettings();
+  const next: CharacterChatSettings = { ...all[characterId], ...patch };
+  for (const k of CHAR_LEVEL_KEYS) if (next[k] === undefined) delete next[k];
+  all[characterId] = next;
+  await kvSet(CHAR_SETTINGS_KEY, all);
+  return next;
+}
+
+/* ----------------------------- 会话 CRUD ----------------------------- */
+
+/** 读全部会话；顺手把这「角色级三样」盖上去（见上），并给还没记录的角色补一份迁移档。 */
+export async function getConversations(): Promise<Conversation[]> {
+  const saved = await kvGet<Conversation[]>(CONVERSATIONS_KEY);
+  if (!Array.isArray(saved)) return [];
+  const list = saved.map(normalizeConv);
+  /* 「聊过没有」这枚戳子的一次性补盖（2026-09-21 恩熙：「我重置记忆以后消息列表的
+     对话框不见了应该要存在的」）：老数据没戳子，按「手上有消息」补一次——
+     有消息＝确实聊过，盖上；一条消息也没有＝从没聊过（助手预绑的空会话），不盖。 */
+  let stamped = false;
+  for (const c of list) {
+    if (c.chatStarted === undefined && c.messages.length > 0) {
+      c.chatStarted = true;
+      stamped = true;
+    }
+  }
+  if (stamped) await kvSet(CONVERSATIONS_KEY, list);
+  const all = await getAllCharSettings();
+  let migrated = false;
+  for (const c of list) {
+    if (all[c.characterId]) continue;
+    all[c.characterId] = seedCharSettings(list, c.characterId);
+    migrated = true;
+  }
+  if (migrated) await kvSet(CHAR_SETTINGS_KEY, all);
+  return list.map((c) => applyCharSettings(c, all[c.characterId]));
+}
+
+/** 取某角色在某面具下的会话；没有则建一个空的（不落库，首条消息才写）。 */
+export async function getOrCreateConversation(
+  characterId: string,
+  maskId: string,
+): Promise<Conversation> {
+  const list = await getConversations();
+  const found = list[findIdx(list, characterId, maskId)];
+  if (found) return found;
+  const now = new Date().toISOString();
+  return {
+    id: convId(characterId, maskId),
+    characterId,
+    maskId,
+    messages: [],
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+/** 追加一条消息（会话不存在则顺手建立）。
+ *  第四项 `bumpUnread`＝这条落库的同时把列表未读 +1（恩熙 2026-09-21：
+ *  「我在聊天列表依旧能看到最新的消息，并且加上通知。」由聊天窗判断
+ *  「人不在这一间」时才传 true，跟消息写在同一笔里，免得两次读改写互相覆盖）。 */
+export function appendMessage(
+  ...args: Parameters<typeof appendMessageNow>
+): Promise<Conversation> {
+  return serializeConvWrite(() => appendMessageNow(...args));
+}
+
+async function appendMessageNow(
+  characterId: string,
+  maskId: string,
+  message: Omit<ChatMessage, "id" | "createdAt"> & { id?: string; createdAt?: string },
+  opts?: { bumpUnread?: boolean },
+): Promise<Conversation> {
+  const list = await getConversations();
+  const idx = findIdx(list, characterId, maskId);
+  const now = new Date().toISOString();
+  const full: ChatMessage = {
+    id: message.id ?? uuid(),
+    role: message.role,
+    content: message.content,
+    createdAt: message.createdAt ?? now,
+    ...(message.type !== undefined ? { type: message.type } : {}),
+    ...(message.isRead !== undefined ? { isRead: message.isRead } : {}),
+    ...(message.duration !== undefined ? { duration: message.duration } : {}),
+    ...(message.imageUrl !== undefined ? { imageUrl: message.imageUrl } : {}),
+    ...(message.audioUrl !== undefined ? { audioUrl: message.audioUrl } : {}),
+    ...(message.pending !== undefined ? { pending: message.pending } : {}),
+    ...(message.awaitGen !== undefined ? { awaitGen: message.awaitGen } : {}),
+    ...(message.error !== undefined ? { error: message.error } : {}),
+    ...(message.errorText !== undefined ? { errorText: message.errorText } : {}),
+    ...(message.retryable !== undefined ? { retryable: message.retryable } : {}),
+    ...(message.amount !== undefined ? { amount: message.amount } : {}),
+    ...(message.fileName !== undefined ? { fileName: message.fileName } : {}),
+    ...(message.fileSize !== undefined ? { fileSize: message.fileSize } : {}),
+    ...(message.quote !== undefined ? { quote: message.quote } : {}),
+    ...(message.apiText !== undefined ? { apiText: message.apiText } : {}),
+  };
+
+  if (idx >= 0) {
+    list[idx].messages.push(full);
+    /* 戳子一盖上就不再摘：列表靠它认「这条会话聊过」，清完记忆那行也还留着。 */
+    list[idx].chatStarted = true;
+    list[idx].updatedAt = now;
+    if (opts?.bumpUnread) list[idx].unreadCount = (list[idx].unreadCount ?? 0) + 1;
+    await kvSet(CONVERSATIONS_KEY, list);
+    return list[idx];
+  }
+
+  const fresh: Conversation = {
+    id: convId(characterId, maskId),
+    characterId,
+    maskId,
+    messages: [full],
+    chatStarted: true,
+    createdAt: now,
+    updatedAt: now,
+  };
+  await kvSet(CONVERSATIONS_KEY, [...list, fresh]);
+  return fresh;
+}
+
+/** 删除一条消息（长按菜单的「删除」）。 */
+export async function deleteMessage(
+  characterId: string,
+  maskId: string,
+  messageId: string,
+): Promise<Conversation | null> {
+  const list = await getConversations();
+  const idx = findIdx(list, characterId, maskId);
+  if (idx < 0) return null;
+  list[idx].messages = list[idx].messages.filter((m) => m.id !== messageId);
+  await kvSet(CONVERSATIONS_KEY, list);
+  return list[idx];
+}
+
+/** 原位更新一条消息（图片占位气泡生成完成后填入本体等）。 */
+export function updateMessage(
+  ...args: Parameters<typeof updateMessageNow>
+): Promise<Conversation | null> {
+  return serializeConvWrite(() => updateMessageNow(...args));
+}
+
+async function updateMessageNow(
+  characterId: string,
+  maskId: string,
+  message: ChatMessage,
+): Promise<Conversation | null> {
+  const list = await getConversations();
+  const idx = findIdx(list, characterId, maskId);
+  if (idx < 0) return null;
+  list[idx].messages = list[idx].messages.map((m) => (m.id === message.id ? message : m));
+  list[idx].updatedAt = new Date().toISOString();
+  await kvSet(CONVERSATIONS_KEY, list);
+  return list[idx];
+}
+
+/** 归位手续给「跑到一半被杀掉」的图补的那句原因（真失败的原因来自生图层，
+ *  绝不会长这样——所以它还能当「这行失败是归位手续写的」的记号用）。 */
+const HEAL_NOTE = "上一趟还没画完，页面就被关掉或刷新了——点一下重新生成。";
+
+/** 把库里「生成中」的图片／语音消息归位成「失败可重试」，返回更新后的会话。
+ *  进入会话时调用：组件刚挂载，不可能还有活着的生成任务，残留的 pending 一定是
+ *  上次刷新／重载把生成任务一起杀掉后留下的孤儿——不归位就会永远转圈，不超时也不报错。
+ *  **「等点生成」的那种（awaitGen）不算孤儿**：它本来就没在跑、没花过钱，只是停在
+ *  那儿等恩熙点一下——归位成失败，等于她一进聊天就看到「图片没发出来」，
+ *  明明什么都没发生（2026-09-20）。
+ *  归位时补一句人话当原因：空着 errorText 的话，纸面上只剩一句光秃秃的失败。
+ *  还顺手还回去一笔旧账：早先那一版归位不留原因，所以「报了失败、却一句原因都没有」
+ *  的图片消息一定是被误判成孤儿的（真失败一定带原话）——还给「等点生成」那一态，
+ *  没点过生成之前，纸面上只该有描述加一颗「生成」（恩熙 2026-09-20）。
+ *  没有残留时原样返回，不写库。 */
+export async function healStalePendingMedia(
+  characterId: string,
+  maskId: string,
+): Promise<Conversation | null> {
+  const list = await getConversations();
+  const idx = findIdx(list, characterId, maskId);
+  if (idx < 0) return null;
+  let healed = false;
+  list[idx].messages = list[idx].messages.map((m) => {
+    /* 被误判的历史残留：还原成「等点生成」（`pending` 一起带上，那颗「生成」按钮
+       才认得这条路）。认出它的办法只有一个：**这行失败没有像样的原因**——
+       空着，或者原因就是这份归位手续自己写的那句话。真失败的原因是从生图层带回来的
+       （超时／被拒／读不出字节），绝不会长成 HEAL_NOTE 的样子。
+       那条「点了生成、画到一半被刷新杀掉」的真孤儿也在其中被还成「等点生成」：
+       恩熙要的是「没成之前只看见描述和一颗生成」，重画一下的成本远小于
+       一进聊天就被通知一次失败（2026-09-20）。 */
+    if (m.type === "image" && m.error && !m.imageUrl && (!m.errorText || m.errorText === HEAL_NOTE)) {
+      healed = true;
+      return { ...m, error: undefined, errorText: undefined, pending: true, awaitGen: true };
+    }
+    if (!m.pending || (m.type !== "image" && m.type !== "voice")) return m;
+    if (m.awaitGen) return m;
+    healed = true;
+    return {
+      ...m,
+      pending: false,
+      error: true,
+      errorText: m.errorText ?? HEAL_NOTE,
+    };
+  });
+  if (!healed) return list[idx];
+  list[idx].updatedAt = new Date().toISOString();
+  await kvSet(CONVERSATIONS_KEY, list);
+  return list[idx];
+}
+
+/** 更新会话本身（置顶、免打扰、背景、字号、头像等）。会话不存在则先建立。 */
+export function updateConversation(
+  ...args: Parameters<typeof updateConversationNow>
+): Promise<Conversation> {
+  return serializeConvWrite(() => updateConversationNow(...args));
+}
+
+async function updateConversationNow(
+  characterId: string,
+  maskId: string,
+  patch: ConversationPatch,
+): Promise<Conversation> {
+  const list = await getConversations();
+  const idx = findIdx(list, characterId, maskId);
+  const now = new Date().toISOString();
+  if (idx < 0) {
+    const fresh: Conversation = {
+      id: convId(characterId, maskId),
+      characterId,
+      maskId,
+      messages: [],
+      createdAt: now,
+      updatedAt: now,
+      ...patch,
+    };
+    await kvSet(CONVERSATIONS_KEY, [...list, fresh]);
+    return fresh;
+  }
+  list[idx] = { ...list[idx], ...patch, updatedAt: now };
+  await kvSet(CONVERSATIONS_KEY, list);
+  return list[idx];
+}
+
+/** 标记已读（清零未读数）。 */
+export async function markConversationRead(
+  characterId: string,
+  maskId: string,
+): Promise<void> {
+  const list = await getConversations();
+  const idx = findIdx(list, characterId, maskId);
+  if (idx >= 0 && (list[idx].unreadCount ?? 0) > 0) {
+    list[idx].unreadCount = 0;
+    await kvSet(CONVERSATIONS_KEY, list);
+  }
+}
+
+/**
+ * 确保内置 AI 助手就位（打开聊天 App 时调用一次）：
+ * - 她**没删过**助手、而档案库里又没有「助手模式」档案 → 自动建一个（星绥）；
+ * - 已有档案还是 2026-09-16 前的旧默认（星绥助手／私人 AI 助手）→ 自动升级成新默认；
+ * - 每个已建面具没跟助手绑定 → 自动建立绑定（建一条空会话）。
+ * 助手由此开箱即用地躺在每个面具的通讯人列表里，想用就直接找它聊，不想用就不理。
+ *
+ * ⚠️ 2026-09-21 恩熙：「默认角色啊，一直蹦出一个星绥，**我怎么删它都会重新再来**。」
+ * —— 上面那句「只有彻底删掉档案才会重建一个全新的」正是她反抗的东西：她把助手档案
+ * 删了、下次开聊天 App 又被补回来，像永远删不掉。原写法分不清「从没建过」和
+ * 「她自己删的」——前者该建，后者不该再冒出来。现在靠 `isAssistantOff()` 那枚
+ * 辞退标记分界（删除时落下、她重新打开某张档案的助手模式即清掉）。
+ * 「删除好友」仍是假删／真删会话，档案不动，不走这条路。
+ */
+export async function ensureAssistant(): Promise<void> {
+  const archives = await getArchives();
+  const found = archives.filter((a) => a.data.isAssistant === true);
+  /* 档案库里一个助手都没有、而那枚辞退标记又立着 → 是她亲手删的，**别再长出来**。
+     （标记只拦「重建」：万一她还留着另一张助手档案，升级默认值、补面具绑定这些
+     正事照旧要办，所以判据是「没有 ＋ 被辞退」而不是单看标记。） */
+  if (found.length === 0 && (await isAssistantOff())) return;
+  /* 所有助手档案都升级旧默认值（防删建历史留下多个），只认旧默认值——
+     名字／职业被用户自己改过的，一个字不动。 */
+  for (const a of found) {
+    const d = a.data;
+    if (d.name === "星绥助手" || d.occupation === "私人 AI 助手" || d.labels === "助手") {
+      await saveArchive(a.id, {
+        ...d,
+        ...(d.name === "星绥助手" ? { name: "星绥" } : {}),
+        ...(d.occupation === "私人 AI 助手" ? { occupation: "" } : {}),
+        ...(d.labels === "助手" ? { labels: "" } : {}),
+      });
+    }
+  }
+  let assistant = found[0];
+  if (!assistant) {
+    assistant = await createArchive();
+    await saveArchive(assistant.id, {
+      ...EMPTY_PROFILE,
+      name: "星绥",
+      nickname: "小绥",
+      isAssistant: true,
+    });
+  }
+  const [masks, convs] = await Promise.all([ensureMasks(), getConversations()]);
+  for (const m of masks) {
+    const bound = convs.find((c) => c.characterId === assistant.id && c.maskId === m.id);
+    /* 助手会话默认**不限条数**（2026-09-20 恩熙：「这个 AI 助手它是不会分句的吗？
+       它就是一串那么多字吗？」）：助手的回答本来就长、句数又多，压到默认的 5 条
+       就是「前 4 条照旧、超出的全并进最后一条」——最后那一条是一整串连读的长字，
+       屏幕上看着像压根没分句。绑定时直接带上不限，她要是想管，在聊天设置里开回来即可。 */
+    if (!bound) {
+      await updateConversation(assistant.id, m.id, { bubbleLimit: false });
+      continue;
+    }
+    /* 老会话：只改**从没动过**气泡设置的（两个栏位都没值）——
+       她亲手调过条数的，一个字不动。 */
+    if (bound.bubbleLimit === undefined && bound.bubbleMax === undefined) {
+      await updateConversation(assistant.id, m.id, { bubbleLimit: false });
+    }
+  }
+}
+
+/**
+ * 记录 TA 在回复末尾附带的元信息（〔签名〕／〔动态〕／〔动态图〕标记解析结果）。
+ * 签名整条覆盖；动态追加进既有列表；每条动态可附带一条 imagePrompt（TA 写的画面描述）。
+ * 会话不存在则先建立。
+ *
+ * 返回**这一趟新落库的那些动态**（带内部 id）。生成配图这件事本身不在这里跑——
+ * 恩熙 2026-09-21：手动那一趟在朋友圈页面点；「自动生图」开着时由调用方拿着
+ * 这些 id 去跑（见 `generateMomentImage`）。id 只有这里知道，所以必须交出去。
+ */
+export async function appendMetaUpdates(
+  characterId: string,
+  maskId: string,
+  meta: { signature?: string; moments?: Array<{ content: string; imagePrompt?: string }> },
+): Promise<ChatMoment[]> {
+  const hasSig = typeof meta.signature === "string" && meta.signature.trim();
+  const newMoments = (meta.moments ?? []).filter((m) => m.content.trim());
+  if (!hasSig && newMoments.length === 0) return [];
+  const list = await getConversations();
+  const idx = findIdx(list, characterId, maskId);
+  const now = new Date().toISOString();
+  const created: ChatMoment[] = newMoments.map((m) => ({
+    id: uuid(),
+    content: m.content.trim(),
+    createdAt: now,
+    ...(m.imagePrompt?.trim() ? { imagePrompt: m.imagePrompt.trim() } : {}),
+  }));
+  if (idx < 0) {
+    const fresh: Conversation = {
+      id: convId(characterId, maskId),
+      characterId,
+      maskId,
+      messages: [],
+      createdAt: now,
+      updatedAt: now,
+      ...(hasSig ? { signature: meta.signature!.trim() } : {}),
+      ...(created.length > 0 ? { moments: created } : {}),
+    };
+    await kvSet(CONVERSATIONS_KEY, [...list, fresh]);
+    return created;
+  }
+  if (hasSig) list[idx].signature = meta.signature!.trim();
+  if (created.length > 0) {
+    list[idx].moments = [...(list[idx].moments ?? []), ...created];
+  }
+  list[idx].updatedAt = now;
+  await kvSet(CONVERSATIONS_KEY, list);
+  return created;
+}
+
+/**
+ * 给指定动态回写图片引用（恩熙在朋友圈页面手动点生成后调用）。
+ * conversationId 本身就唯一确定「角色 × 面具」，直接按它找会话。
+ */
+export async function setMomentImageRef(
+  conversationId: string,
+  momentId: string,
+  imageRef: string,
+): Promise<void> {
+  const list = await getConversations();
+  const idx = list.findIndex((c) => c.id === conversationId);
+  if (idx < 0) return;
+  const mIdx = (list[idx].moments ?? []).findIndex((m) => m.id === momentId);
+  if (mIdx < 0) return;
+  list[idx].moments![mIdx].imageRef = imageRef;
+  list[idx].updatedAt = new Date().toISOString();
+  await kvSet(CONVERSATIONS_KEY, list);
+}
+
+/**
+ * 改一条动态的画面描述（恩熙 2026-09-21：「说不定这个描述它本身就是有错误的呢」
+ * 「用户也可以去选择修改，修改完之后再去重新生成」）。
+ * TA 写错了／写得不对味，恩熙在生成前改掉，改完就是这条动态的新描述——
+ * 不写回的话下次点开又变回 TA 原本写的，等于白改。传空串＝把描述清掉。
+ */
+export async function setMomentImagePrompt(
+  conversationId: string,
+  momentId: string,
+  imagePrompt: string,
+): Promise<void> {
+  const list = await getConversations();
+  const idx = list.findIndex((c) => c.id === conversationId);
+  if (idx < 0) return;
+  const mIdx = (list[idx].moments ?? []).findIndex((m) => m.id === momentId);
+  if (mIdx < 0) return;
+  const text = imagePrompt.trim();
+  if (text) {
+    list[idx].moments![mIdx].imagePrompt = text;
+  } else {
+    delete list[idx].moments![mIdx].imagePrompt;
+  }
+  list[idx].updatedAt = new Date().toISOString();
+  await kvSet(CONVERSATIONS_KEY, list);
+}
+
+/**
+ * 标／取消标某条动态为「重要」（恩熙 2026-09-21：「那朋友圈是不是也要有一个能够
+ * 标记为重要 的功能呢？」）。标了的那条永远以原文留在 TA 的记忆里：不会被合进
+ * 模糊印象，也不会被注入上限挤掉（见 `memory.ts` 的 buildMomentSection）。
+ */
+export async function setMomentPinned(
+  conversationId: string,
+  momentId: string,
+  pinned: boolean,
+): Promise<void> {
+  const list = await getConversations();
+  const idx = list.findIndex((c) => c.id === conversationId);
+  if (idx < 0) return;
+  const mIdx = (list[idx].moments ?? []).findIndex((m) => m.id === momentId);
+  if (mIdx < 0) return;
+  if (pinned) {
+    list[idx].moments![mIdx].pinnedByUser = true;
+  } else {
+    delete list[idx].moments![mIdx].pinnedByUser;
+  }
+  list[idx].updatedAt = new Date().toISOString();
+  await kvSet(CONVERSATIONS_KEY, list);
+}
+
+/** 清空某角色在某面具下的全部消息（保留每聊天设定）。 */
+export async function clearConversation(characterId: string, maskId: string): Promise<void> {
+  const list = await getConversations();
+  const idx = findIdx(list, characterId, maskId);
+  if (idx < 0) return;
+  list[idx].messages = [];
+  list[idx].unreadCount = 0;
+  list[idx].updatedAt = new Date().toISOString();
+  await kvSet(CONVERSATIONS_KEY, list);
+}
+
+/**
+ * 清空某角色在某面具下发过的动态（朋友圈）＋ TA 自己改过的签名。
+ * 恩熙 2026-09-21：「我重置记忆朋友圈也还会存在 应该要消息（消失）的」，
+ * 随后又补：「签名也要一起签的」——两样都是 TA 随着聊天攒在自己名下的东西，
+ * 记忆都重置了，留着就说不通。签名清掉后资料页回落到档案自带的默认签名
+ * （`defaultSignature(character.data)`）。
+ *
+ * 跟「清空聊天记录」分开走：那条路只清消息、动态和签名都留着（她只是想倒掉聊天）。
+ * 会话不存在就什么也不做——**绝不能顺手建一条空的**，否则没聊过的助手绑定
+ * 会凭空多出一行。
+ */
+export async function clearMomentsAndSignature(
+  characterId: string,
+  maskId: string,
+): Promise<void> {
+  const list = await getConversations();
+  const idx = findIdx(list, characterId, maskId);
+  if (idx < 0) return;
+  list[idx].moments = [];
+  delete list[idx].signature;
+  list[idx].updatedAt = new Date().toISOString();
+  await kvSet(CONVERSATIONS_KEY, list);
+}
+
+/** 删除会话本身（＝解除绑定：聊天记录＋每聊天设定一并删除；角色档案不受影响）。 */
+export async function deleteConversation(characterId: string, maskId: string): Promise<void> {
+  const list = await getConversations();
+  const next = list.filter((c) => !(c.characterId === characterId && c.maskId === maskId));
+  if (next.length !== list.length) {
+    await kvSet(CONVERSATIONS_KEY, next);
+  }
+}
+
+/* ----------------------------- API 设定 ----------------------------- */
+
+const API_BUNDLE_KEY = "api-settings-bundle";
+
+/**
+ * 「画风参考」功能已下线（2026-09-16：画风图会被生图模型当成第二张底图，导致姿势
+ * 表情整张照抄参考图）：老配置里可能还留着 `styleImage`（base64 大图）与
+ * `stylePrompt`，读到即剥掉并落库，不让死数据白占存储（无感迁移）。
+ */
+function stripLegacyStyleExtras(extras: ImageApiExtras): {
+  value: ImageApiExtras;
+  changed: boolean;
+} {
+  const legacy = extras as ImageApiExtras & { styleImage?: string; stylePrompt?: string };
+  if (legacy.styleImage === undefined && legacy.stylePrompt === undefined) {
+    return { value: extras, changed: false };
+  }
+  const value = { ...legacy };
+  delete value.styleImage;
+  delete value.stylePrompt;
+  return { value, changed: true };
+}
+
+/**
+ * 三类 API 设定合集（文本／图文／语音）。
+ * 旧版本只存单份设定（chat-api-settings 键）：读取时自动并进「文本 API」，
+ * 图文／语音没有存过就是空白默认值。
+ */
+export async function getApiBundle(): Promise<ApiSettingsBundle> {
+  const [bundle, legacy] = await Promise.all([
+    kvGet<Partial<ApiSettingsBundle>>(API_BUNDLE_KEY),
+    kvGet<ChatApiSettings>(API_SETTINGS_KEY),
+  ]);
+  const imageExtras = stripLegacyStyleExtras({ ...DEFAULT_IMAGE_EXTRAS, ...bundle?.imageExtras });
+  if (imageExtras.changed) {
+    await kvSet(API_BUNDLE_KEY, { ...bundle, imageExtras: imageExtras.value });
+  }
+  return {
+    text: { ...DEFAULT_API_SETTINGS, ...legacy, ...bundle?.text },
+    image: { ...DEFAULT_API_SETTINGS, ...bundle?.image },
+    voice: { ...DEFAULT_API_SETTINGS, ...bundle?.voice },
+    imageExtras: imageExtras.value,
+    voiceExtras: { ...DEFAULT_VOICE_EXTRAS, ...bundle?.voiceExtras },
+  };
+}
+
+/** 保存某一类 API 设定（其余两类与附加参数保持原样）。 */
+export async function saveApiCategory(
+  category: ApiCategory,
+  settings: ChatApiSettings,
+): Promise<void> {
+  const bundle = await getApiBundle();
+  await kvSet(API_BUNDLE_KEY, { ...bundle, [category]: settings });
+}
+
+/** 保存图文 API 附加参数（尺寸／质量／提示词）。 */
+export async function saveImageExtras(extras: ImageApiExtras): Promise<void> {
+  const bundle = await getApiBundle();
+  await kvSet(API_BUNDLE_KEY, { ...bundle, imageExtras: extras });
+}
+
+/** 保存语音 API 附加参数（音色／语速／音调）。 */
+export async function saveVoiceExtras(extras: VoiceApiExtras): Promise<void> {
+  const bundle = await getApiBundle();
+  await kvSet(API_BUNDLE_KEY, { ...bundle, voiceExtras: extras });
+}
+
+/** 文本 API 设定（聊天回复用；兼容旧调用方）。 */
+export async function getApiSettings(): Promise<ChatApiSettings> {
+  return (await getApiBundle()).text;
+}
+
+/* --------------------------- API 预设方案 --------------------------- */
+
+const API_PRESETS_KEY = "api-presets";
+
+/** 全量预设方案（内部用：kvSet 整体覆盖，改某一类须先读全量）。 */
+async function getAllApiPresets(): Promise<Partial<Record<ApiCategory, ApiPresetEntry[]>>> {
+  return (await kvGet<Partial<Record<ApiCategory, ApiPresetEntry[]>>>(API_PRESETS_KEY)) ?? {};
+}
+
+/** 某分类下的全部预设方案（新→旧）；图文方案里的画风参考死字段顺手清掉（无感迁移）。 */
+export async function getApiPresets(category: ApiCategory): Promise<ApiPresetEntry[]> {
+  const all = await getAllApiPresets();
+  const list = all[category] ?? [];
+  let changed = false;
+  const next = list.map((p) => {
+    if (!p.imageExtras) return p;
+    const cleaned = stripLegacyStyleExtras(p.imageExtras);
+    if (!cleaned.changed) return p;
+    changed = true;
+    return { ...p, imageExtras: cleaned.value };
+  });
+  if (changed) await kvSet(API_PRESETS_KEY, { ...all, [category]: next });
+  return next;
+}
+
+/**
+ * 新增／更新预设方案：带 id 且存在为更新（改名也走这里），
+ * 否则新增并排到最前。
+ */
+export async function saveApiPreset(
+  category: ApiCategory,
+  preset: {
+    id?: string;
+    name: string;
+    baseUrl: string;
+    apiKey: string;
+    model: string;
+    /** 语音方案携带：音色／语速／音调。 */
+    voiceExtras?: VoiceApiExtras;
+    /** 图文方案携带：尺寸／质量／提示词等。 */
+    imageExtras?: ImageApiExtras;
+  },
+): Promise<ApiPresetEntry> {
+  const all = await getAllApiPresets();
+  const list = all[category] ?? [];
+  const now = new Date().toISOString();
+  if (preset.id) {
+    const idx = list.findIndex((p) => p.id === preset.id);
+    if (idx >= 0) {
+      list[idx] = { ...list[idx], ...preset, updatedAt: now };
+      await kvSet(API_PRESETS_KEY, { ...all, [category]: list });
+      return list[idx];
+    }
+  }
+  const entry: ApiPresetEntry = {
+    id: uuid(),
+    name: preset.name.trim() || "未命名方案",
+    baseUrl: preset.baseUrl,
+    apiKey: preset.apiKey,
+    model: preset.model,
+    ...(preset.voiceExtras ? { voiceExtras: preset.voiceExtras } : {}),
+    ...(preset.imageExtras ? { imageExtras: preset.imageExtras } : {}),
+    createdAt: now,
+    updatedAt: now,
+  };
+  await kvSet(API_PRESETS_KEY, { ...all, [category]: [entry, ...list] });
+  return entry;
+}
+
+/** 删除某分类下的一个预设方案。 */
+export async function deleteApiPreset(category: ApiCategory, id: string): Promise<void> {
+  const all = await getAllApiPresets();
+  const list = (all[category] ?? []).filter((p) => p.id !== id);
+  await kvSet(API_PRESETS_KEY, { ...all, [category]: list });
+}
+
+/* ----------------------------- 对话偏好 ----------------------------- */
+
+const CHAT_PREFS_KEY = "chat-prefs";
+
+/** 对话行为偏好（全局一份，不分角色与面具；每聊天设定在 Conversation 上）。 */
+export interface ChatPrefs {
+  /**
+   * 时间感知：打开后把「此刻的真实时间」注入本轮提示词，TA 在「现在几点」
+   * 这件事上就不会乱编（在此之前 TA 只能从聊天内容猜，同一晚前后能说反）。
+   * 关掉＝完全不注入，行为与从前一致。
+   */
+  timeAware: boolean;
+  /**
+   * 自动生成：TA 要发图时（回复里写了〔图片〕标记）是否立刻去画。
+   * 开着（默认）＝照旧收到标记就画；关掉＝先把画面描述摆在占位框里等你点「生成」，
+   * 不点就不画——生图按次计费，想自己看文字决定要不要这张，就把这个关掉。
+   * 注意这是**全局习惯**，不跟预设方案走：切换图文方案不会改它。
+   */
+  autoGenerateImage: boolean;
+}
+
+export const DEFAULT_CHAT_PREFS: ChatPrefs = {
+  timeAware: true,
+  autoGenerateImage: true,
+};
+
+/** 把存档补全成一份合法偏好（缺漏栏位补预设值，方便日后加开关）。 */
+function normalizePrefs(saved: Partial<ChatPrefs>): ChatPrefs {
+  return {
+    timeAware: saved.timeAware ?? DEFAULT_CHAT_PREFS.timeAware,
+    autoGenerateImage: saved.autoGenerateImage ?? DEFAULT_CHAT_PREFS.autoGenerateImage,
+  };
+}
+
+/** 读取对话偏好；缺漏栏位补预设值，方便日后加开关。 */
+export async function getChatPrefs(): Promise<ChatPrefs> {
+  return normalizePrefs((await kvGet<Partial<ChatPrefs>>(CHAT_PREFS_KEY)) ?? {});
+}
+
+/** 局部更新对话偏好（只传要改的那个开关）。 */
+export async function saveChatPrefs(patch: Partial<ChatPrefs>): Promise<ChatPrefs> {
+  const next = normalizePrefs({ ...(await getChatPrefs()), ...patch });
+  await kvSet(CHAT_PREFS_KEY, next);
+  return next;
+}
+
+/* ── 动态页的封面（恩熙 2026-09-21：「你先帮我把这个换封面的功能给做出来吧」）。
+   只存**一笔**、**不跟面具走**：封面是「我这个人」的样子，换面具不该把它换掉。
+   存的是 `media-store://` 引用串而不是图本身——跟聊天图片同一条规矩：图进独立仓库，
+   设定里只留一句引用串（见 media-asset.ts 顶上那三条）。空串＝没换过，走默认渐变。 ── */
+const MOMENTS_COVER_KEY = "moments-cover";
+
+/** 读封面引用串；没换过／已还原时回空串。 */
+export async function getMomentsCover(): Promise<string> {
+  return (await kvGet<string>(MOMENTS_COVER_KEY)) ?? "";
+}
+
+/** 写封面引用串（传空串＝还原成默认渐变）。 */
+export async function saveMomentsCover(ref: string): Promise<void> {
+  await kvSet(MOMENTS_COVER_KEY, ref);
+}
