@@ -104,7 +104,7 @@ export async function persistImageAsset(source: string): Promise<StoredImage | n
  * 把**已经压好的**参考图存进仓库（这里不再压一次——参考图那边已经按 2200／JPEG 压过，
  * 再压一遍就是二次有损），会话里只留一句引用串。
  *
- * 为什么非搬不可：以前这张图是以 base64 长串直接躺在会话记录里（charRefImage 字段），
+ * 为什么非搬不可：base64 长串若直接躺在会话记录里（charRefImage 字段），
  * 而会话记录是「每次读列表都整份读出」的那个键——一张截图级别的图就能让它膨胀几 MB。
  *
  * 任何失败都回 null，调用方退回原来的 data URL，图绝不会因为仓库的事而丢。
@@ -226,7 +226,7 @@ function dataUrlToBlob(dataUrl: string): Blob | null {
  * 只能杀应用。data URL 同步转 File（不让出线程，保住用户手势）；不支持分享的浏览器／桌面再走
  * 下载：data URL 就地转 blob 地址，远程图交给 /api/image-proxy 代取。
  *
- * 2026-09-16 试过要回执、已撤（恩熙实测）：本想在面板关闭后用 await navigator.share 的结果
+ * 试过要回执、已撤：本想在面板关闭后用 await navigator.share 的结果
  * 提示「已保存到相册」，但 iOS 上 promise 不按规范 settle（点完存储图像既不 resolve 也不
  * reject），提示永不出现——只能维持静默。想要明确回执与「点一下就进相册」，只能等打包原生 App。
  *

@@ -2,7 +2,7 @@
  * iOS 选字「点得动、不干活」的兜底（WebKit Bug 288461）。
  *
  * 真机上在输入框里全选／拖选／粘贴之后，整页会假死：
- * 手指按下去 pointerdown / pointerup 照旧发，:active 也照旧点亮（恩熙说的「看得到按键显示」），
+ * 手指按下去 pointerdown / pointerup 照旧发，:active 也照旧点亮，
  * 但 click 事件不再派发 —— 于是每个按钮都「点得动、没反应」，只有已经聚焦的输入框还能用。
  * 这是 iOS Safari / WebKit 自己的 bug（288461，iOS 18.4 / 18.4.1 仍在复现，官方未修），
  * 不是我们代码的问题，也没法从根上治。
@@ -71,8 +71,7 @@ export function installTapFallback(): () => void {
       if (!el || !el.isConnected) return;
       /* ★ 先标记「在放行」再补。旧版是先设 swallowUntil 再 el.click()，结果下面那句
          document 捕获监听第一个看到这记 click、把它**当成迟到的真 click 吞掉**：
-         stopPropagation 一出，事件连 React 的根都到不了，按钮照旧没反应
-         （恩熙 2026-09-20：「看得到按住、就是不干活」）。兜底一直是死代码。
+         stopPropagation 一出，事件连 React 的根都到不了，按钮照旧没反应。兜底一直是死代码。
          宽限窗口改到合成之后再起算，它要拦的才是真正的迟到 click。 */
       synthesizing = true;
       el.click();

@@ -8,7 +8,7 @@
  * 与手机给的额度；两个数对不上是正常的（差额是缓存等我们数不到的东西）。
  * 只读不写：本页不会删任何东西。
  *
- * 皮肤：撞色贴纸（恩熙 2026-09-20 定），底料与配色取自 pop-style.ts。
+ * 皮肤：撞色贴纸，底料与配色取自 pop-style.ts。
  */
 
 import { useCallback, useEffect, useState } from "react";

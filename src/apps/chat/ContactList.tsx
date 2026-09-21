@@ -43,23 +43,17 @@ import type { Conversation } from "@/types/chat";
  * 「添加朋友」＝从已唤醒档案里选角色，为当前面具建立绑定。
  * 「新的朋友」＝被假删的角色发来的好友申请（同意后恢复聊天）。
  *
- * 2026-09-21 换板（恩熙：「OK，现在没有问题，我们去改通讯人界面的 UI 吧。」）：
- * 这是聊天模块最后一个旧纸板（`C` 米白＋中文宋体＋玫瑰棕＋细边卡片）的页面，
- * 左右两边（消息列表 `MessageList`、聊天窗口、设置面板）早就是「黑粉蓝」新板 `T`。
- * 改法照 `ChatSettingsPanel` 那三轮的做法收敛到一轮：① 皮整页换 T；
- * ② 结构／骨把页内四个滑页与两个弹窗同步换板，返回钮用近黑圆＋白图标（设置面板那枚）；
- * ③ 空态改成「一小撮粉线＋两行字」。
+ * 皮整页换 T 板（黑粉蓝），左右两边（消息列表 `MessageList`、聊天窗口、设置面板）也是这套：
+ * ① 结构／骨把页内四个滑页与两个弹窗同步换成 T 板，返回钮用近黑圆＋白图标（设置面板那枚）；
+ * ② 空态改成「一小撮粉线＋两行字」。
  * 黑的用法守旧例：只落在大标题与返回钮上，**不整页翻黑**。
- * 零件（GroupLabel／ContactRow／AddFriendProfile／ContactProfile／ProfileRow）在文件
- * 末尾本地重写，**不动 `widgets.tsx`**。（2026-09-21 更新：`widgets.tsx` 已在角色设置页
- * 改版时一并换到 T 板，那份不再是旧纸板；本页的「章节头」现在直接引它那枚 `GroupTitle`，
- * 两页同一套零件。其余零件仍旧本地。）
+ * 零件（GroupLabel／ContactRow／AddFriendProfile／ContactProfile／ProfileRow）在文件末尾本地重写。
+ * 本页的「章节头」直接引 `widgets.tsx` 那枚 `GroupTitle`，两页同一套零件；其余零件仍旧本地。
  *
- * 2026-09-21 二改：名册（恩熙：「我也想要有不一样的设计。」）
- * 恩熙要的不是把消息列表那套搬过来，通讯人得有自己的样子。定成**一本名册**：
+ * 名册——通讯人要有自己的样子，不照搬消息列表那套。定成**一本名册**：
  *   ① 册头：大标题「通讯人」右边挂一枚粉色条数小牌，下面一行 `the roster`；
  *      标题底下压**一条通栏册页线**（粉→透明渐变）——消息列表没有这条，一眼分得开。
- *   ② 索引带：「新的朋友」从一张淡粉卡改成一条带子，没人申请是淡粉底粉字、
+ *   ② 索引带：「新的朋友」是一条带子，没人申请是淡粉底粉字、
  *      有人申请整条变实粉白字，右端一枚半透明小胶囊写条数。
  *   ③ 索引签：分组小标＝一根小竖色条＋名字＋英文小字，再一条细线**拉到右端**，最右是条数。
  *   ④ 名单：**不再是「一条人一张卡」**，改成**一整张白纸**（圆角 22 的卡），
@@ -67,16 +61,13 @@ import type { Conversation } from "@/types/chat";
  *      行高比会话卡矮、头像 44，星标的人头像外环换成亮粉。
  * 一句话对照：消息列表是「一条一张卡」，通讯人是「一整张纸上的名单」。
  *
- * 2026-09-21 三改：动骨（恩熙：「没有感觉太大的区别呀……整体的结构是一样的，
- * 我希望结构上有稍微有点更多的变化跟设计感。」）
- * 前两改只换了皮和线，页面的**骨架**还是和消息列表一样的一条竖排流水：
- * 页头 → 搜索胶囊 → 一条带子 → 一整列竖排行。所以这回改骨架，三处：
- *   ① 工具条：搜索胶囊与「新的朋友」**并成一行**（原来上下两条带子）——
+ * 骨架三处：
+ *   ① 工具条：搜索胶囊与「新的朋友」**并成一行**——
  *      搜索占满，右边一枚 56×46 的竖排小钮（图标＋9px 小字），有申请时整枚变实粉、
  *      右上角挂一枚白底粉字的小角标写条数。
- *   ② 星标联系人：从竖向分组改成**一条横向头像带**（头像 58＋粉外环＋名字／昵称），
+ *   ② 星标联系人：**一条横向头像带**（头像 58＋粉外环＋名字／昵称），
  *      整条通栏横滑、不打滚动条——通讯人页独有的一道横结构。
- *   ③ 通讯人：从一整列竖排的行改成**双列方格墙**（白板上直接排名片格，
+ *   ③ 通讯人：**双列方格墙**（白板上直接排名片格，
  *      格内不再垫卡片，头像 40＋名字＋昵称），两列并排，一眼就不是「一条一张卡」。
  * 骨架对照：消息列表＝一列竖排行；通讯人＝工具条＋横条＋方格墙。
  * ===================================================================== */
@@ -262,8 +253,7 @@ export default function ContactList({
     showToast("已删除好友，TA 也许会来请求加回");
   };
 
-  /** 真删好友（恩熙 2026-09-21：「我不想再跟他聊了，我也不需要他加回来给我。」）：
-   *  会话与记忆一并清掉，不留 removed 状态 —— TA 不会再来请求加回。
+  /** 真删好友：会话与记忆一并清掉，不留 removed 状态 —— TA 不会再来请求加回。
    *  角色档案本身不动，以后想聊可以自己去「添加朋友」把他加回来。 */
   const hardDeleteFriendNow = async () => {
     if (!profileId) return;
@@ -367,8 +357,7 @@ export default function ContactList({
         .cl-hbtn { transition: opacity .15s ease, transform .15s ease; }
         .cl-hbtn:active { opacity: .6; transform: scale(.94); }
         .cl-tile { transition: transform .16s ease, background-color .16s ease; }
-        /* 恩熙 2026-09-21：按住时「整格」都要有反馈 —— 底色换成看得见的马卡龙蓝软色
-           （原来那层 5% 黑几乎看不出，按住时像只有一小块有反应）；
+        /* 按住时「整格」都要有反馈 —— 底色换成看得见的马卡龙蓝软色；
            按下要立刻变色，所以 :active 单独把过渡压短，松手再慢慢化开 */
         .cl-tile:active { transform: scale(.968); background-color: ${T.blueSoft}; transition-duration: .06s; }
         .cl-face { transition: transform .18s ease; }
@@ -377,7 +366,7 @@ export default function ContactList({
         .cl-soft:active { transform: scale(.94); }
         .cl-fill { transition: transform .16s ease, filter .16s ease; }
         .cl-fill:active { filter: brightness(.94); }
-        /* 恩熙 2026-09-21：资料页里能点的整行（角色设置／动态／拉黑）也要有按住反馈 */
+        /* 资料页里能点的整行（角色设置／动态／拉黑）也要有按住反馈 */
         .cl-row { transition: transform .16s ease, background-color .16s ease; }
         .cl-row:active { background-color: ${T.pinkSoft}; transition-duration: .06s; }
         .cl-search::placeholder { color: ${T.ink3}; }
@@ -591,7 +580,7 @@ export default function ContactList({
         }}
       />
 
-      {/* 工具条：搜索胶囊占满，右边一枚竖排小钮收着「新的朋友」——原来上下两条带子并成一行 */}
+      {/* 工具条：搜索胶囊占满，右边一枚竖排小钮收着「新的朋友」 */}
       <div
         style={{
           flex: "none",
@@ -756,8 +745,7 @@ export default function ContactList({
                           key={row.archive.id}
                           archive={row.archive}
                           conv={row.conv}
-                          /* 恩熙 2026-09-21：落单的那一格铺满整行 —— 否则右边半格是死区，
-                             她看到的是一整条白卡片，点右边没反应 */
+                          /* 落单的那一格铺满整行 —— 否则右边半格是死区，点右边没反应 */
                           wide={normal.length % 2 === 1 && i === normal.length - 1}
                           onClick={() => openProfile(row.archive)}
                         />
@@ -1308,9 +1296,8 @@ export default function ContactList({
             conv={selectedConv}
             onBack={() => setCharSettingsOpen(false)}
             onUpdate={async (patch) => {
-              /* 个别 API／语音参数／生图参考图是**角色级**的——恩熙 2026-09-21：
-                 「角色设置里面，API、语音参数、参考图这些它是不会变的，就是跟着角色走的。」
-                 所以写角色身上，不写「角色 × 面具」那条会话（换面具照样是这套）。 */
+              /* 个别 API／语音参数／生图参考图是**角色级**的：
+                 写角色身上，不写「角色 × 面具」那条会话（换面具照样是这套）。 */
               await updateCharChatSettings(selected.id, patch);
               onDataChange();
             }}
@@ -1831,7 +1818,7 @@ function ContactTile({
 }: {
   archive: ArchiveEntry;
   conv?: Conversation;
-  /** 奇数个时落单的那一格：铺满整行，别在右边留半格死区（恩熙 2026-09-21）。 */
+  /** 奇数个时落单的那一格：铺满整行，别在右边留半格死区。 */
   wide?: boolean;
   onClick: () => void;
 }) {
@@ -1847,7 +1834,7 @@ function ContactTile({
       className="cl-tile"
       style={{
         minWidth: 0,
-        /* 恩熙 2026-09-21：整格从头到尾都要能点 —— 显式铺满格子，别只指望 grid 的 stretch */
+        /* 整格从头到尾都要能点 —— 显式铺满格子，别只指望 grid 的 stretch */
         width: "100%",
         gridColumn: wide ? "span 2" : undefined,
         boxSizing: "border-box",
@@ -2157,12 +2144,11 @@ function ContactProfile({
 
   return (
     <div style={{ position: "relative", display: "flex", flexDirection: "column", width: "100%", height: "100%" }}>
-      {/* 恩熙 2026-09-21（第六版）：「通讯人点进去的角色个人详情那个地方呢，它拍顶栏会
-          跟随移动，它应该是要固定的。」→ 病根：整页唯一的滚动容器把「返回钮那一行」也
-          包进去了，内容一滚它就跟着走。照 AppChrome 的分层把顶栏提出来：
-          顶栏 flex:none 落在滚动区外（zIndex 2），滚动容器只留身份牌及以下内容。
+      {/* 整页唯一的滚动容器会把「返回钮那一行」也包进去，内容一滚它就跟着走。
+          照 AppChrome 的分层把顶栏提出来：顶栏 flex:none 落在滚动区外（zIndex 2），
+          滚动容器只留身份牌及以下内容。
           顶栏不铺底色——滚动容器自己带 `overflow-y:auto`，内容在它上边界就被裁掉，
-          永远进不到顶栏底下来，所以不需要拿色块去挡，原来那团粉晕也就不被切断。
+          永远进不到顶栏底下来，所以不需要拿色块去挡。
           装饰①粉晕同样从滚动区里提出来，脱离流钉在屏幕顶（zIndex 0）；
           静止时位置与原来一致，只是不再跟着内容往上跑。 */}
       {/* 装饰①：头顶一团淡粉晕柔下来——页头算是有「底」了，但不是黑块 */}
@@ -2227,9 +2213,7 @@ function ContactProfile({
         }}
       >
         {/* 页头：只剩居中身份牌＋两样装饰（顶行已经提到上面的固定顶栏里），整块不铺底色。
-            恩熙 2026-09-21（第五版）：她看完「撤黑＋左对齐」那版，说「不是不是，排版还是要
-            刚刚那样的排版，但是上面应该要多做一点样式了」。→ 近黑块依旧不铺，但**排版回到
-            原来那种居中**（头像居中、名字居中），并且页头顶部要「做出点东西」：
+            近黑块不铺，**排版居中**（头像居中、名字居中），页头顶部做出点东西：
             头像外一圈细粉环（跟描边分层）、名字底下一道短粉线。
             重的东西交给头像，不交给色块。 */}
         <div
@@ -2389,9 +2373,8 @@ function ContactProfile({
         </div>
 
         <div style={{ padding: "0 22px" }}>
-          {/* ID：原来是颗近黑胶囊，页头撤黑之后它就是这页剩下的最后一处黑，太孤立；
-              改成**淡墨底＋墨字**的胶囊（跟卡片一个语言），点一下复制。
-              排版回到居中后，这颗胶囊也跟着居中（跟头像、名字一条中线）。
+          {/* ID：**淡墨底＋墨字**的胶囊（跟卡片一个语言），点一下复制。
+              跟头像、名字一条中线。
               「添加于」已挪到页头副行，这里不再重复。 */}
           <div style={{ marginTop: 16 }}>
             <div
@@ -2429,9 +2412,7 @@ function ContactProfile({
           ) : null}
 
           {/* 动态：卡内章节头＋白卡里的可点行。
-              恩熙 2026-09-21：「那刚刚的角色页面是不是也得改一下？就是上一页。」——
-              说的就是这页。角色设置页刚改成「卡内章节头」，这页还是老的「卡外索引签」，
-              两页并排一看不像一本书。这里换成同一套零件（`GroupTitle`）：
+              换成同一套零件（`GroupTitle`）：
               编号方块 01／02 ＋ 标题 ＋ 英文索引 ＋ 淡线；编号块在「有内容／有配置」时亮粉。 */}
           <div
             className="cl-card"
@@ -2692,9 +2673,8 @@ function ContactProfile({
             <div style={{ fontSize: 16, letterSpacing: ".06em", color: T.ink, fontWeight: 700 }}>
               删除好友
             </div>
-            {/* 恩熙 2026-09-21：「我们没有做一个真正的删除好友的功能，就是我不想再跟他聊了，
-                我也不需要他加回来给我。」→ 这一层给两个档：彻底删除（真删，默认）与暂时删除
-                （原来的假删，留着给剧情用：TA 会来求加回）。 */}
+            {/* 这一层给两个档：彻底删除（真删，默认）与暂时删除
+                （假删，留着给剧情用：TA 会来求加回）。 */}
             <div
               style={{
                 marginTop: 10,
@@ -2898,8 +2878,7 @@ function ProfileRow({
     >
       {icon}
       <span style={{ fontSize: 13.5, letterSpacing: ".06em", color: danger ? T.danger : T.ink }}>{label}</span>
-      {/* 恩熙 2026-09-21：「星标联系人 / 消息免打扰的开关位置不对，应该在最右边」——
-          原来 right 直接贴在 label 屁股后面（左边那堆），现在给它 marginLeft:auto 顶到行尾 */}
+      {/* right 用 marginLeft:auto 顶到行尾，不贴在 label 后面 */}
       {right ? (
         <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", flex: "none" }}>{right}</span>
       ) : value ? (

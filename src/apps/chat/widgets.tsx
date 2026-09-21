@@ -3,7 +3,7 @@
 import { ChevronRight } from "lucide-react";
 import { EN, T } from "./shared";
 
-/** 胶囊开关（旧档案同款手感；2026-09-21 恩熙「开关的颜色没有改变」——配色已换新板）。 */
+/** 胶囊开关（配色按新板：开＝主粉、关＝浅灰）。 */
 export function Switch({ on, onClick }: { on: boolean; onClick: () => void }) {
   return (
     <div
@@ -12,9 +12,7 @@ export function Switch({ on, onClick }: { on: boolean; onClick: () => void }) {
         width: 46,
         height: 27,
         borderRadius: 14,
-        /* 恩熙 2026-09-21：「按钮开关的颜色没有改变啊，开了之后、关了之后……还是一样的」
-           —— 这颗开关一直停在旧纸板的 C.rose（陈旧玫瑰灰）和旧灰底上，新板页面里开/关
-           都像没配过色。换到新板：开＝主粉、关＝新墨的浅灰，粉只跳这一下 */
+        /* 开关配色：开＝主粉、关＝新墨的浅灰，粉只跳这一下 */
         background: on ? T.pink : "rgba(20,19,24,.14)",
         position: "relative",
         transition: "background .2s",
@@ -41,9 +39,8 @@ export function Switch({ on, onClick }: { on: boolean; onClick: () => void }) {
 
 /** 章节头：卡**内**的标题栏——左侧一枚编号方块（01／02／03），中间中文标题，
  *  右侧极小英文索引，底下一条极淡横线把「章节名」和「章节内容」分开。
- *  恩熙 2026-09-21 第四调（「这样很没有设计感，就是很普通的页面」）：原来是卡**外**一行
- *  「小英文＋中文」，三张卡排下来就是三个白盒子，翻版聊天设置页。现在每个卡头带自己的编号，
- *  整页像一本册子翻到三个章节；`on` 为真时编号方块亮粉，兼当「这块已经配过」的状态灯。 */
+ *  每个卡头带自己的编号，整页像一本册子翻到三个章节；
+ *  `on` 为真时编号方块亮粉，兼当「这块已经配过」的状态灯。 */
 export function GroupTitle({
   title,
   en,
@@ -109,9 +106,8 @@ export function GroupTitle({
 }
 
 /** 设置行（标题＋描述＋值／箭头／右侧自定义）。
- *  恩熙 2026-09-21 换板：改成**一行一枚 999 圆胶囊**，跟个人资料页的 `ProfileRow`
- *  同一套——旧版是「54 高、两侧各 14 内边距」的纸板行，一行行贴着卡片边，像表格；
- *  圆胶囊行才跟侧边栏菜单对得上眼。 */
+ *  **一行一枚 999 圆胶囊**，跟个人资料页的 `ProfileRow` 同一套，
+ *  这样才跟侧边栏菜单对得上眼。 */
 export function SettingRow({
   title,
   desc,

@@ -3,7 +3,7 @@
  *
  * 这一层负责「互动」而不是「改档案」：
  * - 假删＝软删除：会话与记忆保留，TA 会发来好友申请求加回；
- * - 真删＝彻底删除（恩熙 2026-09-21）：会话与记忆一并清掉，TA 不会再来求，也不留口子；
+ * - 真删＝彻底删除：会话与记忆一并清掉，TA 不会再来求，也不留口子；
  * - 拉黑＝单向表演：TA 那边显示消息发不出去，但消息其实都会送达，
  *   解除后 TA 记得这段经历（blockCount 注入提示词）。
  *
@@ -139,10 +139,9 @@ export async function removeFriend(characterId: string, maskId: string): Promise
 
 /** 彻底删除好友（真删）：会话与记忆一并清掉，TA 不会再来求加回。
  *
- *  恩熙 2026-09-21：「我们没有做一个真正的删除好友的功能，就是我不想再跟他聊了，
- *  我也不需要他加回来给我。」→ 所以这条不像 `removeFriend` 那样留 removed 状态
+ *  这条不像 `removeFriend` 那样留 removed 状态
  *  （留着就会被「新的朋友」那条自动请求接上），而是把这一对「角色 × 面具」的
- *  绑定整个抹掉：会话（含聊天记录、每聊天设定、TA 发过的动态）＋记忆。
+ *  绑定整个抹掉：会话（含聊天记录、每聊天设置、TA 发过的动态）＋记忆。
  *  角色档案本身不动，以后想聊可以自己从「添加朋友」再把他加回来。 */
 export async function hardDeleteFriend(characterId: string, maskId: string): Promise<void> {
   await deleteConversation(characterId, maskId);

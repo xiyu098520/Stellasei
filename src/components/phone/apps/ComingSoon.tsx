@@ -5,7 +5,7 @@ import { AppChrome } from "@/components/phone/apps/AppChrome";
 
 /**
  * 一期尚未实现的 App 统一入口页。
- * 不做空页、不假装可用——明确告訴恩熙它在路线图上的位置。
+ * 不做空页、不假装可用——老实说清它在路线图上的位置。
  */
 export function ComingSoon({ app }: { app: RegisteredApp }) {
   return (

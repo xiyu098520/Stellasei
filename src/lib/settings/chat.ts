@@ -125,8 +125,7 @@ export function bubbleCapOf(conv: Conversation | null | undefined): number {
 
 /** 角色级的三样：个别 API 覆盖、语音参数覆盖、角色生图参考图。
  *
- *  恩熙 2026-09-21：「角色设置里面，API、语音参数、参考图这些它是不会变的，就是跟着角色走的。」
- *  —— 所以这三样从「角色 × 面具」提到角色身上：同一角色所有面具共用一份，
+ *  这三样从「角色 × 面具」提到角色身上：同一角色所有面具共用一份，
  *  在 A 面具配好的，切到 B 面具进去还是那套。
  *  （置顶／免打扰／背景／字号那些仍是每聊天设定，继续跟面具走，别混。）
  *
@@ -193,9 +192,9 @@ export async function getConversations(): Promise<Conversation[]> {
   const saved = await kvGet<Conversation[]>(CONVERSATIONS_KEY);
   if (!Array.isArray(saved)) return [];
   const list = saved.map(normalizeConv);
-  /* 「聊过没有」这枚戳子的一次性补盖（2026-09-21 恩熙：「我重置记忆以后消息列表的
-     对话框不见了应该要存在的」）：老数据没戳子，按「手上有消息」补一次——
-     有消息＝确实聊过，盖上；一条消息也没有＝从没聊过（助手预绑的空会话），不盖。 */
+  /* 「聊过没有」这枚戳子的一次性补盖：重置记忆后消息列表的对话框也该还在，
+     老数据没戳子，按「手上有消息」补一次——有消息＝确实聊过，盖上；
+     一条消息也没有＝从没聊过（助手预绑的空会话），不盖。 */
   let stamped = false;
   for (const c of list) {
     if (c.chatStarted === undefined && c.messages.length > 0) {
@@ -235,9 +234,9 @@ export async function getOrCreateConversation(
 }
 
 /** 追加一条消息（会话不存在则顺手建立）。
- *  第四项 `bumpUnread`＝这条落库的同时把列表未读 +1（恩熙 2026-09-21：
- *  「我在聊天列表依旧能看到最新的消息，并且加上通知。」由聊天窗判断
- *  「人不在这一间」时才传 true，跟消息写在同一笔里，免得两次读改写互相覆盖）。 */
+ *  第四项 `bumpUnread`＝这条落库的同时把列表未读 +1（列表要能看到最新消息、
+ *  并带上通知）。由聊天窗判断「人不在这一间」时才传 true，跟消息写在同一笔里，
+ *  免得两次读改写互相覆盖）。 */
 export function appendMessage(
   ...args: Parameters<typeof appendMessageNow>
 ): Promise<Conversation> {
@@ -341,12 +340,12 @@ const HEAL_NOTE = "上一趟还没画完，页面就被关掉或刷新了——�
  *  进入会话时调用：组件刚挂载，不可能还有活着的生成任务，残留的 pending 一定是
  *  上次刷新／重载把生成任务一起杀掉后留下的孤儿——不归位就会永远转圈，不超时也不报错。
  *  **「等点生成」的那种（awaitGen）不算孤儿**：它本来就没在跑、没花过钱，只是停在
- *  那儿等恩熙点一下——归位成失败，等于她一进聊天就看到「图片没发出来」，
- *  明明什么都没发生（2026-09-20）。
+ *  那儿等着点一下——归位成失败，等于一进聊天就看到「图片没发出来」，
+ *  明明什么都没发生。
  *  归位时补一句人话当原因：空着 errorText 的话，纸面上只剩一句光秃秃的失败。
- *  还顺手还回去一笔旧账：早先那一版归位不留原因，所以「报了失败、却一句原因都没有」
- *  的图片消息一定是被误判成孤儿的（真失败一定带原话）——还给「等点生成」那一态，
- *  没点过生成之前，纸面上只该有描述加一颗「生成」（恩熙 2026-09-20）。
+ *  归位时一定要补原因：不然「报了失败、却一句原因都没有」
+ *  的图片消息没法跟被误判成孤儿的区分（真失败一定带原话）——还给「等点生成」那一态，
+ *  没点过生成之前，纸面上只该有描述加一颗「生成」。
  *  没有残留时原样返回，不写库。 */
 export async function healStalePendingMedia(
   characterId: string,
@@ -362,8 +361,8 @@ export async function healStalePendingMedia(
        空着，或者原因就是这份归位手续自己写的那句话。真失败的原因是从生图层带回来的
        （超时／被拒／读不出字节），绝不会长成 HEAL_NOTE 的样子。
        那条「点了生成、画到一半被刷新杀掉」的真孤儿也在其中被还成「等点生成」：
-       恩熙要的是「没成之前只看见描述和一颗生成」，重画一下的成本远小于
-       一进聊天就被通知一次失败（2026-09-20）。 */
+       没成之前只该看见描述和一颗生成，重画一下的成本远小于
+       一进聊天就被通知一次失败。 */
     if (m.type === "image" && m.error && !m.imageUrl && (!m.errorText || m.errorText === HEAL_NOTE)) {
       healed = true;
       return { ...m, error: undefined, errorText: undefined, pending: true, awaitGen: true };
@@ -432,23 +431,21 @@ export async function markConversationRead(
 
 /**
  * 确保内置 AI 助手就位（打开聊天 App 时调用一次）：
- * - 她**没删过**助手、而档案库里又没有「助手模式」档案 → 自动建一个（星绥）；
- * - 已有档案还是 2026-09-16 前的旧默认（星绥助手／私人 AI 助手）→ 自动升级成新默认；
+ * - **没删过**助手、而档案库里又没有「助手模式」档案 → 自动建一个（星绥）；
+ * - 已有档案还是更早的旧默认（星绥助手／私人 AI 助手）→ 自动升级成新默认；
  * - 每个已建面具没跟助手绑定 → 自动建立绑定（建一条空会话）。
  * 助手由此开箱即用地躺在每个面具的通讯人列表里，想用就直接找它聊，不想用就不理。
  *
- * ⚠️ 2026-09-21 恩熙：「默认角色啊，一直蹦出一个星绥，**我怎么删它都会重新再来**。」
- * —— 上面那句「只有彻底删掉档案才会重建一个全新的」正是她反抗的东西：她把助手档案
- * 删了、下次开聊天 App 又被补回来，像永远删不掉。原写法分不清「从没建过」和
- * 「她自己删的」——前者该建，后者不该再冒出来。现在靠 `isAssistantOff()` 那枚
- * 辞退标记分界（删除时落下、她重新打开某张档案的助手模式即清掉）。
+ * ⚠️ 原写法分不清「从没建过」和「自己删的」：助手档案删了、下次开聊天 App 又被补回来，
+ * 像永远删不掉——前者该建，后者不该再冒出来。现在靠 `isAssistantOff()` 那枚
+ * 辞退标记分界（删除时落下、重新打开某张档案的助手模式即清掉）。
  * 「删除好友」仍是假删／真删会话，档案不动，不走这条路。
  */
 export async function ensureAssistant(): Promise<void> {
   const archives = await getArchives();
   const found = archives.filter((a) => a.data.isAssistant === true);
-  /* 档案库里一个助手都没有、而那枚辞退标记又立着 → 是她亲手删的，**别再长出来**。
-     （标记只拦「重建」：万一她还留着另一张助手档案，升级默认值、补面具绑定这些
+  /* 档案库里一个助手都没有、而那枚辞退标记又立着 → 是亲手删的，**别再长出来**。
+     （标记只拦「重建」：万一还留着另一张助手档案，升级默认值、补面具绑定这些
      正事照旧要办，所以判据是「没有 ＋ 被辞退」而不是单看标记。） */
   if (found.length === 0 && (await isAssistantOff())) return;
   /* 所有助手档案都升级旧默认值（防删建历史留下多个），只认旧默认值——
@@ -477,16 +474,15 @@ export async function ensureAssistant(): Promise<void> {
   const [masks, convs] = await Promise.all([ensureMasks(), getConversations()]);
   for (const m of masks) {
     const bound = convs.find((c) => c.characterId === assistant.id && c.maskId === m.id);
-    /* 助手会话默认**不限条数**（2026-09-20 恩熙：「这个 AI 助手它是不会分句的吗？
-       它就是一串那么多字吗？」）：助手的回答本来就长、句数又多，压到默认的 5 条
+    /* 助手会话默认**不限条数**：助手的回答本来就长、句数又多，压到默认的 5 条
        就是「前 4 条照旧、超出的全并进最后一条」——最后那一条是一整串连读的长字，
-       屏幕上看着像压根没分句。绑定时直接带上不限，她要是想管，在聊天设置里开回来即可。 */
+       屏幕上看着像压根没分句。绑定时直接带上不限，想管的话在聊天设置里开回来即可。 */
     if (!bound) {
       await updateConversation(assistant.id, m.id, { bubbleLimit: false });
       continue;
     }
     /* 老会话：只改**从没动过**气泡设置的（两个栏位都没值）——
-       她亲手调过条数的，一个字不动。 */
+       亲手调过条数的，一个字不动。 */
     if (bound.bubbleLimit === undefined && bound.bubbleMax === undefined) {
       await updateConversation(assistant.id, m.id, { bubbleLimit: false });
     }
@@ -499,7 +495,7 @@ export async function ensureAssistant(): Promise<void> {
  * 会话不存在则先建立。
  *
  * 返回**这一趟新落库的那些动态**（带内部 id）。生成配图这件事本身不在这里跑——
- * 恩熙 2026-09-21：手动那一趟在朋友圈页面点；「自动生图」开着时由调用方拿着
+ * 手动那一趟在朋友圈页面点；「自动生图」开着时由调用方拿着
  * 这些 id 去跑（见 `generateMomentImage`）。id 只有这里知道，所以必须交出去。
  */
 export async function appendMetaUpdates(
@@ -543,7 +539,7 @@ export async function appendMetaUpdates(
 }
 
 /**
- * 给指定动态回写图片引用（恩熙在朋友圈页面手动点生成后调用）。
+ * 给指定动态回写图片引用（在朋友圈页面手动点生成后调用）。
  * conversationId 本身就唯一确定「角色 × 面具」，直接按它找会话。
  */
 export async function setMomentImageRef(
@@ -562,9 +558,8 @@ export async function setMomentImageRef(
 }
 
 /**
- * 改一条动态的画面描述（恩熙 2026-09-21：「说不定这个描述它本身就是有错误的呢」
- * 「用户也可以去选择修改，修改完之后再去重新生成」）。
- * TA 写错了／写得不对味，恩熙在生成前改掉，改完就是这条动态的新描述——
+ * 改一条动态的画面描述。
+ * TA 写错了／写得不对味，可以在生成前改掉，改完就是这条动态的新描述——
  * 不写回的话下次点开又变回 TA 原本写的，等于白改。传空串＝把描述清掉。
  */
 export async function setMomentImagePrompt(
@@ -588,8 +583,7 @@ export async function setMomentImagePrompt(
 }
 
 /**
- * 标／取消标某条动态为「重要」（恩熙 2026-09-21：「那朋友圈是不是也要有一个能够
- * 标记为重要 的功能呢？」）。标了的那条永远以原文留在 TA 的记忆里：不会被合进
+ * 标／取消标某条动态为「重要」。标了的那条永远以原文留在 TA 的记忆里：不会被合进
  * 模糊印象，也不会被注入上限挤掉（见 `memory.ts` 的 buildMomentSection）。
  */
 export async function setMomentPinned(
@@ -624,12 +618,11 @@ export async function clearConversation(characterId: string, maskId: string): Pr
 
 /**
  * 清空某角色在某面具下发过的动态（朋友圈）＋ TA 自己改过的签名。
- * 恩熙 2026-09-21：「我重置记忆朋友圈也还会存在 应该要消息（消失）的」，
- * 随后又补：「签名也要一起签的」——两样都是 TA 随着聊天攒在自己名下的东西，
- * 记忆都重置了，留着就说不通。签名清掉后资料页回落到档案自带的默认签名
+ * 两样都是 TA 随着聊天攒在自己名下的东西，记忆都重置了、留着就说不通。
+ * 签名清掉后资料页回落到档案自带的默认签名
  * （`defaultSignature(character.data)`）。
  *
- * 跟「清空聊天记录」分开走：那条路只清消息、动态和签名都留着（她只是想倒掉聊天）。
+ * 跟「清空聊天记录」分开走：那条路只清消息、动态和签名都留着（只是想倒掉聊天）。
  * 会话不存在就什么也不做——**绝不能顺手建一条空的**，否则没聊过的助手绑定
  * 会凭空多出一行。
  */
@@ -660,7 +653,7 @@ export async function deleteConversation(characterId: string, maskId: string): P
 const API_BUNDLE_KEY = "api-settings-bundle";
 
 /**
- * 「画风参考」功能已下线（2026-09-16：画风图会被生图模型当成第二张底图，导致姿势
+ * 「画风参考」功能已下线（画风图会被生图模型当成第二张底图，导致姿势
  * 表情整张照抄参考图）：老配置里可能还留着 `styleImage`（base64 大图）与
  * `stylePrompt`，读到即剥掉并落库，不让死数据白占存储（无感迁移）。
  */
@@ -849,7 +842,7 @@ export async function saveChatPrefs(patch: Partial<ChatPrefs>): Promise<ChatPref
   return next;
 }
 
-/* ── 动态页的封面（恩熙 2026-09-21：「你先帮我把这个换封面的功能给做出来吧」）。
+/* ── 动态页的封面。
    只存**一笔**、**不跟面具走**：封面是「我这个人」的样子，换面具不该把它换掉。
    存的是 `media-store://` 引用串而不是图本身——跟聊天图片同一条规矩：图进独立仓库，
    设定里只留一句引用串（见 media-asset.ts 顶上那三条）。空串＝没换过，走默认渐变。 ── */

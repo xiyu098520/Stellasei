@@ -42,7 +42,7 @@ export function formatUid(uid: string): string {
   return d.length === 11 ? `${d.slice(0, 3)} ${d.slice(3, 7)} ${d.slice(7)}` : uid;
 }
 
-/** 1.0.86 之前那些细碎栏位（并进新格后删掉，只在迁移里出现）。 */
+/** 早期那些细碎栏位（并进新格后删掉，只在迁移里出现）。 */
 type LegacyProfileFields = Partial<
   Record<
     | "feature"
@@ -84,7 +84,7 @@ export async function getArchives(): Promise<ArchiveEntry[]> {
     const data = { ...raw.data } as ContactProfile & LegacyProfileFields & { relDate?: string };
     let touched = false;
 
-    /* 无感迁移（第 96 条）：「重要日子」栏位已撤，她当年就是拿它写生日的——把那个
+    /* 无感迁移：「重要日子」栏位已撤，旧数据里那个值其实就是生日——把那个
        值搬进 birth（birth 已有值则不动），再删掉这个键。只动这里：所有读档案的
        地方都走 getArchives()（联系人／聊天／记忆／世界书），所以搬一次就够。 */
     const relDate = data.relDate;
@@ -93,7 +93,7 @@ export async function getArchives(): Promise<ArchiveEntry[]> {
       touched = true;
     }
 
-    /* 无感迁移（1.0.86）：细碎栏位并进三个大格（恩熙：格太多，用户不知道该往哪格写）。
+    /* 无感迁移：细碎栏位并进三个大格（格太多，用户不知道该往哪格写）。
        只在目标格还空着的时候并——用户若已经在新格里写了东西，那是最新的意思，不覆盖。
        并完删掉旧键：界面与提示词都不再认它们。 */
     const merge = (...keys: (keyof LegacyProfileFields)[]) =>
@@ -180,13 +180,12 @@ export async function deleteArchive(id: string): Promise<ArchiveEntry[]> {
   return updated;
 }
 
-/** 助手是否已被她亲手删掉（辞退标记）。
+/** 助手是否已被手动删掉（辞退标记）。
  *
- *  恩熙 2026-09-21：「默认角色啊，一直蹦出一个星绥，我怎么删它都会重新再来。」
- *  —— `ensureAssistant` 原来把「档案库里没有助手」一律当成「还没建过」，于是她每删
- *  一次就自动补回一个。可这两种状态不是一回事：**从没建过**才该建，**她删的**不该
+ *  `ensureAssistant` 原来把「档案库里没有助手」一律当成「还没建过」，于是每删
+ *  一次就自动补回一个。可这两种状态不是一回事：**从没建过**才该建，**删掉的**不该
  *  再冒出来。这枚标记就是分界线；档案删了就没了，痕迹只能另存一处才留得住。
- *  她重新开启某张档案的助手模式即视为请回（见 `saveArchive`）。 */
+ *  重新开启某张档案的助手模式即视为请回（见 `saveArchive`）。 */
 export async function isAssistantOff(): Promise<boolean> {
   return (await kvGet<boolean>(ASSISTANT_OFF_KEY)) === true;
 }
@@ -206,7 +205,7 @@ export async function moveArchive(id: string, categoryId: string): Promise<void>
   }
 }
 
-/** 设为主页：把这条档案挪到最前面（列表页第一个，恩熙定的说法）。
+/** 设为主页：把这条档案挪到最前面（列表页第一个）。
  *  卡册的次序就是这份数组的次序（`ArchiveList` 只按分类与搜索过滤、不重排），
  *  所以「排到第一个」只需要把它挪到数组头。已经是第一个就原样返回，不白写一次库。 */
 export async function setArchiveHome(id: string): Promise<ArchiveEntry[]> {
@@ -219,8 +218,8 @@ export async function setArchiveHome(id: string): Promise<ArchiveEntry[]> {
   return updated;
 }
 
-/** 手动排序（三十四审）：把这条档案挪到 `neighborId` 的前／后一位。
- *  恩熙：「**这样子我可以自己去编辑我想要的角色顺序。**」
+/** 手动排序：把这条档案挪到 `neighborId` 的前／后一位。
+ *  顺序由使用者自己编排。
  *  为什么收的是「邻居」而不是下标：卡册只显示当前这一栏的人，档案数组里却混着别的
  *  世界——按邻居挪，挪完在**当前这一栏里**正好换到那个位置；按下标挪会出现
  *  「把 C 往前一位」但中间隔着别的世界的人、看着一动没动的情况。

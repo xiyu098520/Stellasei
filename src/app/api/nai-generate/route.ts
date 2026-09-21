@@ -4,7 +4,7 @@ import { inflateRawSync } from "node:zlib";
 export const runtime = "nodejs";
 
 /**
- * NovelAI 生图转发（恩熙 2026-09-20 要求加 NovelAI）。
+ * NovelAI 生图转发。
  *
  * 为什么要服务端中转，而不是浏览器直接打 NovelAI：
  *   ① 官方回的是 **zip 包**（里面是 image_0.png），浏览器端解包麻烦；
