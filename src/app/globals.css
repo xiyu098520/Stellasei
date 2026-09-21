@@ -1,0 +1,440 @@
+@import "tailwindcss";
+
+:root {
+  --background: #0b0a14;
+  --foreground: #f6f4fb;
+
+  /* 安全区：有刘海的设备取 env()，一般浏览器/桌面预览回退 0。 */
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-left: env(safe-area-inset-left, 0px);
+  --safe-area-right: env(safe-area-inset-right, 0px);
+
+  /* 手机外壳尺寸（宽屏预览时使用）。 */
+  --phone-width: 390px;
+  --phone-height: 844px;
+
+  /* 模拟状态栏高度：真机 10px 最小余量（系统有自己的状态栏），宽屏预览 46px。 */
+  --sim-status-h: 10px;
+}
+
+/* 桌面形态＝宽屏＋有鼠标（能力信号，防横屏手机误判，照抄 ai-virtual-phone 思路）。 */
+@media (min-width: 640px) and (hover: hover) and (pointer: fine) {
+  :root {
+    --sim-status-h: 46px;
+  }
+}
+
+/* 模拟状态栏：仅宽屏预览显示（真机会与系统状态栏重复）。 */
+.sim-status-bar {
+  display: none;
+}
+
+@media (min-width: 640px) and (hover: hover) and (pointer: fine) {
+  .sim-status-bar {
+    display: flex;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans), -apple-system, "PingFang SC",
+    "Microsoft YaHei", sans-serif;
+  --font-mono: var(--font-geist-mono), monospace;
+  /* 英文刊头用的衬线；中文宋体走系统字体棧，零加载成本。 */
+  --font-serif: var(--font-playfair), Georgia, "Songti SC", "SimSun", serif;
+  --font-song: "Songti SC", "STSong", "SimSun", Georgia, serif;
+  /* 塔罗牌面上那一版字。牌子自己有一套声音，不跟全 App 那个通用宋体走——
+     原先是 --font-serif（Playfair 管英文、中文掉回 Songti SC／SimSun 那种最普通的宋体），
+     摆在金线牌面上像一张文档（恩熙 2026-09-19：「这个字体看起来非常不适合塔罗牌」）。
+     中间试过霞鹜文楷，恩熙嫌「太可爱」。定下的是志莽行：手写行书、笔收着，
+     牌上那十几像素的小字既认得出、又不是印刷体的味道（恩熙 2026-09-19：「就要你放最大的那一个字体」）。
+     末尾那条 var(--font-serif-sc) 是兜底：志莽行缺哪个字，掉回思源宋，不许掉回系统默认。 */
+  --font-arcana: "Zhi Mang Xing", var(--font-serif-sc), Georgia, serif;
+}
+
+/* 页面永远不该有文档级滚动（手机壳内部各区自理）。锁死所有设备、不只触屏。
+   ★ 这里必须是 hidden、不能用 clip：**html/body 就是「文档滚动容器」本身**，
+   iOS 的键盘避让正是靠 Safari 原生滚动它来完成的（AGENTS.md「键盘避让」铁律）。
+   用 clip 等于把这条唯一的通路堵死——键盘会挡住输入框。壳子 .phone-shell 那层
+   才用 clip（它绝不能被滚，两者各司其职，别搞反）。
+   恩熙 2026-09-20：探针读到的 418px 位移曾被误判成病灶，把这里改成过 clip、
+   还在 page.tsx 加过一段「越界立刻拉回」的归零守卫——那 418px 其实就是原生避让
+   在正常干活（弹键盘时 Safari 把整页往上顶，好让输入框露出来），而归零守卫正是
+   铁律②点名禁止的「文档滚动归零 jail」，会跟 iOS 顶页拉锯＝整页抬起＋闪烁。
+   两处都已回退，病情不在这里。 */
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body {
+  margin: 0;
+  /* 初始＝开屏深紫黑（首屏即开屏，边缘同色无缝）。
+     挂载后由 PhoneOs 依上下文（开屏／第一页／第二页／App）动态同步，
+     见 src/app/page.tsx。 */
+  background: #0b0a14;
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  /* App 质感：关掉过度弹性回弹、长按选单与点击闪烁。 */
+  -webkit-tap-highlight-color: transparent;
+  /* 恩熙 2026-09-21：「全局都应该要有这个防止长按跳出复制的线条」——
+     整页禁掉系统长按弹出的「拷贝／查询／翻译」浮层与文字选择。
+     以前只有聊天正文和几张卡自己挂 `.no-callout`，别的页面长按名字、资料行、
+     消息还是照弹系统菜单，一按就戳穿「这是个 App」。
+     两层都得写：`touch-callout` 管 iOS 那枚浮层；`user-select` 管文字能不能被选中
+     ——安卓长按弹「复制／分享」也是靠选中触发的，选不中就不弹。
+     放在 body 上而不是 html：给下面那条例外留出被覆盖的余地（body 的后代优先）。 */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* 例外：真正要打字的地方必须把选择权还回去——不然没法长按选字、没法拖光标改错。
+   只列输入类元素，不整类放开（普通 div 上的字仍然选不中）。 */
+input,
+textarea,
+[contenteditable="true"] {
+  -webkit-touch-callout: default;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* 真机/触屏（能力信号判断，不是单一宽度阈值——防横屏手机误入桌面形态）：
+   html/body 占满大视口，配合 .phone-shell 的 100lvh，
+   底部 Home 条区域也是页面的一部分，任何情况都不露底色。照抄 ai-virtual-phone。 */
+@media (hover: none) and (pointer: coarse) {
+  html,
+  body {
+    width: 100%;
+    height: 100lvh;
+  }
+}
+
+/* ===== 手机舞台：外层桌面氛围（仅宽屏可见） ===== */
+.phone-stage {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 触屏（真机）：壳子顶格对齐＋舞台不铺色＋改回文档流（非 fixed）。
+   关键：iOS 的键盘避让（尤其第三方输入法）靠 Safari 原生滚动 body 完成——只有
+   phone-stage 不在 fixed 里、能随 body 滚动，这个系统级滚动才带得动壳子。
+   fixed 元素不随 body 滚，Safari 滚不动它，输入框就会永远被键盘挡住。
+   舞台不铺色：壳子底下露出的是 body 动态底色（PhoneOs 同步），铺深色会穿帮。 */
+@media (hover: none) and (pointer: coarse) {
+  .phone-stage {
+    position: static;
+    align-items: flex-start;
+    background: none;
+  }
+}
+
+/* 桌面预览的氛围渐变（真机不需要） */
+@media (min-width: 640px) and (hover: hover) and (pointer: fine) {
+  .phone-stage {
+    background:
+      radial-gradient(1200px 600px at 70% -10%, rgba(124, 92, 246, 0.18), transparent 60%),
+      radial-gradient(900px 500px at 20% 110%, rgba(56, 89, 188, 0.16), transparent 60%),
+      #0b0a14;
+  }
+}
+
+/* ===== 手机壳：移动端全屏；宽屏才显示边框 ===== */
+.phone-shell {
+  position: relative;
+  width: 100vw;
+  /* 壳子高度恒定（lvh＝大视口＝完整物理屏）。键盘避让不靠 JS、不靠 transform——
+     iOS 靠 Safari 原生滚动 body（phone-stage 已改文档流，随 body 滚）；
+     改高度或加 transform 都会和系统键盘动画打架「一闪一闪」，这是踩过的坑。 */
+  height: 100lvh;
+  /* 手机壳绝不能被滚动。overflow:hidden 只是「不显示滚动条」，它依然是滚动容器：
+     浏览器为了把聚焦的输入框带进可视区，会把它滚走（实测横向 scrollLeft=223，纵向同样会被滚），
+     整个界面就偏出屏幕、看起来「哪里都点不到」。clip 完全不产生滚动容器，滚不动。
+     参数栏等内容自己内部滚动，与本层无关。 */
+  overflow: clip;
+  background: #fcfaff;
+}
+
+/* 隐藏全部滚动条（手机本来就没有，PC 预览也保持干净） */
+* {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* 旧 Edge */
+}
+*::-webkit-scrollbar {
+  display: none; /* Chrome / Safari */
+}
+
+@media (min-width: 640px) and (hover: hover) and (pointer: fine) {
+  .phone-shell {
+    width: var(--phone-width);
+    height: min(var(--phone-height), calc(100dvh - 48px));
+    border-radius: 52px;
+    border: 10px solid #1c1b24;
+    box-shadow:
+      0 0 0 2px #34323f,
+      0 40px 120px rgba(0, 0, 0, 0.65),
+      0 0 80px rgba(124, 92, 246, 0.12);
+  }
+}
+
+/* 动态岛（仅宽屏模拟外壳显示；真机自身已有） */
+.phone-dynamic-island {
+  display: none;
+}
+
+@media (min-width: 640px) and (hover: hover) and (pointer: fine) {
+  .phone-dynamic-island {
+    display: block;
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 110px;
+    height: 30px;
+    border-radius: 999px;
+    background: #050508;
+    z-index: 60;
+  }
+}
+
+/* ===== 通用动画 ===== */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes app-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* 星绥通讯：他正在打字的三点呼吸。 */
+@keyframes chat-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* 开屏：整层淡出。纯 opacity 的合成器动画（配合动画期间自动图层提升），
+   避免 500ms 慢淡出时大图层被逐块重绘、出现「从上往下扫」的卡顿感。 */
+@keyframes splash-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* 开屏：内容入场（微升＋淡入）与退场（先一步微升离开＋淡出）。 */
+@keyframes splash-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes splash-content-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.4s ease both;
+}
+
+.animate-app-rise {
+  animation: app-rise 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* 美化 · 样板屋：换一身皮时迷你屏「弹」出来——中段过冲到 1.03 再落回 1，
+   重量感就出在这一下过冲上。依旧只有 transform 与 opacity（合成器动画），
+   没碰模糊也没碰阴影（恩熙交代：手机上不能太烫）。 */
+@keyframes beautify-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.86);
+  }
+  62% {
+    opacity: 1;
+    transform: scale(1.03);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-beautify-pop {
+  animation: beautify-pop 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* 点按回饋：用 active 而非 hover，避免 iOS 残留高亮（旧项目踩过的坑）。 */
+.pressable {
+  cursor: pointer;
+  transition: transform 0.15s ease;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.pressable:active {
+  transform: scale(0.94);
+}
+
+/* 长按归自家菜单的地方（档案卡、世界条）：连**文字**也一并禁掉 iOS 原生的
+   「拷贝／查询／翻译」浮层——只写 touch-callout 不够，卡片上的名字、资料是可选的
+   文字，手指按住 500ms 时系统会抢先把选择菜单弹出来，把我们要的那一下吃掉
+   （聊天区 `chat-body` 踩的是同一个坑，见 ChatWindow）。
+
+   恩熙 2026-09-21 之后这层已经升成**全局**（见上面 `body` 那条），全 App 都禁了；
+   这里保留是因为它多写了一条 `.no-callout *`——**显式铺到每个后代**，
+   比全局那条靠继承更硬，老 WebView 上更稳。挂它的地方照旧挂，不必清理。 */
+.no-callout,
+.no-callout * {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* 横滑筛选条（记忆 App 分类等）：单行不换行，超宽时左右滑动，滚动条隐藏。 */
+.cat-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+.cat-scroll::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* 世界书·塔罗桌（2026-09-19，恩熙：「深色背景，占卜塔罗牌的感觉」）：
+   ① 牌绕着正中转——角度与远近由 JS 逐帧写在 inline style 上，这里只管牌桌上的规矩；
+   ② 点开的那张**翻过去**（`.arcana-turn`），随后解析页从这张牌里**展开**（`.arcana-open`）。
+   两个都只动 transform 与 opacity：手机上不许毛玻璃、不许阴影动画、不许粒子（省电铁律）。 */
+/* 牌桌：转盘占的那一格。--arcana-h 就是一张牌的高，牌宽由 JS 按真塔罗牌的高宽比推。
+   恩熙 2026-09-19：「塔罗牌要铺满整个页面，不是只有上半部」——
+   牌高钉死一个像素数，换个屏幕、换个预览窗口就又只剩上半屏，
+   所以牌高按这格自己算，牌面上所有字级与留白都跟着它等比走（见 WorldBookApp 的 em）。
+   这一格是 flex 拉伸出来的，cqh 在这种格子上会解析成 0（2026-09-19 实测：格高 308px、
+   里头的 50cqh 却是 0px，牌整张塌成 0×0、根本画不出来）。所以这格不自己算高度：
+   JS 量出这一格的实高写在 --arcana-table-h 上（WorldBookApp 的 bindTable），
+   「这一格该给牌多少」只是 CSS 里的一道乘法——换比例不必回头改 JS。
+   container-type: size 留着不是为了容器查询，是为了 size 包含：这一格的高度不受内容影响，
+   框里的牌再大也不会反过来把这格顶大。
+   它只管尺寸与布局，不管裁切——侧牌出画的那一半照旧由 overflow-hidden 切掉。 */
+.arcana-table {
+  container-type: size;
+  --arcana-h: calc(var(--arcana-table-h, 0px) * 0.86);
+}
+
+/* 空桌那一格：牌底下还压着两行小字（mt-7 加两行注脚，约 71px），
+   这点地要从牌的高度里先让出来，不然桌面预览这种矮框里会顶出一道滚动条。 */
+.arcana-table-empty {
+  --arcana-h: calc((var(--arcana-table-h, 0px) - 71px) * 0.86);
+}
+
+.arcana-stage {
+  transform-style: preserve-3d;
+  /* 指头拖着整盘走、松手弹回原位，只动 transform。拖动期间 JS 会把这条过渡临时关掉。 */
+  transition: transform 320ms cubic-bezier(0.22, 0.9, 0.3, 1);
+  /* 托盘自己不吃点击。三维上下文里的命中测试是分远近的：退了 z 的侧牌会被压在托盘后面，
+     托盘（z=0）就把点击抢走了。托盘让开路，牌才点得到——手指的拖动由外面那层接。 */
+  pointer-events: none;
+}
+
+/* 一张牌自己。站位**不在这里**——每张牌的 translate／rotate／scale 由 JS 写在 inline style 上，
+   这里只管牌自己的小动作：转盘转一格时，每张牌滑向自己新座位的那段路。
+   暗色底下也不给 iOS 在牌面上闪一块灰（`-webkit-tap-highlight-color`）。 */
+.arcana-card {
+  transition:
+    transform 420ms cubic-bezier(0.22, 0.9, 0.3, 1),
+    opacity 420ms linear,
+    /* 选中那层金光（头顶那张牌的外晕）跟着换座位一起亮/灭，跟 transform 同一个节奏——
+       少了这条，光会在牌转到位的那一刻啪地跳出来，就不像「抽到」了。
+       这是全 App 唯一一处不走「只动 transform/opacity」的过渡（见 WorldBookApp.tsx 里
+       ARCANA_SELECT_OUT 上头那段账），代价是一次 420ms、一张牌面积的重绘。 */
+    box-shadow 420ms linear;
+  -webkit-tap-highlight-color: transparent;
+  backface-visibility: hidden;
+  /* 托盘让开了路，牌自己要把路接上（pointer-events 是继承的，不出声就等于跟着托盘一起不吃点击）。 */
+  pointer-events: auto;
+}
+
+/* 点开的那张牌翻过去。角度**不写在这里**——inline style 压得住 class 里的 transform，
+   所以翻转的 transform 由 JS 连同这张牌原本的站位一起写在 inline 上，
+   这里只管过渡：翻得比换座位快一点、收得急一点（像手一推）。
+   变暗则由 JS 写在 inline opacity 上，因为 inline 的 opacity 会盖过这里的声明。 */
+.arcana-turn {
+  transition:
+    transform 380ms cubic-bezier(0.55, 0, 0.8, 0),
+    opacity 320ms linear 40ms;
+}
+
+.arcana-open {
+  animation: arcanaOpen 460ms cubic-bezier(0.16, 0.84, 0.28, 1) both;
+}
+
+@keyframes arcanaOpen {
+  from {
+    transform: perspective(1000px) scale(0.94) rotateY(9deg);
+    opacity: 0;
+  }
+  /* 收尾必须落回 none：停在任何一条 transform 上都会给页内的 position: fixed
+     造出一个新的包含块，弹窗会跟着一起漂。 */
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+/* 主屏翻页 track（参考 ai-virtual-phone 的 phone-swipe-layer）：
+   --swipe-page 由 React 持有（当前页），--swipe-drag 由原生 touch 监听在拖动中命令式更新，
+   两者合成位移；拖动中加 .swiping 关闭 transition 实现 1:1 跟手。 */
+.home-swipe-track {
+  transform: translate3d(
+    calc(var(--swipe-page, 0) * -50% + var(--swipe-drag, 0px)),
+    0,
+    0
+  );
+  transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  will-change: transform;
+}
+
+.home-swipe-track.swiping {
+  transition: none;
+}
