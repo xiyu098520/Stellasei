@@ -191,6 +191,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 ## 技术纪律（旧项目用 bug 换来的）
 - **改代码的工作方式（2026-09-18 恩熙确认，原话：「你每一次都要重复检查，并且不能是覆盖使用」）**：**每次动手前都重新查当前代码，不凭记忆、不整篇覆盖。** ① 先 `Read` 要改的那几行（哪怕刚改过——上下文可能已经过期，文件也可能在别处被改过）；② 只做**定点替换**（`SearchReplace` 那几句），**绝不整文件重写**（不拿 `Write` 去盖已有文件），**不顺手删已有的逻辑**；③ 改完跑 `npx tsc --noEmit` ＋ `npx eslint <改过的文件>`。**要删任何东西，先问恩熙。** 理由：覆盖一次，就是把之前好不容易调对的细节悄悄冲掉——**这种错她看不出来**，等发现时已经丢东西了。**同一个逻辑只留一处**（恩熙：「保持这个代码不会越写越乱、越写越杂，以及不会有过多重复的东西」）：要加东西先找有没有现成的，**有就改那一处，不许另抄一份放旁边**；发现已有的重复，报给她、由她定要不要合。
 - **改一次东西就 +1 版本号（2026-09-17 恩熙拍板）**：版本号在 `src/lib/version.ts` 的 `APP_VERSION`（聊天侧边栏底部显示）。**每次交付都往上加一位并主动告诉恩熙「这次是 x.x.x」**——iOS 主屏幕 App 冷启动跑快照、可能仍在跑旧 JS，只有版本号能让她一眼确认新代码有没有真的生效。`manifest.ts` 的 `start_url` 也从这个常量取号（`/?v=x.x.x`），所以**别再手改 manifest 里的 v**，改一处就够。
+- **每次改完就存一个快照（2026-09-22 启用，仓库已跑起来）**：改完 ＋ `tsc`／`eslint` 过了，就 `git add -A` ＋ `git commit -m "<中文一句话>"`，**message 一律中文**（写清「改了哪一块、为什么」），别用英文、别空着。**禁止提交** `node_modules`／`.next/`／`*.bak`（`.gitignore` 已挡，别用 `-f` 强塞）。为什么：代码文件里因此**不用再抄版本号**，想看哪一版、想退回哪一版，`git log` 一句话就找得回来。
+  ⚠️ **沙箱前提**：git 写 `.git/objects/...` 会被 Trae 沙箱拦（报 `Permission denied`／EXIT 128）。**只有当权限档位是「完全访问（Full Access）」时才写得进去**；报这个错先看档位，别去改 git 配置。**探针**：`git -C d:\Stellasei-New hash-object -w <随便一个临时文件>`，退出码 0 ＝ 通。
 - 所有 localStorage/IndexedDB 存取仅在客户端：`useState` 预设值＋`useEffect` 读取，严防 SSR 崩溃。
 - Hooks 不得放在条件 return 之后；渲染期不得调用 `Math.random()`／`Date.now()`（用 useEffect/ref）。
 - 禁止残留 mock 假数据；禁用原生 `alert/confirm`（统一自订 toast/modal）。
