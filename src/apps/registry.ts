@@ -40,10 +40,9 @@ export const APPS: readonly RegisteredApp[] = [
     dock: true,
     magazine: true,
     comingSoon: false,
-    shellBg: "#FFFFFF", // 纯白＝聊天窗口最底端输入区（T.card）同色。原先是 #FFF7F9
-    //（T.bg 粉白）：点输入框、键盘把整页顶上来时，透过半透明磨砂键盘看到的那一条是
-    // #FFF7F9，而它上面紧挨着的输入区是纯白，两种白之间露出一道横带（第 167 条同款病）。
-    // 2026-09-21 恩熙：「点击输入框之后不是会上台吗？然后它那个背景层没有去做衔接。」
+    shellBg: "#FFFFFF", // 纯白＝聊天窗口最底端输入区（T.card）同色，别用 T.bg 的粉白
+    // #FFF7F9：点输入框、键盘把整页顶上来时，透过半透明磨砂键盘看到的那一条是
+    // #FFF7F9，而它上面紧挨着的输入区是纯白，两种白之间会露出一道横带。
     Icon: ChatIcon,
   },
   {
@@ -57,9 +56,8 @@ export const APPS: readonly RegisteredApp[] = [
     dock: true,
     magazine: true,
     comingSoon: false,
-    shellBg: "#FFFFFF", // 纯白＝档案页 A.bg 同色。原先是 #0a0a0a（档案 App 还是深色
-    // 保密风时留下的），2026-09-19 档案页并回白纸后漏改：恩熙点输入框、键盘把页面顶上去时，
-    // 底下露出来的那条全是黑的（「键盘后面透出来的是黑色」）。
+    shellBg: "#FFFFFF", // 纯白＝档案页 A.bg 同色。若留深色（保密风时代的 #0a0a0a），
+    // 点输入框、键盘把页面顶上去时，底下露出来的那条全是黑的，跟白纸对不上。
     Icon: ContactsIcon,
   },
   {

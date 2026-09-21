@@ -4,7 +4,7 @@
  * 结构参考 ai-virtual-phone（SillyTavern 同款思路）：
  * 「书」只是容器，真正的设定单元是「条目」——
  * 条目靠关键词触发注入，或勾「常驻」每轮必注入。
- * 不预设「法则/地点/NPC」等固定分类，内容组织完全交给恩熙。
+ * 不预设「法则/地点/NPC」等固定分类，内容组织完全交给使用者。
  */
 
 /** 世界书作用范围（绑定场景）。以后新增 App 场景时在此扩展。 */
@@ -39,9 +39,9 @@ export const POSITION_META: Record<
 
 /**
  * 注入位置的全部合法值。
- * 导入与旧数据归一化都从这里取，**别在别处手写枚举**——2026-09-17 修的那笔账
- * 就是因为在 worldbook.ts 里手写了 `dialogue_before/dialogue_after`（本项目根本没有的值），
- * 导致收录进来的书，只要原本是「对话前／对话后」，位置一律被悄悄降级成「角色后」。
+ * 导入与旧数据归一化都从这里取，**别在别处手写枚举**——在 worldbook.ts 里手写过
+ * `dialogue_before/dialogue_after`（本项目根本没有的值），结果收录进来的书
+ * 只要原本是「对话前／对话后」，位置一律被悄悄降级成「角色后」。
  */
 export const ENTRY_POSITIONS: EntryPosition[] = [
   "role_before",

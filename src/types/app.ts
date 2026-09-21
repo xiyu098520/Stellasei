@@ -15,7 +15,7 @@ export type AppId =
   | "beautify" // 美化（布局／桌布／主题）
   | "settings"; // 设置（API、存储、云同步）
 
-/** 主屏幕布局模式：恩熙自创杂志排版 或 iOS 经典网格。 */
+/** 主屏幕布局模式：杂志排版 或 iOS 经典网格。 */
 export type HomeLayoutMode = "magazine" | "grid";
 
 /** 主屏幕页面：第一页浅色杂志、第二页深紫星空。 */

@@ -58,7 +58,7 @@ export async function createWorldBook(name = "未命名之书"): Promise<WorldBo
     createdAt: now,
     updatedAt: now,
   };
-  /* 恩熙 2026-09-19：新立的卷排在已有书之后，不从前面插队。
+  /* 新立的卷排在已有书之后，不从前面插队。
      牌桌是按这个数组顺序排的，所以顺序＝牌序：第一本永远在第一张，新书落末位。 */
   await saveWorldBooks([...books, book]);
   return book;

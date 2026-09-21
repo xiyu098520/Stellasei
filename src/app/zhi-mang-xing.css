@@ -1,5 +1,5 @@
 /* 志莽行（Zhi Mang Xing）—— 牌面上书名那一版字：中国字库的手写行书，收着笔，小字还认得出。
- * 恩熙 2026-09-19 定的：牌面字体换它（globals.css 的 --font-arcana）。
+ * 用作 globals.css 的 --font-arcana（塔罗牌面）。
  * 上游 Google Fonts，授权 SIL OFL 1.1（免费可商用）。抓的是它按 unicode-range 分好的块，
  * 整包放在 public/fonts/zhi-mang-xing/，浏览器只下载牌面真用到的几块（牌上六个字也就十几 KB）。
  * 同日比过另三支，都不留：Yuji Syuku、Zen Antique 是日文字集，缺「书绥讯罗审隐」六个简体字，

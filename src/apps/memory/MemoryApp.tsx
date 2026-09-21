@@ -91,9 +91,9 @@ const OFFSET_SHADOW = "3px 3px 0 rgba(27,25,24,.06)";
 const SERIF = "'Songti SC', Georgia, serif";
 /** 标题：书写体——笔画有起有收、横画微仰，像编者亲手写在卡片上的，不是活字砖块。
  *  首选霞鹜文楷（自托管分块，见 src/app/lxgw-wenkai.css），标题一律用它的 500
- *  （Medium）——恩熙看过 400 后说「稍微粗一点点」，500 是它的下一档，笔锋还在；
+ *  （Medium）：再细一档（400）就没有笔锋了；
  *  ⚠️ 不要再往上加到 600/700：霞鹜文楷只有 400/500 两个字重，超出的字重浏览器会
- *  合成加粗（描边），反而把笔锋糊平，就是上一版「看不出变化」的原因。
+ *  合成加粗（描边），反而把笔锋糊平。
  *  后面几个系统楷体只在字体块下载完成前兜底。 */
 const TITLE = "'LXGW WenKai GB', 'Kaiti SC', 'STKaiti', 'KaiTi', 'Songti SC', Georgia, serif";
 const EN = "var(--font-playfair), Georgia, serif";
@@ -119,8 +119,7 @@ const CORE_PREVIEW = 3;
 
 /** 第五编：朋友圈动态。这一编的数据**不在记忆条目里**（前四编是聊天记录浓缩出来的），
  *  而是 TA 发在朋友圈的动态本身——单独成编列在最后，抬头就写明来源，
- *  一眼分得清「哪些是聊天里说过的、哪些是发在朋友圈的」。
- *  恩熙 2026-09-21：「可以在记忆里面多增加一个朋友圈的栏位……让角色分清楚」。 */
+ *  一眼分得清「哪些是聊天里说过的、哪些是发在朋友圈的」。 */
 const MOMENT_META = {
   title: "朋友圈动态",
   en: "moments",
@@ -129,8 +128,7 @@ const MOMENT_META = {
 } as const;
 
 /** 朋友圈动态默认只露最近这么多条：动态会越攒越多，全摊开在页面上太长；
- *  要全看再自己点开（跟上面「重要记忆」一个做法）。恩熙 2026-09-21：「全部都直接
- *  这样摊开在页面上会有点多，能不能把它做成，就是我点进去之后才会显现的那一种？」 */
+ *  要全看再自己点开（跟上面「重要记忆」一个做法）。 */
 const MOMENT_PREVIEW = 3;
 
 /** 编目条：封底那排粗细不一的竖条，纯装饰。 */
@@ -343,8 +341,7 @@ export default function MemoryApp() {
     return archives.map((a) => {
       const mems = memories.filter((m) => m.characterId === a.id);
       /* 「几个身份」＝这位角色名下有**聊过的面具**（有消息）或**已经攒下记忆的面具**（聊天记录
-         被清空、记忆还在的也算，否则那份记忆在列表上就看不见了）。
-         恩熙 2026-09-21：「记忆它好像是没有做面具 A、B 的分区哦。」 */
+         被清空、记忆还在的也算，否则那份记忆在列表上就看不见了）。 */
       const ids = new Set<string>();
       for (const c of convs) {
         if (c.characterId === a.id && c.messages.length > 0) ids.add(c.maskId ?? DEFAULT_MASK_ID);
@@ -381,8 +378,7 @@ export default function MemoryApp() {
   const bindChips = useMemo(() => {
     if (!openId) return [];
     /* 口径跟列表行的「几个身份」一致：聊过的面具 ∪ 攒下记忆的面具。
-       只认有消息的，会出现「列表写着两个身份、进来却只有一枚 chip」的矛盾。
-       恩熙 2026-09-21。 */
+       只认有消息的，会出现「列表写着两个身份、进来却只有一枚 chip」的矛盾。 */
     const seen = new Set<string>();
     const list: Array<{ maskId: string; label: string }> = [];
     const push = (mid: string) => {
@@ -599,19 +595,18 @@ export default function MemoryApp() {
     const conv = (await getConversations()).find(
       (c) => c.characterId === openId.characterId && c.maskId === openId.maskId,
     );
-    /* 清空记忆＝连上下文一起清（2026-09-17 恩熙定）：只删摘要、聊天记录照发，
+    /* 清空记忆＝连上下文一起清：只删摘要、聊天记录照发，
        等于钱照花、TA 照记——所以这里把消息一并清掉，跟设置里的「清空聊天记录」等价。
        消息一删引用链就断，图要顺手回收（否则仓库只进不出）。
-       朋友圈也要一起清（2026-09-21 恩熙：「我重置记忆朋友圈也还会存在 应该要消息的」）：
-       动态是 TA 随着聊天攒下的，记忆都重置了，这些留着就说不通；图同样要回收。
-       TA 自己改过的签名一并清掉（同一天恩熙补：「签名也要一起签的」），清完回落到档案自带的默认签名。 */
+       朋友圈也要一起清：动态是 TA 随着聊天攒下的，记忆都重置了，这些留着就说不通；图同样要回收。
+       TA 自己改过的签名一并清掉，清完回落到档案自带的默认签名。 */
     for (const m of conv?.messages ?? []) releaseImageAsset(m.imageUrl);
     for (const mo of conv?.moments ?? []) releaseImageAsset(mo.imageRef);
     await clearConversation(openId.characterId, openId.maskId);
     await clearMomentsAndSignature(openId.characterId, openId.maskId);
     await deleteMemory(openId.characterId, openId.maskId);
     /* 让聊天那边重新读一遍（ChatApp 监听 moments-updated 刷新会话）：不然动态页
-       拿的还是刷记忆之前那份数据，朋友圈看着照旧还在（2026-09-21 恩熙报的就是这个）。 */
+       拿的还是刷记忆之前那份数据，朋友圈看着照旧还在。 */
     window.dispatchEvent(new CustomEvent("moments-updated"));
     setConfirmWipe(false);
     setDetail(null);
@@ -714,8 +709,8 @@ export default function MemoryApp() {
                   type="button"
                   onClick={() => {
                     setCoreOpen(false);
-                    /* 恩熙 2026-09-21：以前写死「本我」，换面具聊完进记忆还是本我那份，
-                       看着就像记忆没按面具分区。现在落「当前使用中的面具」。 */
+                    /* 落「当前使用中的面具」：写死「本我」的话，换面具聊完进记忆还是本我那份，
+                       看着就像记忆没按面具分区。 */
                     setOpenId({ characterId: r.archive.id, maskId: pickMaskFor(r.archive.id) });
                   }}
                   style={personCardStyle(idx)}
@@ -841,8 +836,7 @@ export default function MemoryApp() {
           {detail ? (
             <>
               {/* 面具切换：多绑定，或这张角色名下存在非「本我」的身份时显示——
-                  否则只绑一张面具时，进来根本看不出这是谁的记忆。
-                  恩熙 2026-09-21。 */}
+                  否则只绑一张面具时，进来根本看不出这是谁的记忆。 */}
               {bindChips.length > 1 || bindChips.some((b) => b.maskId !== DEFAULT_MASK_ID) ? (
                 <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
                   {bindChips.map((b) => (
@@ -1170,7 +1164,7 @@ export default function MemoryApp() {
                 );
               })}
 
-              {/* 第五编 · 朋友圈动态（恩熙 2026-09-21 点名要的栏位）：
+              {/* 第五编 · 朋友圈动态：
                   动态不来自聊天记录浓缩，所以不混进上面四层，单独成编列在最后。
                   抬头写明来源，一眼看得出哪些是聊天里说过的、哪些是 TA 发在朋友圈的。 */}
               <div style={{ marginTop: 22 }}>
@@ -1235,8 +1229,7 @@ export default function MemoryApp() {
                       <div key={mo.id} style={{ ...cardStyle, padding: "10px 12px 11px" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           <span style={timeStyle}>{momentStamp(mo.createdAt)}</span>
-                          {/* 恩熙自己标了「重要」的那条：永远原文留在 TA 脑子里，这儿星标出来。
-                              恩熙 2026-09-21：「那朋友圈是不是也要有一个能够标记为重要 的功能呢？」 */}
+                          {/* 标了「重要」的那条：永远原文留在 TA 脑子里，这儿星标出来。 */}
                           {mo.pinnedByUser ? (
                             <span
                               style={{
@@ -1252,8 +1245,7 @@ export default function MemoryApp() {
                         </div>
                         <p style={{ ...itemTextStyle, marginTop: 5 }}>{mo.content}</p>
                         {/* 图文动态：TA 当时写下的画面描述也列出来，跟注入给 TA 的那一行对得上。
-                            纯文字动态没有这段。恩熙 2026-09-21：「如果他是发的图文，
-                            那他图片应该也要有文字描述写进去」。 */}
+                            纯文字动态没有这段。 */}
                         {mo.imagePrompt?.trim() ? (
                           <p style={{ ...itemTextStyle, marginTop: 4, fontSize: 10.5, color: M.ink3 }}>
                             （配图：{mo.imagePrompt.trim()}）
@@ -1270,8 +1262,7 @@ export default function MemoryApp() {
                             再往前的 {momentView.unlisted} 条，只把条数报给了 TA
                           </div>
                         ) : null}
-                        {/* 最早的那批已经压成一段印象，TA 心里就剩这么点大概。
-                            恩熙 2026-09-21：「我肯定不会记得我上个月发的朋友圈内容写了什么」。 */}
+                        {/* 最早的那批已经压成一段印象，TA 心里就剩这么点大概。 */}
                         {momentView.digest ? (
                           <div
                             style={{
@@ -1763,7 +1754,7 @@ const switchKnobStyle = (on: boolean): CSSProperties => ({
   transition: "left .2s",
 });
 
-/* 主按钮＝樱花粉实底（原先是黑标签贴，2026-09-18 恩熙说「手动汇总感觉得换一个颜色」）。 */
+/* 主按钮＝樱花粉实底。 */
 const primaryBtnStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",

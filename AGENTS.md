@@ -193,6 +193,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - **改一次东西就 +1 版本号（2026-09-17 恩熙拍板）**：版本号在 `src/lib/version.ts` 的 `APP_VERSION`（聊天侧边栏底部显示）。**每次交付都往上加一位并主动告诉恩熙「这次是 x.x.x」**——iOS 主屏幕 App 冷启动跑快照、可能仍在跑旧 JS，只有版本号能让她一眼确认新代码有没有真的生效。`manifest.ts` 的 `start_url` 也从这个常量取号（`/?v=x.x.x`），所以**别再手改 manifest 里的 v**，改一处就够。
 - **每次改完就存一个快照（2026-09-22 启用，仓库已跑起来）**：改完 ＋ `tsc`／`eslint` 过了，就 `git add -A` ＋ `git commit -m "<中文一句话>"`，**message 一律中文**（写清「改了哪一块、为什么」），别用英文、别空着。**禁止提交** `node_modules`／`.next/`／`*.bak`（`.gitignore` 已挡，别用 `-f` 强塞）。为什么：代码文件里因此**不用再抄版本号**，想看哪一版、想退回哪一版，`git log` 一句话就找得回来。
   ⚠️ **沙箱前提**：git 写 `.git/objects/...` 会被 Trae 沙箱拦（报 `Permission denied`／EXIT 128）。**只有当权限档位是「完全访问（Full Access）」时才写得进去**；报这个错先看档位，别去改 git 配置。**探针**：`git -C d:\Stellasei-New hash-object -w <随便一个临时文件>`，退出码 0 ＝ 通。
+- **【注释口径（2026-09-22 恩熙定）】代码注释只写「给代码看的」，不写「给我们自己看的」**：留「这段在干嘛／为什么这么写／什么不许改」（如 iOS 必须带 `Webkit` 前缀、SSR 下不能直接读 localStorage、`input.value` 必须置空否则同一张图选不了第二次）。**不留**日期、恩熙的名字与原话、`第 N 条` 编号、版本号、「实测／病根／当时说」这类叙事——流水账唯一去处是 `docs/施工日志.md`。想在代码里点历史，去日志里找，别在注释里记账。
+- **⚠️ 注释清理类活：小步、单文件、顺手清，禁止派并行子代理铺全库**（2026-09-22 因此烧掉千万级 token 被恩熙点名）——这类活机械、量大但每一步都极短，子代理的价值全在「多轮翻找」，用来扫全库只会把整库内容来回搬几遍。**一个文件改完再下一个，能顺手清就顺手清。**
 - 所有 localStorage/IndexedDB 存取仅在客户端：`useState` 预设值＋`useEffect` 读取，严防 SSR 崩溃。
 - Hooks 不得放在条件 return 之后；渲染期不得调用 `Math.random()`／`Date.now()`（用 useEffect/ref）。
 - 禁止残留 mock 假数据；禁用原生 `alert/confirm`（统一自订 toast/modal）。

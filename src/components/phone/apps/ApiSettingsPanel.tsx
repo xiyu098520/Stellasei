@@ -7,7 +7,7 @@
  * ApiCategoryForm —— 单类配置表单（服务商预设＋地址／密钥／模型＋启用开关）。
  * 仅在设置 App「API 设定」页使用；标题／返回由外层 AppChrome 提供。
  * 自行读写 IndexedDB。配色：撞色贴纸风（白卡 ＋ 黑描边 ＋ 无模糊硬阴影 ＋ 荧光撞色），
- * 底料见 pop-style.ts；无衬线由外层 AppChrome 统一给出，本文件不再自己写字体（恩熙 2026-09-20）。
+ * 底料见 pop-style.ts；无衬线由外层 AppChrome 统一给出，本文件不再自己写字体。
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -65,7 +65,7 @@ import type {
 } from "@/types/chat";
 import { DEFAULT_IMAGE_EXTRAS, DEFAULT_VOICE_EXTRAS } from "@/types/chat";
 
-/** 分类撞色：文本＝蓝、图文＝橙、语音＝紫（恩熙 2026-09-20 的撞色贴纸风）。 */
+/** 分类撞色：文本＝蓝、图文＝橙、语音＝紫。 */
 const CATEGORY_TONE: Record<ApiCategory, PopTone> = {
   text: "blue",
   image: "orange",
@@ -283,8 +283,8 @@ function matchPresetId(
 /**
  * 两份图文生成参数是不是同一套。
  *
- * 不能拿 JSON 串硬比（恩熙 2026-09-20 报的 bug：图文方案点上去**不打勾**）：
- * 方案是过去存下的，那会儿还没有后来加的画风预设／采样参数这些字段，串一比就永远
+ * 不能拿 JSON 串硬比（图文方案点上去**不打勾**）：
+ * 老方案是过去存下的，可能缺画风预设／采样参数这些后加的字段，串一比就永远
  * 差一截，勾永远不出来；而且按钮一点走的是 `{...DEFAULT_IMAGE_EXTRAS, ...方案值}`
  * 这条**补默认值**的路（见 applyMyPreset），表单那边字段是齐的，方案那边是缺的。
  * 所以先各自按默认值补齐再逐项比——字段缺不缺、顺序先后都不影响结果。
@@ -438,11 +438,11 @@ export function ApiCategoryForm({ category }: { category: ApiCategory }) {
      密钥的填法也跟 OpenAI 那套不一样（见下面各处的 isNovelAI）。 */
   const isNovelAI = category === "image" && /novelai\.net/i.test(baseUrl);
 
-  /* OpenAI 那套通道下，把「画风预设／正面提示词前缀／正面提示词后缀」三格合成一格显示
-     （恩熙 2026-09-20 拍板）：GPT 读的是**一整句话**，不像 NovelAI 那样按位置分权重，
+  /* OpenAI 那套通道下，把「画风预设／正面提示词前缀／正面提示词后缀」三格合成一格显示：
+     GPT 读的是**一整句话**，不像 NovelAI 那样按位置分权重，
      分三格只会让人以为要写标签、白填两格。合成值＝三段按原顺序拼起来（所见即所得）；
      一编辑就整段写回「正面提示词前缀」、另两格清空——内容不丢，只是归位。切回 NovelAI
-     通道时三格仍是原来那套，各自独立。 */
+     通道时三格各自独立。 */
   const mergedImagePrompt = [imgExtras.stylePreset, imgExtras.positivePrompt, imgExtras.promptSuffix]
     .map((s) => s.trim())
     .filter(Boolean)
@@ -1096,7 +1096,7 @@ export function ApiCategoryForm({ category }: { category: ApiCategory }) {
         {/* 图文生成参数：尺寸／质量／正负面提示词（仅图文 API） */}
         {category === "image" ? (
           <div className="border-t-2 border-dashed border-[#EDEAE2] pt-4">
-            {/* 自动生成摆在图文页最上面（恩熙 2026-09-20 定的位置）：
+            {/* 自动生成摆在图文页最上面：
                 它决定的是「这张要不要画」，比下面「怎么画」更靠前；而且是全局习惯
                 （ChatPrefs），不跟预设方案走，所以一点就存、不等下面那颗「保存」。 */}
             <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border-2 border-[#141414] bg-[#FFF4DC] px-3 py-3 shadow-[3px_3px_0_#141414]">
@@ -1168,9 +1168,9 @@ export function ApiCategoryForm({ category }: { category: ApiCategory }) {
                   }}
                 />
               )}
-              {/* 正面提示词这块按通道分两种长相（恩熙 2026-09-20 拍板）：
+              {/* 正面提示词这块按通道分两种长相：
                   · NovelAI —— 三格分开（它是标签模型，位置真影响权重：画风在最前、
-                    后缀在最末），照她另一个 App 的分法，好分别调；
+                    后缀在最末），照另一个 App 的分法，好分别调；
                   · OpenAI 那套 —— 合成一格（GPT 读一整句话，分三格只会误导，
                     还白占两格地方）。合成/拆分的规矩见上面的 mergedImagePrompt。 */}
               {isNovelAI ? (
@@ -1260,7 +1260,7 @@ export function ApiCategoryForm({ category }: { category: ApiCategory }) {
                 </span>
               </label>
 
-              {/* NovelAI 专属采样参数（2026-09-20 加）：只有它这套接口吃这四个值，
+              {/* NovelAI 专属采样参数：只有它这套接口吃这四个值，
                   别的接口一律忽略，所以连这一块都只在 NAI 地址下露出来。 */}
               {isNovelAI ? (
                 <div className="rounded-2xl border-2 border-[#141414] bg-[#FFF4DC] px-3 py-3">

@@ -26,9 +26,8 @@ export interface Mask {
   name: string;
   /**
    * 个性签名（这一张面具自己的）。
-   * 恩熙 2026-09-21：「这个签名是不是要在面具里面呢？……因为我可能对不同的角色
-   * 有不同的签名呀，对不对？」——签名原本是全局一个字段（旧 identity 存储），
-   * 换面具不换签名；现在并进来，换面具＝换签名。空串时展示端用 SIGNATURE_FALLBACK。
+   * 签名原本是全局一个字段（旧 identity 存储），换面具不换签名；
+   * 现在并进来，换面具＝换签名。空串时展示端用 SIGNATURE_FALLBACK。
    */
   signature: string;
   /** 人设描述（注入 prompt）。 */
@@ -132,9 +131,9 @@ export function getCurrentMask(masks: Mask[]): Mask | null {
 /**
  * 旧版全局签名 → 并进面具的**一次性迁移**（返回 null 表示无需改动）。
  *
- * 恩熙 2026-09-21 把签名并进面具之前，签名单独存在 `identity` 那一个全局字段里；
+ * 签名升级前单独存在 `identity` 那一个全局字段里；
  * 升级后首次载入若旧值还在，就填给「使用中」那张面具（只填空位，已有的不覆盖），
- * 调用方搬完把旧字段清空——否则她以后故意把面具签名清掉，刷新又会被搬回来。
+ * 调用方搬完把旧字段清空——否则故意把面具签名清掉后，刷新又会被搬回来。
  */
 export function migrateLegacySignature(masks: Mask[], legacy: string): Mask[] | null {
   const s = legacy.trim();

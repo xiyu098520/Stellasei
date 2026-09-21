@@ -69,8 +69,8 @@ export default function ChatApp() {
         setArchives(a);
         setConversations(c);
         setApiSettings(s);
-        /* 签名并进面具（第 284 条）的一次性迁移：旧的全局签名填给「使用中」那张面具，
-           填完就清掉旧字段，免得她以后故意清空签名、刷新又被搬回来。 */
+        /* 签名并进面具的一次性迁移：旧的全局签名填给「使用中」那张面具，
+           填完就清掉旧字段，免得以后故意清空签名、刷新又被搬回来。 */
         const migrated = migrateLegacySignature(ms, legacy.signature);
         if (migrated) {
           await saveMasks(migrated);
@@ -226,7 +226,7 @@ export default function ChatApp() {
           <MinePage
             signature={currentMask?.signature ?? ""}
             masks={masks}
-            /* 签名并进面具（第 284 条）：写的是「使用中」那张面具的签名，不再有全局字段。 */
+            /* 签名并进面具：写的是「使用中」那张面具的签名，不再有全局字段。 */
             onSignatureChange={(next) => {
               if (!currentMask) return;
               const nextMasks = masks.map((m) =>
@@ -352,8 +352,8 @@ const rootStyle: CSSProperties = {
 };
 
 /* =======================================================================
- * 侧边栏＝黑底菜单（2026-09-20 黑粉蓝版）。恩熙这一版要「色彩出彩但顺眼、
- * 重点是排版、不要主题」：整条侧栏底色直接压成近黑，字走粉白的大字号，
+ * 侧边栏＝黑底菜单：整条侧栏底色直接压成近黑，字走粉白的大字号，
+ * 色彩要出彩但顺眼，重点是排版、不要主题。
  * 当前那一项是一枚粉胶囊包住整行（一推开侧栏，黑＋粉＋白就全在眼前）。
  * 上面一块是你的头像＋名字＋签名，底下是菜单。按任一行的反馈见上面的 css。
  * ===================================================================== */
@@ -392,7 +392,7 @@ function ChatSidebar({
     { name: "我的钱包", icon: Wallet, action: () => { onClose(); showToast("我的钱包 · 预览"); } },
     { name: "聊天全局设定", icon: Settings, action: () => { onClose(); showToast("聊天全局设定 · 打造中"); } },
     /* iOS 主屏幕 App 从快照复活、不重新加载页面，改版后可能一直跑旧代码；
-       这里给一个手动重载入口兜底（2026-09-16 生图排查当天加）。 */
+       这里给一个手动重载入口兜底。 */
     { name: "检查更新", icon: RefreshCw, action: () => { onClose(); window.location.reload(); } },
     { name: "帮助与反馈", icon: HelpCircle, action: () => { onClose(); showToast("帮助与反馈 · 预览"); } },
   ];
@@ -408,7 +408,7 @@ function ChatSidebar({
         width: "min(304px,80%)",
         background: T.ink,
         // 收起时（translateX(-102%)）不能留投影：偏移＋模糊会往右渗出约 56px，
-        // 在消息列表左边压出一道常驻暗边。只在展开时给影（恩熙 2026-09-20 发现）。
+        // 在消息列表左边压出一道常驻暗边。只在展开时给影。
         boxShadow: open ? "24px 0 60px -28px rgba(20,19,24,.7)" : "none",
         transform: open ? "translateX(0)" : "translateX(-102%)",
         transition: "transform .3s ease-out",
