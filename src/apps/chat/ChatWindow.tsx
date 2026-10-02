@@ -8058,28 +8058,17 @@ function getVoiceCtx(): AudioContext | null {
   return voiceCtx;
 }
 
-/** 必须在用户手势里跑：把那个唯一 AudioContext 建起来并喊醒（1.9.57）。
-    iOS 不给「离开手势之后」才新建／唤醒的音频设备出声——备胎路要在点击的当口就点着，
-    否则主路一旦没走通，退到 Web Audio 时已经拿不到声，听起来就是「点了没声音」。
+/** 点击的当口，只把本页音频会话摆成「媒体播放」类别——**不建 AudioContext**（1.9.62）。
 
-    1.9.61：resume() 失败必须自己接住。iOS 26 装到主屏幕后音频设备根本点不着，它会抛
-    InvalidStateError「Failed to start the audio device」；从前这行是 `void ctx.resume()`，
-    没人接，就成了未处理的 Promise 拒绝，开发模式下直接被弹成整屏红报（恩熙 2026-10-03
-    截图那个）。接住之后照社区偏方「先挂起再喊醒」再点一次火，仍然点不着就静静算了——
-    这只影响备胎路有没有声，主路的媒体元素还得照走，不能因为这一下把整件事带崩。 */
+    1.9.57 起这里会顺手把那个唯一的 AudioContext 建起来并 resume()，图的是备胎路能在
+    手势里点着火。可 iOS 26 主屏 PWA 上这个 AudioContext 起不来（InvalidStateError
+    「Failed to start the audio device」）；它一起不来，整个页面的音频会话就被它拖坏——
+    主路那条媒体元素虽然照跑（时间在走、图标变暂停、出声探测也过得去），却一声都送不
+    出来，看起来就是「点哪条都听不了」（恩熙 2026-10-03）。
+    媒体元素本来就不靠 AudioContext，也不受静音拨键影响；那就别在点击当口碰它，让它
+    保持干净。备胎路（Web Audio）真要用到时自己再建，建不起来也是它自个儿的事。 */
 function primeVoiceAudio(): void {
-  const ctx = getVoiceCtx();
-  if (!ctx) return;
   applyPlaybackAudioSession();
-  if (ctx.state === "running") return;
-  void ctx.resume().catch(async () => {
-    try {
-      await ctx.suspend();
-      await ctx.resume();
-    } catch {
-      /* 音频设备点不着：认了，不外泄错误 */
-    }
-  });
 }
 
 /** data URL 的 base64 段还原成 ArrayBuffer——decodeAudioData 只吃二进制。 */
