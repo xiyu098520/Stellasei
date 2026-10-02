@@ -4104,6 +4104,8 @@ export default function ChatWindow({
           }
           setPlayingVoice(m.id);
           setVoiceDiag(null);
+          /* 照参考项目：无论如何先在这记点击手势里把宿主音频解锁一次。 */
+          unlockVoiceAudio();
           const end = () => setPlayingVoice(null);
           /* 只有媒体元素这一条路：当场 new Audio 直接放（照参考项目 ai-virtual-phone 原文）。 */
           void playVoiceViaElement(audioUrl, end).then((why) => {
@@ -7888,18 +7890,100 @@ function ImageBubble({
   );
 }
 
-/* ── 语音播放：照抄参考项目 ai-virtual-phone，别自作主张改 ─────────────────────
-   原文出处（改之前先回去看它）：
+/* ── 语音播放：照抄参考项目 ai-virtual-phone 的「宿主代播 + 首次手势解锁」 ──────────
+   参考出处（改之前先回去看它）：
    D:\stellasei-bao\stellasei-bao项目备份\ai-virtual-phone_20260911_155529
-       \components\chat\message-bubble.tsx，VoiceMessageBubble 的 playSrc（约 L2234-2337）。
-   它怎么放：每次点击当场 new Audio(src) 直接喂 data URL；play() 不 await、不探测、
-   不重试；播完或出错就 pause + removeAttribute("src") + load() 把源清掉。
-   为什么用媒体元素、不碰 Web Audio（该文件注释原话）：iOS 静音拨键会掐掉 Web Audio
-   的输出（表现为全线无声），媒体元素不受影响；播完清 src 让锁屏媒体卡片立即撤下。 */
+       \lib\tts-service.ts —— getSharedAudio / silentWavUrl / unlockAudioPlayback / installUnlockListener
+       \components\chat\message-bubble.tsx —— VoiceMessageBubble 的 playSrc
+   它怎么放：一律用媒体元素（<audio>），不碰 Web Audio——其注释原话：iOS 静音拨键会掐掉
+   Web Audio 的输出（表现为全线无声），媒体元素不受影响；播完清 src 让锁屏媒体卡片立即撤下。
+   关键在「解锁」：参考项目在模块加载时就把 touchend/pointerdown/mousedown 监听挂上，
+   任意首次用户手势里用一段 2ms/48kHz 静音 WAV 把宿主 <audio> play 一次，此后程序化播放
+   才放行。我们上一版只搬了 playSrc、漏了这套解锁设施，所以同是「添加到主屏幕」的 PWA，
+   参考项目能响、我们不出声。 */
+
+/* 解锁用的宿主元素（对应参考 tts-service 的 _sharedAudio）。 */
+let primeAudio: HTMLAudioElement | null = null;
+let voiceUnlocked = false;
+let voiceUnlockInstalled = false;
 
 let voiceActive: HTMLAudioElement | null = null; /* 此刻在响的那个；每次点击都换新的 */
 
-/** 停掉正在响的语音并清源（没在响就什么都不做）。 */
+/** 建宿主 <audio>：只建一次，挂进 DOM、隐藏。游离（不在 DOM 里）的元素在 iOS 上不可靠。 */
+function mountHiddenAudio(el: HTMLAudioElement): void {
+  el.setAttribute("playsinline", "");
+  el.style.display = "none";
+  if (typeof document !== "undefined") document.body.appendChild(el);
+}
+
+function getPrimeAudio(): HTMLAudioElement {
+  if (!primeAudio) {
+    primeAudio = new Audio();
+    mountHiddenAudio(primeAudio);
+  }
+  return primeAudio;
+}
+
+/** 2ms / 48kHz、16bit 单声道静音 WAV 的 object URL。
+    采样率必须 48kHz：iOS 的系统音频会话采样率会跟着刚播放的媒体走，解锁音若采样率低，
+    紧接着播的 TTS 会被压糊（参考 tts-service 注释原话）。 */
+function silentWavUrl(): string {
+  const sampleRate = 48000;
+  const numSamples = 96; /* 2ms */
+  const dataSize = numSamples * 2;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+  const writeStr = (off: number, s: string) => {
+    for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i));
+  };
+  writeStr(0, "RIFF"); view.setUint32(4, 36 + dataSize, true); writeStr(8, "WAVE");
+  writeStr(12, "fmt "); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true); view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+  writeStr(36, "data"); view.setUint32(40, dataSize, true);
+  /* 16bit PCM 静音为 0，ArrayBuffer 默认全 0，无需再写 */
+  return URL.createObjectURL(new Blob([buffer], { type: "audio/wav" }));
+}
+
+/** 在用户手势里解锁宿主 <audio>（只成功解锁一次）。安全可重复调用。
+    对应参考 tts-service 的 unlockAudioPlayback。 */
+function unlockVoiceAudio(): void {
+  if (voiceUnlocked || typeof window === "undefined") return;
+  const el = getPrimeAudio();
+  const url = silentWavUrl();
+  el.muted = true;
+  el.src = url;
+  const done = () => {
+    try { el.pause(); el.currentTime = 0; } catch { /* 已经没了 */ }
+    el.muted = false;
+    URL.revokeObjectURL(url);
+    voiceUnlocked = true;
+  };
+  try {
+    const p = el.play();
+    if (p && typeof p.then === "function") {
+      p.then(done).catch(() => { el.muted = false; URL.revokeObjectURL(url); });
+    } else {
+      done();
+    }
+  } catch {
+    el.muted = false;
+    URL.revokeObjectURL(url);
+  }
+}
+
+/** 模块加载就把首次手势解锁挂上（对应参考 tts-service 的 installUnlockListener）。 */
+function installVoiceUnlock(): void {
+  if (voiceUnlockInstalled || typeof window === "undefined") return;
+  voiceUnlockInstalled = true;
+  const handler = () => unlockVoiceAudio();
+  window.addEventListener("touchend", handler, { passive: true });
+  window.addEventListener("pointerdown", handler, { passive: true });
+  window.addEventListener("mousedown", handler, { passive: true });
+}
+if (typeof window !== "undefined") installVoiceUnlock();
+
+/** 停掉正在响的语音并清源、从 DOM 摘掉（没在响就什么都不做）。 */
 function stopVoiceEl(): void {
   const audio = voiceActive;
   if (!audio) return;
@@ -7911,6 +7995,7 @@ function stopVoiceEl(): void {
   } catch {
     /* 已经没了 */
   }
+  try { audio.remove(); } catch { /* 已经没了 */ }
 }
 
 /** 语音此刻在响吗——不看界面上的标记，那玩意会卡住骗人。 */
@@ -7938,12 +8023,13 @@ function iosVersion(): string {
   return m ? `${m[1]}.${m[2]}` : "?";
 }
 
-/** 播一条语音（dataUrl）。照参考项目原文：当场 new Audio(src) 直接 play，不 await、
-    不探测、不重试，播完或出错就 pause + 清 src + load()。
-    返回 play() 被拒的原因（好让界面给一行诊断）；成功（含静默失败）返回 null。 */
+/** 播一条语音（dataUrl）。照参考项目：直接喂音频、play() 不 await 成功与否都要收尾。
+    我们额外把元素挂进 DOM（游离元素在 iOS 上不可靠），播完或出错就 pause + 清 src +
+    load() + 从 DOM 摘掉。返回 play() 被拒的原因（好让界面给一行诊断）；成功返回 null。 */
 function playVoiceViaElement(dataUrl: string, onEnded: () => void): Promise<string | null> {
   stopVoiceEl(); /* 先停掉上一条 */
   const audio = new Audio(dataUrl);
+  mountHiddenAudio(audio);
   voiceActive = audio;
   const finalize = () => {
     if (voiceActive === audio) voiceActive = null;
@@ -7954,6 +8040,7 @@ function playVoiceViaElement(dataUrl: string, onEnded: () => void): Promise<stri
     } catch {
       /* 已经没了 */
     }
+    try { audio.remove(); } catch { /* 已经没了 */ }
     onEnded();
   };
   audio.onended = finalize;
