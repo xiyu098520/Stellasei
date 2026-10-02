@@ -27,6 +27,8 @@ import {
   type ChatMoment,
   type Conversation,
   type ImageApiExtras,
+  type OfflineEntry,
+  type OfflineScene,
   type VoiceApiExtras,
 } from "@/types/chat";
 
@@ -62,8 +64,15 @@ export type ConversationPatch = Partial<
     | "isPinned"
     | "isMuted"
     | "manualReply"
+    | "translate"
+    | "transCache"
     | "bubbleLimit"
     | "bubbleMax"
+    | "offlineWordsMin"
+    | "offlineWordsMax"
+    | "offlineReturnNote"
+    | "offlineMemoryRounds"
+    | "offlineOpen"
     | "unreadCount"
     | "chatBgUrl"
     | "fontSize"
@@ -78,6 +87,7 @@ export type ConversationPatch = Partial<
     | "blockCount"
     | "apiOverrides"
     | "voiceOverride"
+    | "voicePromptOverride"
   >
 >;
 
@@ -121,29 +131,128 @@ export function bubbleCapOf(conv: Conversation | null | undefined): number {
   return clampBubbleMax(conv.bubbleMax);
 }
 
+/* ----------------------------- 线下场合（每聊天） ----------------------------- */
+
+/** 线下每段回应的字数：默认 300–600，可设范围 100–3000（见 settings 页的步进）。 */
+export const DEFAULT_OFFLINE_WORDS_MIN = 300;
+export const DEFAULT_OFFLINE_WORDS_MAX = 600;
+export const OFFLINE_WORDS_FLOOR = 100;
+export const OFFLINE_WORDS_CEIL = 3000;
+
+function clampWords(value: number | undefined, fallback: number): number {
+  const n =
+    typeof value === "number" && Number.isFinite(value) ? Math.round(value) : fallback;
+  return Math.min(OFFLINE_WORDS_CEIL, Math.max(OFFLINE_WORDS_FLOOR, n));
+}
+
+/** 某场对话的线下字数要求：取整夹进 100–3000，脏数据拉回默认；上下限颠倒就地对调。 */
+export function offlineWordsOf(conv: Conversation | null | undefined): {
+  min: number;
+  max: number;
+} {
+  const min = clampWords(conv?.offlineWordsMin, DEFAULT_OFFLINE_WORDS_MIN);
+  const max = clampWords(conv?.offlineWordsMax, DEFAULT_OFFLINE_WORDS_MAX);
+  return min <= max ? { min, max } : { min: max, max: min };
+}
+
+/** 线下记忆「带最近几轮」：默认 10 轮，可设范围 2–30（见线下设置页的步进）。
+ *  一个数管两件事：每次只把最近这么多轮的原文摆给他；每攒够这么多轮就把这段归总一次。 */
+export const DEFAULT_OFFLINE_MEMORY_ROUNDS = 10;
+export const OFFLINE_ROUNDS_FLOOR = 2;
+export const OFFLINE_ROUNDS_CEIL = 30;
+
+function clampRounds(value: number | undefined): number {
+  const n =
+    typeof value === "number" && Number.isFinite(value)
+      ? Math.round(value)
+      : DEFAULT_OFFLINE_MEMORY_ROUNDS;
+  return Math.min(OFFLINE_ROUNDS_CEIL, Math.max(OFFLINE_ROUNDS_FLOOR, n));
+}
+
+/** 某场对话的线下记忆轮数：取整夹进 2–30，脏数据拉回默认 10。 */
+export function offlineMemoryRoundsOf(conv: Conversation | null | undefined): number {
+  return clampRounds(conv?.offlineMemoryRounds);
+}
+
+/* 线下记录单开一份存档：线上线下两套写法，混进 messages 会牵动未读数、列表预览、
+   记忆与媒体占位一大片假设（见 types/chat.ts 的 OfflineScene 注）。 */
+const OFFLINE_SCENES_KEY = "chat-offline-scenes";
+
+type OfflineSceneMap = Record<string, OfflineScene>;
+
+/** 读某场对话的线下记录（没下过线＝空一场）。 */
+export async function getOfflineScene(
+  characterId: string,
+  maskId: string,
+): Promise<OfflineScene> {
+  const map = (await kvGet<OfflineSceneMap>(OFFLINE_SCENES_KEY)) ?? {};
+  const found = map[convId(characterId, maskId)];
+  const now = new Date().toISOString();
+  return found ?? { convId: convId(characterId, maskId), entries: [], createdAt: now, updatedAt: now };
+}
+
+/** 整份写回某场对话的线下记录（页面持状态、攒够一次写）。 */
+export function saveOfflineScene(
+  characterId: string,
+  maskId: string,
+  entries: OfflineEntry[],
+): Promise<OfflineScene> {
+  const id = convId(characterId, maskId);
+  return serializeConvWrite(async () => {
+    const map = (await kvGet<OfflineSceneMap>(OFFLINE_SCENES_KEY)) ?? {};
+    const now = new Date().toISOString();
+    const prev = map[id];
+    const scene: OfflineScene = {
+      convId: id,
+      entries,
+      createdAt: prev?.createdAt ?? now,
+      updatedAt: now,
+    };
+    await kvSet(OFFLINE_SCENES_KEY, { ...map, [id]: scene });
+    return scene;
+  });
+}
+
+/** 清掉某场对话的线下记录（「重开一场」用；清完这一场就当没下过线）。 */
+export function clearOfflineScene(characterId: string, maskId: string): Promise<void> {
+  const id = convId(characterId, maskId);
+  return serializeConvWrite(async () => {
+    const map = (await kvGet<OfflineSceneMap>(OFFLINE_SCENES_KEY)) ?? {};
+    if (!(id in map)) return;
+    const next = { ...map };
+    delete next[id];
+    await kvSet(OFFLINE_SCENES_KEY, next);
+  });
+}
+
 /* ----------------------- 角色级设置（跟角色走，不跟面具） ----------------------- */
 
-/** 角色级的三样：个别 API 覆盖、语音参数覆盖、角色生图参考图。
+/** 角色级的四样：个别 API 覆盖、语音参数覆盖、语音提示词覆盖、角色生图参考图。
  *
- *  这三样从「角色 × 面具」提到角色身上：同一角色所有面具共用一份，
+ *  这几样从「角色 × 面具」提到角色身上：同一角色所有面具共用一份，
  *  在 A 面具配好的，切到 B 面具进去还是那套。
  *  （置顶／免打扰／背景／字号那些仍是每聊天设定，继续跟面具走，别混。）
  *
  *  存档：chat-character-settings ＝ { [角色id]: CharacterChatSettings }。 */
 export type CharacterChatSettings = Pick<
   Conversation,
-  "apiOverrides" | "voiceOverride" | "charRefImage"
+  "apiOverrides" | "voiceOverride" | "voicePromptOverride" | "charRefImage"
 >;
 
 /** 角色级的栏位名（迁移与清空时按这几个走）。 */
-const CHAR_LEVEL_KEYS = ["apiOverrides", "voiceOverride", "charRefImage"] as const;
+const CHAR_LEVEL_KEYS = [
+  "apiOverrides",
+  "voiceOverride",
+  "voicePromptOverride",
+  "charRefImage",
+] as const;
 
 async function getAllCharSettings(): Promise<Record<string, CharacterChatSettings>> {
   const saved = await kvGet<Record<string, CharacterChatSettings>>(CHAR_SETTINGS_KEY);
   return saved && typeof saved === "object" ? saved : {};
 }
 
-/** 老数据迁移：这三样过去存在会话上，头一次读时从该角色的会话里把它们提上来。 */
+/** 老数据迁移：这几样过去存在会话上，头一次读时从该角色的会话里把它们提上来。 */
 function seedCharSettings(list: Conversation[], characterId: string): CharacterChatSettings {
   const found: CharacterChatSettings = {};
   for (const c of list) {
@@ -154,6 +263,9 @@ function seedCharSettings(list: Conversation[], characterId: string): CharacterC
     if (found.voiceOverride === undefined && c.voiceOverride !== undefined) {
       found.voiceOverride = c.voiceOverride;
     }
+    if (found.voicePromptOverride === undefined && c.voicePromptOverride !== undefined) {
+      found.voicePromptOverride = c.voicePromptOverride;
+    }
     if (found.charRefImage === undefined && c.charRefImage !== undefined) {
       found.charRefImage = c.charRefImage;
     }
@@ -161,13 +273,14 @@ function seedCharSettings(list: Conversation[], characterId: string): CharacterC
   return found;
 }
 
-/** 把角色级的三样盖到会话上：**角色级是这几样的唯一出处**——角色级没有就是没有，
+/** 把角色级的几样盖到会话上：**角色级是这几样的唯一出处**——角色级没有就是没有，
  *  不回落会话上可能残留的旧副本（否则「关掉个别 API」会被旧值顶回来）。 */
 function applyCharSettings(c: Conversation, s: CharacterChatSettings | undefined): Conversation {
   return {
     ...c,
     apiOverrides: s?.apiOverrides,
     voiceOverride: s?.voiceOverride,
+    voicePromptOverride: s?.voicePromptOverride,
     charRefImage: s?.charRefImage,
   };
 }
@@ -268,10 +381,41 @@ async function appendMessageNow(
     ...(message.errorText !== undefined ? { errorText: message.errorText } : {}),
     ...(message.retryable !== undefined ? { retryable: message.retryable } : {}),
     ...(message.amount !== undefined ? { amount: message.amount } : {}),
+    /* 1.4.33：红包／转账「已收下」的标记。跟 mediaNote 那次一个道理——
+       这里是逐字段白名单，漏了它，标记就只活在内存里、一刷新就没了。 */
+    ...(message.moneyClaimed !== undefined ? { moneyClaimed: message.moneyClaimed } : {}),
+    /* 1.4.41：红包／转账「已退还」的标记。同上一行的道理，这里是逐字段白名单，
+       漏了它，标记只活在内存里、一刷新「退还」那笔又变成可收下的。 */
+    ...(message.moneyRefunded !== undefined ? { moneyRefunded: message.moneyRefunded } : {}),
+    /* 1.5.12：我发出去的钱「到点过期、已原路退回」的标记。同上面几行的道理，
+       这里是逐字段白名单，漏了它，标记只活在内存里、一刷新这笔又变回「等他收下」、
+       还能再被收一次。 */
+    ...(message.moneyExpired !== undefined ? { moneyExpired: message.moneyExpired } : {}),
+    /* 1.4.63：我发出去的钱「从哪个口袋出的」。同一个道理，漏了它，一刷新就丢——
+       他退还时找不回「哪来的」，钱就不知道该回零钱还是回那张卡。 */
+    ...(message.payFrom !== undefined ? { payFrom: message.payFrom } : {}),
+    /* 1.4.84：回执那条抄的「原转账时间戳」（两联的编号都从它取）。同上面几行的道理，
+       这里是逐字段白名单，漏了它，payAt 只活在内存里、一刷新两联的号又对不上了。 */
+    ...(message.payAt !== undefined ? { payAt: message.payAt } : {}),
+    /* 1.4.89：红包封面（预设 id 或自定义图的引用串）。同上面几行的道理，
+       这里是逐字段白名单，漏了它，封面只活在内存里、一刷新就回到默认那张。 */
+    ...(message.redCover !== undefined ? { redCover: message.redCover } : {}),
     ...(message.fileName !== undefined ? { fileName: message.fileName } : {}),
     ...(message.fileSize !== undefined ? { fileSize: message.fileSize } : {}),
     ...(message.quote !== undefined ? { quote: message.quote } : {}),
+    /* 1.5.60：这一轮的心声（<think>…</think> 摘出来的内心独白）。同上面几行的道理，
+       这里是逐字段白名单，漏了它，心声只活在内存里、一刷新就整块没了。 */
+    ...(message.innerVoice !== undefined ? { innerVoice: message.innerVoice } : {}),
+    /* 1.5.65：这一轮的内心快照（动作／好感／欲望／六维，跟心声同一个 <think> 块里摘的）。
+       同上面几行的道理，这里是逐字段白名单，漏了它，快照只活在内存里、一刷新就整块没了，
+       「心声档案」页的历史列也会跟着空掉。 */
+    ...(message.innerSnapshot !== undefined ? { innerSnapshot: message.innerSnapshot } : {}),
     ...(message.apiText !== undefined ? { apiText: message.apiText } : {}),
+    ...(message.mediaNote !== undefined ? { mediaNote: message.mediaNote } : {}),
+    /* 1.9.51：外语聊天挂在这条气泡（他说的话／语音）上的中文译文。同上面几行的道理，
+       这里是逐字段白名单，漏了它，译文只活在内存里——退出聊天再进来（从库里重读）
+       那行中文就没了（恩熙：「退出小手机之后，我再点进来，我这个中文翻译就不见了」）。 */
+    ...(message.translated !== undefined ? { translated: message.translated } : {}),
   };
 
   if (idx >= 0) {
@@ -438,7 +582,9 @@ export async function markConversationRead(
  *
  * ⚠️ 原写法分不清「从没建过」和「自己删的」：助手档案删了、下次开聊天 App 又被补回来，
  * 像永远删不掉——前者该建，后者不该再冒出来。现在靠 `isAssistantOff()` 那枚
- * 辞退标记分界（删除时落下、重新打开某张档案的助手模式即清掉）。
+ * 辞退标记分界（删除时落下、重新打开某张档案的助手模式即清掉；**1.4.16 起
+ * 关掉最后一张助手档案的开关同样落标记**——不然关一次开关、下次进聊天又自动
+ * 补一个，跟删了又蹦是同一种乱象）。
  * 「删除好友」仍是假删／真删会话，档案不动，不走这条路。
  */
 export async function ensureAssistant(): Promise<void> {
@@ -605,13 +751,35 @@ export async function setMomentPinned(
   await kvSet(CONVERSATIONS_KEY, list);
 }
 
-/** 清空某角色在某面具下的全部消息（保留每聊天设定）。 */
+/**
+ * 清空某角色在某面具下的全部消息（保留每聊天设定）。
+ *
+ * ⚠️ **顺手把「曾被拉黑过几次」一并抹掉**（2026-09-22 恩熙：「重置记忆，它不会
+ * 重置我拉黑过他的记忆」）。`blockCount` **不在记忆仓库里、挂在会话上**，所以
+ * 「清消息 ＋ 删记忆」那两条路都漏掉它：清完之后 TA 那边**还记得被拉黑过 N 次**，
+ * 每轮照样把【记忆 - 曾被拉黑】那句话（见 `lib/chat/social.ts` 的
+ * `blockedMemoryPrompt`）注入 system——她刚把一切清空从头来过，TA 却还在委屈、
+ * 后怕、小心翼翼，看着就像「胡说八道」。
+ * ⇒ **拉黑留下的是记忆、不是设定**，记忆一清它就该跟着走；放在这儿是因为
+ * **两条重置路（记忆 App 的「重置记忆」／聊天里的「清空聊天记录」）都过这个函数**，
+ * 不用各自记着。
+ * ⚠️ **`blocked`（当下正在拉黑）不动**——那是她在设置里亲手开着的状态，不是回忆；
+ * 要解除走「解除拉黑」，不在这儿替她偷偷解。
+ */
 export async function clearConversation(characterId: string, maskId: string): Promise<void> {
+  /* 线下那一场也算这个会话的记录，一并倒掉（1.7.39，恩熙：「在记忆里面清除了角色的记忆，
+     那应该是包含线上线下的一块清」）。清在这儿而不是各自去记：两条重置路（记忆 App 的
+     「重置记忆」／聊天里的「清空聊天记录」）都过这个函数，跟上面 blockCount 同一个道理。 */
+  await clearOfflineScene(characterId, maskId);
   const list = await getConversations();
   const idx = findIdx(list, characterId, maskId);
   if (idx < 0) return;
   list[idx].messages = [];
   list[idx].unreadCount = 0;
+  delete list[idx].blockCount;
+  /* 记录都倒空了，线下那一场自然也不算还开着：把总闸放平，线上输入解锁
+     （不然她会卡在「见着面」那一条锁上，而那一场已经一个字都没了）。 */
+  delete list[idx].offlineOpen;
   list[idx].updatedAt = new Date().toISOString();
   await kvSet(CONVERSATIONS_KEY, list);
 }
@@ -689,6 +857,9 @@ export async function getApiBundle(): Promise<ApiSettingsBundle> {
     text: { ...DEFAULT_API_SETTINGS, ...legacy, ...bundle?.text },
     image: { ...DEFAULT_API_SETTINGS, ...bundle?.image },
     voice: { ...DEFAULT_API_SETTINGS, ...bundle?.voice },
+    /* 副 API（1.2）：老数据没有这一格，读出来就是空白默认（未启用）——
+       未启用时记忆任务自动退回主文本接口，行为跟没有副 API 一模一样。 */
+    sub: { ...DEFAULT_API_SETTINGS, ...bundle?.sub },
     imageExtras: imageExtras.value,
     voiceExtras: { ...DEFAULT_VOICE_EXTRAS, ...bundle?.voiceExtras },
   };
@@ -815,11 +986,37 @@ export interface ChatPrefs {
    * 注意这是**全局习惯**，不跟预设方案走：切换图文方案不会改它。
    */
   autoGenerateImage: boolean;
+  /**
+   * 显示思维链（1.4.9）：思考型模型（DeepSeek-R1 等）单独吐的思考过程要不要在
+   * 气泡上方露「思考过程」入口。开着（默认）＝有思考的消息可以点开看；关＝入口
+   * 整个不显示（思考照收照存，只是不露入口——重新打开还能看，不丢）。
+   * 普通模型没有思考内容，这个开关对它们无感。
+   */
+  showReasoning: boolean;
+  /**
+   * 流畅模式（1.9.6）：手机发烫、点一下要等半天时的「救急总闸」。打开后全局停掉
+   * 动画、过渡与毛玻璃（见 globals.css 的 `html.smooth-mode`），只留最朴素的一层皮，
+   * 界面瞬时响应、CPU 负担骤降。关掉＝恢复原有的动效与玻璃质感。
+   * 默认关：动效与玻璃是星绥的样子的一部分，只在扛不住时才该让位。
+   */
+  smoothMode: boolean;
+  /**
+   * 语音提示词开关：打开后把下面那段「语音输出规矩」拼进发给聊天模型的系统提示词，
+   * 让 TA 照这份规矩写〔语音〕内容（比如该在哪些地方插方括号标签）。
+   * 全局一份；角色可在「角色设置 · 语音提示词」里单独覆盖。
+   */
+  voicePromptOn: boolean;
+  /** 语音输出规矩原文（开关打开且非空时才注入）。 */
+  voicePromptText: string;
 }
 
 export const DEFAULT_CHAT_PREFS: ChatPrefs = {
   timeAware: true,
   autoGenerateImage: true,
+  showReasoning: true,
+  smoothMode: false,
+  voicePromptOn: false,
+  voicePromptText: "",
 };
 
 /** 把存档补全成一份合法偏好（缺漏栏位补预设值，方便日后加开关）。 */
@@ -827,6 +1024,10 @@ function normalizePrefs(saved: Partial<ChatPrefs>): ChatPrefs {
   return {
     timeAware: saved.timeAware ?? DEFAULT_CHAT_PREFS.timeAware,
     autoGenerateImage: saved.autoGenerateImage ?? DEFAULT_CHAT_PREFS.autoGenerateImage,
+    showReasoning: saved.showReasoning ?? DEFAULT_CHAT_PREFS.showReasoning,
+    smoothMode: saved.smoothMode ?? DEFAULT_CHAT_PREFS.smoothMode,
+    voicePromptOn: saved.voicePromptOn ?? DEFAULT_CHAT_PREFS.voicePromptOn,
+    voicePromptText: saved.voicePromptText ?? DEFAULT_CHAT_PREFS.voicePromptText,
   };
 }
 
@@ -839,6 +1040,11 @@ export async function getChatPrefs(): Promise<ChatPrefs> {
 export async function saveChatPrefs(patch: Partial<ChatPrefs>): Promise<ChatPrefs> {
   const next = normalizePrefs({ ...(await getChatPrefs()), ...patch });
   await kvSet(CHAT_PREFS_KEY, next);
+  /* 喊一声：挂在别处的界面（根层按 smoothMode 给 <html> 挂类）跟着重读，
+     不必刷新页面（1.9.6）。 */
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("stellasei:prefs-changed"));
+  }
   return next;
 }
 
