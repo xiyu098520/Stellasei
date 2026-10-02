@@ -364,7 +364,7 @@ export default function InnerVoicePage({
     </div>
   );
 
-  /* 外语聊天（1.9.50）：把「点一下看中文」的入口铺给页里每一块字（见 useTrans）。 */
+  /* 外语聊天（1.9.50）：把「默认中文、点一下切原文」的入口铺给页里每一块字（见 useTrans）。 */
   const trans = useMemo<TransApi>(
     () => ({ lang: transLang, cache: transCache, onTranslate }),
     [transLang, transCache, onTranslate],
@@ -654,7 +654,7 @@ export default function InnerVoicePage({
  * 局部零件
  * ===================================================================== */
 
-/** 外语聊天（1.9.50）：页里每一块字共用的「点一下看中文」入口（由 ChatWindow 铺进来）。 */
+/** 外语聊天（1.9.50）：页里每一块字共用的「默认中文、点一下切原文」入口（由 ChatWindow 铺进来）。 */
 type TransApi = {
   lang?: string;
   cache?: Record<string, string>;
@@ -663,43 +663,61 @@ type TransApi = {
 const TransCtx = createContext<TransApi>({});
 
 /** 一块字此刻显原文还是显中文。
+ *  外语聊天开着时**默认就显中文**（1.9.59，跟气泡下方那行中文译文一个口径）——
+ *  点一下切回原文、再点又切回中文。
  *  优先吃会话上的译文缓存（transCache——签名／别的栏翻过的都在里头），没有才走一次接口；
  *  翻到的先攥在手里（got），等父层缓存回填之前也不至于白等（恩熙：「会不会有延迟」）。
  *  「这一句属于哪个源文」一并记在 state 上：换了轮次／条目就对不上、当新的算——
- *  不必另起 effect 去清（effect 里 setState 会连环重渲染，lint 也不放行）。 */
+ *  新条目按默认（中文）算，不必另起 effect 去清（effect 里 setState 会连环重渲染，lint 也不放行）。
+ *  `orig`＝她明确要过原文这一档；没点过就一直在中文那档。 */
 function useTrans(src: string | undefined) {
   const { lang, cache, onTranslate } = useContext(TransCtx);
   const raw = (src ?? "").trim();
-  const [st, setSt] = useState<{ src: string; show: boolean; busy: boolean; got?: string }>({
+  const can = !!lang && !!onTranslate && !!raw;
+  const [st, setSt] = useState<{ src: string; orig: boolean; busy: boolean; got?: string }>({
     src: raw,
-    show: false,
+    orig: false,
     busy: false,
   });
   const mine = st.src === raw;
-  const show = mine && st.show;
+  const orig = mine && st.orig;
   const busy = mine && st.busy;
   const got = mine ? st.got : undefined;
   const trans = got ?? (raw ? cache?.[raw] : undefined) ?? "";
-  const can = !!lang && !!onTranslate && !!raw;
-  const toggle = useCallback(async () => {
+  /* 此刻显的是不是中文（译文到手、且她没要过原文）。 */
+  const show = can && !orig && !!trans;
+
+  /* 默认要显中文，所以不等她点，进页就替她翻一次。翻过（成或不成）都记在 tried 上，
+     不在这儿重试成死循环；没翻成先退回显原文，等她换条目再试。 */
+  const tried = useRef<string | null>(null);
+  useEffect(() => {
+    if (!can || orig || trans || tried.current === raw) return;
+    tried.current = raw;
+    void onTranslate!(raw).then(
+      (t) => setSt({ src: raw, orig: false, busy: false, got: t }),
+      () => setSt({ src: raw, orig: false, busy: false }),
+    );
+  }, [can, orig, trans, raw, onTranslate]);
+
+  /* 点一下：中文 ⇄ 原文。要切回中文而手里还没有译文时，当场补翻一次。 */
+  const toggle = useCallback(() => {
     if (!can || busy) return;
     if (show) {
-      setSt({ src: raw, show: false, busy: false, got });
+      setSt({ src: raw, orig: true, busy: false, got });
       return;
     }
     if (trans) {
-      setSt({ src: raw, show: true, busy: false, got });
+      setSt({ src: raw, orig: false, busy: false, got });
       return;
     }
-    setSt({ src: raw, show: false, busy: true });
-    try {
-      const t = await onTranslate!(raw);
-      setSt(t ? { src: raw, show: true, busy: false, got: t } : { src: raw, show: false, busy: false });
-    } catch {
-      setSt({ src: raw, show: false, busy: false });
-    }
+    setSt({ src: raw, orig: false, busy: true, got });
+    void onTranslate!(raw).then(
+      (t) => setSt({ src: raw, orig: false, busy: false, got: t }),
+      () => setSt({ src: raw, orig: false, busy: false, got }),
+    );
   }, [can, busy, show, trans, got, onTranslate, raw]);
-  return { can, show, busy, display: show && trans ? trans : raw, toggle };
+
+  return { can, show, busy, display: show ? trans : raw, toggle };
 }
 
 /** 一段可点译的字：外层样式原样传进来，只加「可点」与末尾一枚小标（译／原／…）。
