@@ -1,13 +1,25 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { Clock, Cloud, Database, HardDrive, KeyRound, Smartphone } from "lucide-react";
+import {
+  Brain,
+  Clock,
+  Cloud,
+  Database,
+  HardDrive,
+  KeyRound,
+  Mic,
+  Replace,
+  Smartphone,
+  Zap,
+} from "lucide-react";
 import { AppChrome } from "@/components/phone/apps/AppChrome";
 import {
   API_CATEGORY_META,
   ApiCategoryForm,
   ApiSettingsPanel,
 } from "@/components/phone/apps/ApiSettingsPanel";
+import { RegexManager } from "@/components/phone/apps/RegexManager";
 import { StorageCheckPanel } from "@/components/phone/apps/StorageCheckPanel";
 import {
   POP_CARD,
@@ -212,10 +224,64 @@ function InfoItem({ icon, tone, title, value }: { icon: ReactNode; tone: PopTone
 }
 
 /**
+ * 语音提示词编辑页：一个开关 ＋ 一块自填的输入框。
+ *
+ * 这段原文会随每次请求拼进发给聊天模型的系统提示词（见 chatApi 的 buildStylePrompt
+ * 「### 发语音」一节），让 TA 照这份规矩写〔语音〕内容——标签有哪些看语音服务商，
+ * 标签什么时候插、怎么写归这里。全局一份；角色可在「角色设置 · 语音提示词」里单独覆盖。
+ */
+function VoicePromptEditor({
+  on,
+  text,
+  onToggle,
+  onChange,
+  onCommit,
+}: {
+  on: boolean;
+  text: string;
+  onToggle: (next: boolean) => void;
+  onChange: (text: string) => void;
+  onCommit: () => void;
+}) {
+  return (
+    <>
+      <SettingGroup title="Voice Prompt · 语音提示词" tone="orange">
+        <ToggleItem
+          icon={<Mic size={20} strokeWidth={2.2} />}
+          tone="orange"
+          title="启用语音提示词"
+          subtitle="Prompt · 打开后让 TA 按下面的规矩写语音"
+          on={on}
+          onToggle={onToggle}
+        />
+      </SettingGroup>
+
+      <SettingGroup title="Prompt · 内容" tone="blue">
+        <div className="px-4 py-4">
+          <textarea
+            value={text}
+            onChange={(e) => onChange(e.target.value)}
+            onBlur={onCommit}
+            placeholder="写下你希望 TA 写语音时遵守的规矩……"
+            className="min-h-[240px] w-full resize-y rounded-[14px] border-2 border-[#141414] bg-white px-3 py-3 text-[13px] font-medium leading-relaxed text-[#141414] shadow-[3px_3px_0_#141414] outline-none placeholder:text-[#B0AEA8] focus:bg-[#FFFDF5]"
+          />
+          <p className="mt-3 text-[11px] font-medium leading-relaxed text-[#8C8C8C]">
+            这段话会跟着每次发给聊天模型的提示词一起送过去（关闭开关则不发送）。这里只是你
+            自己的一份规矩草稿——离开输入框即自动保存。
+          </p>
+        </div>
+      </SettingGroup>
+    </>
+  );
+}
+
+/**
  * 设置：API 设定（文本／图文／语音三类接口）＋存储体检＋系统信息。
  */
 export function SettingsApp() {
-  const [view, setView] = useState<"list" | "api" | "api-form" | "storage">("list");
+  const [view, setView] = useState<
+    "list" | "api" | "api-form" | "storage" | "regex" | "voice-prompt"
+  >("list");
   const [apiCat, setApiCat] = useState<ApiCategory>("text");
   /* 对话偏好：预设值先渲染，真值等客户端读完再补（IndexedDB 只在客户端碰）。 */
   const [prefs, setPrefs] = useState<ChatPrefs>(DEFAULT_CHAT_PREFS);
@@ -228,6 +294,57 @@ export function SettingsApp() {
     setPrefs((p) => ({ ...p, timeAware: next }));
     void saveChatPrefs({ timeAware: next });
   };
+
+  /* 同上：思维链入口的显隐（1.4.9）。关掉只是不露入口，已收的思考照存。 */
+  const toggleShowReasoning = (next: boolean) => {
+    setPrefs((p) => ({ ...p, showReasoning: next }));
+    void saveChatPrefs({ showReasoning: next });
+  };
+
+  /* 流畅模式（1.9.6）：手机发烫、点一下要等半天时的「救急总闸」。先动界面——当场给
+     <html> 挂／摘 `.smooth-mode`（样式见 globals.css），再落库。关掉即恢复动效与玻璃。 */
+  const toggleSmoothMode = (next: boolean) => {
+    setPrefs((p) => ({ ...p, smoothMode: next }));
+    document.documentElement.classList.toggle("smooth-mode", next);
+    void saveChatPrefs({ smoothMode: next });
+  };
+
+  /* 语音提示词（1.9.58）：全局开关与正文。开关先动界面再落库；正文打字只更新界面，
+     离开输入框（失焦）时才落库，免得每敲一下写一次库。 */
+  const toggleVoicePrompt = (next: boolean) => {
+    setPrefs((p) => ({ ...p, voicePromptOn: next }));
+    void saveChatPrefs({ voicePromptOn: next });
+  };
+  const editVoicePromptText = (text: string) => {
+    setPrefs((p) => ({ ...p, voicePromptText: text }));
+  };
+  const commitVoicePromptText = () => {
+    void saveChatPrefs({ voicePromptText: prefs.voicePromptText });
+  };
+
+  /* 正则规则：自己管列表／编辑两级，这里只挂个壳（1.4.11）。 */
+  if (view === "regex") {
+    return <RegexManager onExit={() => setView("list")} />;
+  }
+
+  if (view === "voice-prompt") {
+    return (
+      <AppChrome
+        title="语音提示词"
+        titleEn="VOICE PROMPT"
+        theme="pop"
+        onBack={() => setView("list")}
+      >
+        <VoicePromptEditor
+          on={prefs.voicePromptOn}
+          text={prefs.voicePromptText}
+          onToggle={toggleVoicePrompt}
+          onChange={editVoicePromptText}
+          onCommit={commitVoicePromptText}
+        />
+      </AppChrome>
+    );
+  }
 
   if (view === "storage") {
     return (
@@ -287,12 +404,42 @@ export function SettingsApp() {
       {/* 对话 */}
       <SettingGroup title="Dialogue · 对话" tone="orange">
         <ToggleItem
+          icon={<Zap size={20} strokeWidth={2.2} />}
+          tone="red"
+          title="流畅模式"
+          subtitle="Smooth · 手机发烫、点不动时打开，停掉动效与毛玻璃"
+          on={prefs.smoothMode}
+          onToggle={toggleSmoothMode}
+        />
+        <ToggleItem
           icon={<Clock size={20} strokeWidth={2.2} />}
           tone="orange"
           title="时间感知"
           subtitle="Time · TA 知道此刻的真实时间"
           on={prefs.timeAware}
           onToggle={toggleTimeAware}
+        />
+        <ToggleItem
+          icon={<Brain size={20} strokeWidth={2.2} />}
+          tone="orange"
+          title="显示思维链"
+          subtitle="Reasoning · 思考型模型的思考过程可点开看"
+          on={prefs.showReasoning}
+          onToggle={toggleShowReasoning}
+        />
+        <SettingItem
+          icon={<Replace size={20} strokeWidth={2.2} />}
+          tone="lemon"
+          title="正则规则"
+          subtitle="Regex · 自动查找替换，自己建"
+          onClick={() => setView("regex")}
+        />
+        <SettingItem
+          icon={<Mic size={20} strokeWidth={2.2} />}
+          tone="orange"
+          title="语音提示词"
+          subtitle="Voice Prompt · 让 TA 按你的规矩写语音"
+          onClick={() => setView("voice-prompt")}
         />
       </SettingGroup>
 

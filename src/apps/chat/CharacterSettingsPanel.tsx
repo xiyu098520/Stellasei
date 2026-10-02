@@ -25,6 +25,7 @@ type RoleApiCategory = "text" | "image" | "voice";
  * 角色设置（通讯人 → 资料页进入）：比较重的个别配置都在这里。
  * - 三类 API 的个别配置：从「设置」里存好的预设方案中点选（不重新填表单）
  * - 个别语音参数（音色／语速／音调；语音方案带音色时一并套用）
+ * - 个别语音提示词（这个角色单独一份写语音的规矩；没有则跟随全局）
  * - 角色生图参考图（从聊天设置迁来，仅此绑定生效）
  *
  * 全页与全 App 同壳：
@@ -86,6 +87,8 @@ export default function CharacterSettingsPanel({
   });
   /* 个别语音参数底稿。 */
   const [voiceDraft, setVoiceDraft] = useState<VoiceApiExtras>(DEFAULT_VOICE_EXTRAS);
+  /* 个别语音提示词底稿（角色单独那份规矩的正文）。 */
+  const [vpDraft, setVpDraft] = useState("");
   const [uploading, setUploading] = useState(false);
   const refInputRef = useRef<HTMLInputElement>(null);
 
@@ -110,6 +113,7 @@ export default function CharacterSettingsPanel({
         voice: overrides.voice ?? b.voice,
       });
       setVoiceDraft(conv.voiceOverride ?? b.voiceExtras);
+      setVpDraft(conv.voicePromptOverride?.text ?? "");
     });
     void Promise.all([
       getApiPresets("text"),
@@ -269,6 +273,23 @@ export default function CharacterSettingsPanel({
     if (voiceOn) void enqueueWrite({ voiceOverride: voiceDraft });
   };
 
+  /* ---------- 语音提示词 ---------- */
+
+  /* 存在＝这个角色单独用自己这份规矩（不回落全局）；不存在＝跟随全局。 */
+  const voicePromptOn = !!conv.voicePromptOverride;
+
+  const toggleVoicePromptRule = () => {
+    if (voicePromptOn) {
+      void enqueueWrite({ voicePromptOverride: undefined });
+      return;
+    }
+    void enqueueWrite({ voicePromptOverride: { text: vpDraft } });
+  };
+
+  const commitVoicePromptRule = () => {
+    if (voicePromptOn) void enqueueWrite({ voicePromptOverride: { text: vpDraft } });
+  };
+
   /* ---------- 参考图 ---------- */
 
   const onRefPicked = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -341,8 +362,8 @@ export default function CharacterSettingsPanel({
           底色解决后还得有属于「角色」的东西，不能做成聊天设置页的翻版（页头两行字、
           底下三个白盒子）。所以定下**结构语言**：
           ① 页头加一枚角色身份徽记（首字压在头像渐变上）——页头有落点，不是一张空白公文纸；
-          ② 三张卡从「卡外一行小标题」改成「卡内章节头」——左边一枚编号方块 01／02／03，
-             中间标题、右边英文索引，底下一条淡线隔开内容：三张卡成了册子里的三个章节，
+          ② 四张卡从「卡外一行小标题」改成「卡内章节头」——左边一枚编号方块 01／02／03／04，
+             中间标题、右边英文索引，底下一条淡线隔开内容：四张卡成了册子里的四个章节，
              而且编号方块在「这块已配置」时亮粉，顺手当状态灯用。 */}
       <div
         style={{
@@ -612,9 +633,32 @@ export default function CharacterSettingsPanel({
           ) : null}
         </div>
 
-        {/* 角色生图参考（章节 03：已传参考图就亮粉） */}
+        {/* 语音提示词（章节 03：配了这份规矩就亮粉） */}
         <div style={cardStyle}>
-          <GroupTitle title="角色生图参考" en="reference" num="03" on={!!conv.charRefImage} />
+          <GroupTitle title="语音提示词" en="voice prompt" num="03" on={voicePromptOn} />
+          <SettingRow
+            title="语音提示词"
+            desc={voicePromptOn ? "已开启个别配置" : "跟随全局 · 按全局那份规矩写语音"}
+            showArrow={false}
+            right={<Switch on={voicePromptOn} onClick={toggleVoicePromptRule} />}
+          />
+          {voicePromptOn ? (
+            <div style={{ padding: "2px 14px 16px" }}>
+              <div style={fieldLabelStyle}>发语音时随提示词送给聊天模型的规矩</div>
+              <textarea
+                value={vpDraft}
+                onChange={(e) => setVpDraft(e.target.value)}
+                onBlur={commitVoicePromptRule}
+                placeholder="写下你希望 TA 写语音时遵守的规矩……"
+                style={vpAreaStyle}
+              />
+            </div>
+          ) : null}
+        </div>
+
+        {/* 角色生图参考（章节 04：已传参考图就亮粉） */}
+        <div style={cardStyle}>
+          <GroupTitle title="角色生图参考" en="reference" num="04" on={!!conv.charRefImage} />
           <div style={{ padding: "12px 14px 14px" }}>
             <div style={{ fontSize: 10, color: T.ink3, letterSpacing: ".04em", lineHeight: 1.7, marginBottom: 10 }}>
               上传一张 TA 的形象照作为参考图：TA 发自拍时只照着这张脸画——脸部特征、发型、
@@ -781,6 +825,15 @@ const inputStyle: CSSProperties = {
   color: T.ink,
   outline: "none",
   letterSpacing: ".03em",
+};
+
+/** 语音提示词输入框：比普通单行输入高一大块，可下拉调高。 */
+const vpAreaStyle: CSSProperties = {
+  ...inputStyle,
+  minHeight: 150,
+  resize: "vertical",
+  lineHeight: 1.7,
+  padding: "10px 12px",
 };
 
 const tagStyle: CSSProperties = {

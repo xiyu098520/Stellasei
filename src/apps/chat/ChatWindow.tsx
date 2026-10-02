@@ -1601,6 +1601,13 @@ export default function ChatWindow({
            从前它们是糊成一整段全摆最前，把「角色前」世界书挤到了后面。
            1.7.0 照参考项目 wechat.js 的 buildChatSystem 重排：【心声】提到第一块
            （它那边是【输出格式（最高优先级）】）、新开的【行为守则】压在末尾。 */
+        /* 语音提示词生效值（1.9.58）：角色单独配了一份就用角色的（存在＝用角色的，
+           不回落全局）；没配＝跟随全局设置（开关＋正文）。取到的正文非空才注入，
+           空着传 null 保持稳定段逐字不变。 */
+        const vpText =
+          conv?.voicePromptOverride?.text ??
+          (prefs.voicePromptOn ? prefs.voicePromptText : "");
+        const voicePromptRule = vpText.trim() ? vpText : null;
         const { head: stylePrompt, tail: styleRules } = buildStylePrompt(
           charName,
           myName,
@@ -1614,6 +1621,9 @@ export default function ChatWindow({
           /* 人设原文（1.9.9）：【心声】里那句「你的人设：……」填的就是档案这一栏，
              让 TA 在最开头就被点名、照着人设走。空着时那一句自动只剩前半句。 */
           character.data.persona,
+          /* 语音提示词（1.9.58）：角色单独配了就用角色的，没配就跟随全局（设置里的开关＋正文）。
+             开关开着且正文非空才注入；否则传 null，稳定区逐字不变（不吃缓存重建）。 */
+          voicePromptRule,
         );
         /* system 只放稳定段（最前：【心声】＋沉浸指令 → 对方档案／常驻世界书／人设／
            记忆碎片 → 末尾：消息格式／富媒体／【行为守则】／测试模式）
