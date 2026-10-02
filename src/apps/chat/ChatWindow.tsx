@@ -1062,7 +1062,6 @@ export default function ChatWindow({
   /* 卸载时把正在响的语音掐掉，不然离开聊天还在说话。 */
   useEffect(() => () => {
     stopVoiceEl();
-    stopVoiceCtx();
   }, []);
 
   /* 待确认那张图的临时地址，随它来去：换一张、取消、发出去、连组件卸载都收掉，
@@ -4094,26 +4093,17 @@ export default function ChatWindow({
           if (!m.audioUrl) return;
           const audioUrl = m.audioUrl;
           /* 点同一条＝停。 */
-          if (playingVoice === m.id && (isVoiceElPlaying() || isVoiceCtxPlaying())) {
+          if (playingVoice === m.id && isVoiceElPlaying()) {
             stopVoiceEl();
-            stopVoiceCtx();
             setPlayingVoice(null);
             return;
           }
           setPlayingVoice(m.id);
           const end = () => setPlayingVoice(null);
-          /* 主路：媒体元素（参考项目验证过的做法）。走不通再退到 Web Audio。 */
+          /* 只有媒体元素这一条路：常驻元素 + 每次播放前重设 src（绕开 iOS 26 PWA 的静默 bug）。 */
           void playVoiceViaElement(audioUrl, end)
             .then((res) => {
-              if (res.ok) return;
-              return playVoiceViaWebAudio(m.id, audioUrl, end).then((res2) => {
-                if (res2.ok) {
-                  /* 上面 play() 失败时可能已经把「在播」标记清了，这里补回来。 */
-                  setPlayingVoice(m.id);
-                  return;
-                }
-                setPlayingVoice(null);
-              });
+              if (!res.ok) setPlayingVoice(null);
             })
             .catch(() => setPlayingVoice(null));
         };
@@ -7881,210 +7871,64 @@ function ImageBubble({
   );
 }
 
-/* ── 语音播放：照参考项目抄 ──────────────────────────────────────────────────
-   参考项目（stellasei/components/chat/message-bubble.tsx 的 playSrc）播聊天语音
-   只有三件事：`new Audio(src)` → `play()` → 播完 `pause() + removeAttribute("src")
-   + load()` 把元素整个丢掉。它没有共用播放器、不做保活静音、不设 audioSession、
-   也不把音频转成 blob——src 就是消息里存的那串 data URL，直接塞给新建的 <audio>。
+/* ── 语音播放：一个常驻元素 + 每次播放前重设 src ──────────────────────────────
+   参考项目（stellasei/components/chat/message-bubble.tsx 的 playSrc）本身没有
+   Web Audio 备胎，只用一个 <audio>：`new Audio(src)` → `play()`。
 
-   前几版自作聪明加了「全页共用一个播放器 + 一直挂一条循环静音保活」，结果照样是
-   「第一次响、之后全哑」。WebKit 的 bug 单（295518）对这种症状的原话是：存着的
-   <audio> 元素会 stuck / unreleased by the system——被系统扣着不放。那就反过来做：
-   每次点当场新建，播完立刻释放，页面上不留任何一个活着的音频元素。 */
-let voiceEl: HTMLAudioElement | null = null; /* 此刻在响的那个，播完即弃 */
+   iOS 26 主屏 PWA 有个系统级回归（WebKit 295518 / 300115、Apple 论坛 805900）：
+   首次安装后能播，把 App 划掉再打开，`audio.play()` 会静默 resolve 却不出声——
+   元素被系统扣住不放（stuck / unreleased by the system），Safari 里一切正常。
+   先前「每次点当场 new、播完就 pause + 摘 src + load() 丢掉」的写法正好踩中它。
 
-/** 丢掉一个媒体元素：暂停、摘掉 src、再 load() 一次，让系统彻底松手。 */
-function disposeVoiceEl(audio: HTMLAudioElement): void {
-  if (voiceEl === audio) voiceEl = null;
+   社区里唯一被证实仍能出声的写法（WebKit 295518 留言 7 那个还能跑的复现器）是：
+   整场只留同一个 <audio> 元素，每次请求播放前当场把 .src 重设一遍再 play()。
+   这里就照这个来——元素常驻不释放，每次点播放前重设 src。 */
+let voiceEl: HTMLAudioElement | null = null; /* 常驻元素：整场就这一个，不释放 */
+
+/** 拿那个常驻元素，没有就造一个（不塞进 DOM，松散元素即可）。 */
+function getVoiceEl(): HTMLAudioElement {
+  if (!voiceEl) voiceEl = new Audio();
+  return voiceEl;
+}
+
+/** 停掉正在响的语音（没在响就什么都不做）。元素留着，只是暂停。 */
+function stopVoiceEl(): void {
+  if (!voiceEl) return;
   try {
-    audio.pause();
-    audio.removeAttribute("src");
-    audio.load();
+    voiceEl.pause();
   } catch {
     /* 已经没了 */
   }
 }
 
-/** 停掉正在响的媒体元素语音（没在响就什么都不做）。元素直接丢掉，不留着。 */
-function stopVoiceEl(): void {
-  const el = voiceEl;
-  if (!el) return;
-  el.onended = null;
-  el.onerror = null;
-  disposeVoiceEl(el);
-}
-
-/** 媒体元素此刻在响吗——不看界面上的标记，那玩意会卡住骗人。 */
+/** 语音此刻在响吗——不看界面上的标记，那玩意会卡住骗人。 */
 function isVoiceElPlaying(): boolean {
   return !!voiceEl && !voiceEl.paused && !voiceEl.ended;
 }
 
-/** Web Audio 这条路此刻有声音在响吗。 */
-function isVoiceCtxPlaying(): boolean {
-  return !!voiceNode;
-}
-
 /**
- * 用媒体元素播一条语音——照参考项目：当场 new 一个 <audio>，src 直接给 data URL，
- * 播完就 pause + removeAttribute("src") + load() 把它丢掉，页面上不留活元素。
- * ok:false ＝ 这条路没走通（play() 被拒／加载失败），调用方可以再试 Web Audio。
+ * 播一条语音。ok:false ＝ 这条路没走通（play() 被拒）。
  *
- * 1.9.64 回退：1.9.56 曾在这儿加过「出声探测」+ 2.5 秒赛跑——play() 回来后盯 currentTime，
- * 700ms 不挪就判无声、丢掉元素退 Web Audio。可这台 iOS 26 主屏 PWA 上 Web Audio 那条备胎
- * 也点不着音频设备（Failed to start the audio device），于是两路一起哑；而主路本来只是
- * 「启动稍慢」也被误判成没出声给掐了。现在退回参考项目原本的写法：play() 只要 resolve
- * 就当在走，不加探测、不加超时。
+ * 关键是「每次播放前重设 .src」这一步：常驻元素上把同一串 data URL 再赋一遍值，
+ * iOS 26 PWA 才肯真正出声。别改成播完就丢元素——那正是这个 bug 的触发姿势。
  */
 async function playVoiceViaElement(
   dataUrl: string,
   onEnded: () => void,
 ): Promise<{ ok: true } | { ok: false; why: string }> {
-  const audio = new Audio(dataUrl);
-  voiceEl = audio;
-  audio.onended = () => {
-    disposeVoiceEl(audio);
-    onEnded();
-  };
-  audio.onerror = () => {
-    disposeVoiceEl(audio);
-    onEnded();
-  };
+  const audio = getVoiceEl();
+  audio.onended = () => onEnded();
+  audio.onerror = () => onEnded();
+  /* 每次播放前重设 src + 归零，绕开 iOS 26 PWA 的「静默不响」。 */
+  audio.src = dataUrl;
+  audio.currentTime = 0;
   try {
     await audio.play();
   } catch (err) {
     const e = err as { name?: string; message?: string } | null;
-    disposeVoiceEl(audio);
     return { ok: false, why: `play() 被拒绝（${e?.name ?? "?"} ${e?.message ?? ""}）` };
   }
   return { ok: true };
-}
-
-/* ── 语音播放备用路：Web Audio ──────────────────────────────────────────────
-   不碰媒体元素，把音频解码成样本直接喂扬声器。参考项目警告过它在 iOS 上会被
-   静音拨键掐掉，所以只当备胎。全局只留一个 AudioContext（iOS 对它的数量管得紧），
-   同一时刻只响一条。 */
-
-/** 把本页的音频会话设成「媒体播放」类别：iOS 上 Web Audio 才不会跟着静音拨键走。
-    参考项目的聊天气泡不设这个（它只用媒体元素，媒体元素本来就不受拨键影响），
-    这里只给 Web Audio 这条备胎路用。只有 Safari 16.4+ 认这个属性，认不出就跳过。 */
-function applyPlaybackAudioSession(): void {
-  const sess = (navigator as Navigator & { audioSession?: { type?: string } }).audioSession;
-  if (!sess) return;
-  try {
-    sess.type = "playback";
-  } catch {
-    /* 老系统不认这个类别 */
-  }
-}
-
-type VoiceAudioHost = { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext };
-let voiceCtx: AudioContext | null = null;
-let voiceNode: AudioBufferSourceNode | null = null;
-let voiceBuf: { key: string; buf: AudioBuffer } | null = null;
-
-/** 停掉正在响的 Web Audio 语音（没在响就什么都不做）。 */
-function stopVoiceCtx(): void {
-  if (!voiceNode) return;
-  const node = voiceNode;
-  voiceNode = null;
-  /* 先摘掉回调：stop() 也会触发 ended，不摘会被当成「自然播完」。 */
-  node.onended = null;
-  try {
-    node.stop();
-  } catch {
-    /* 已经停过了 */
-  }
-  node.disconnect();
-}
-
-/** 懒建那唯一一个 AudioContext。必须在用户手势里调用，iOS 才给声。 */
-function getVoiceCtx(): AudioContext | null {
-  if (voiceCtx) return voiceCtx;
-  const host = window as unknown as VoiceAudioHost;
-  const Ctor = host.AudioContext ?? host.webkitAudioContext;
-  if (!Ctor) return null;
-  try {
-    voiceCtx = new Ctor();
-  } catch {
-    return null;
-  }
-  /* iOS 上 Web Audio 默认跟着「静音开关」走（媒体元素不跟），能设就设成媒体播放。 */
-  applyPlaybackAudioSession();
-  return voiceCtx;
-}
-
-/** data URL 的 base64 段还原成 ArrayBuffer——decodeAudioData 只吃二进制。 */
-function dataUrlToArrayBuffer(dataUrl: string): ArrayBuffer | null {
-  const head = /^data:([^;,]*)(;base64)?,/.exec(dataUrl);
-  if (!head) return null;
-  try {
-    const body = dataUrl.slice(head[0].length);
-    const bytes = head[2]
-      ? Uint8Array.from(atob(body.replace(/\s/g, "")), (c) => c.charCodeAt(0))
-      : new TextEncoder().encode(decodeURIComponent(body));
-    return bytes.buffer;
-  } catch {
-    return null;
-  }
-}
-
-/** 解码音频。老 Safari 只认回调写法、新浏览器认 Promise，两种都兜住。 */
-function decodeVoice(ctx: AudioContext, raw: ArrayBuffer): Promise<AudioBuffer> {
-  return new Promise((resolve, reject) => {
-    const pending = ctx.decodeAudioData(raw, resolve, reject) as unknown as Promise<AudioBuffer> | undefined;
-    if (pending && typeof pending.then === "function") pending.then(resolve, reject);
-  });
-}
-
-/**
- * 用 Web Audio 播一条语音。返回 ok:false 表示这条路走不通（浏览器不支持／音频解不出来），
- * 调用方可以退回去用 <audio>。key 用消息 id：同一条重复点，解码结果直接复用。
- */
-async function playVoiceViaWebAudio(
-  key: string,
-  dataUrl: string,
-  onEnded: () => void,
-): Promise<{ ok: true; seconds: number; state: string } | { ok: false; why: string }> {
-  const ctx = getVoiceCtx();
-  if (!ctx) return { ok: false, why: "浏览器没有 Web Audio" };
-  if (ctx.state !== "running") {
-    try {
-      await ctx.resume();
-    } catch {
-      /* iOS 26 装到主屏幕后有个已知 bug：音频设备根本点不着，报
-         InvalidStateError「Failed to start the audio device」。社区实测的偏方是
-         「先挂起再喊醒」——能把音频设备重新点火。多试这一下不亏。 */
-      try {
-        await ctx.suspend();
-        await ctx.resume();
-      } catch (err) {
-        return { ok: false, why: `唤醒音频引擎失败（${err instanceof Error ? err.message : String(err)}）` };
-      }
-    }
-  }
-  let buf = voiceBuf?.key === key ? voiceBuf.buf : null;
-  if (!buf) {
-    const raw = dataUrlToArrayBuffer(dataUrl);
-    if (!raw) return { ok: false, why: "音频文本解不出二进制" };
-    try {
-      buf = await decodeVoice(ctx, raw);
-    } catch (err) {
-      return { ok: false, why: `解码失败（${err instanceof Error ? err.message : String(err)}）` };
-    }
-    voiceBuf = { key, buf };
-  }
-  /* 同一时刻只响一条：先把上一条掐掉，再开新的。 */
-  stopVoiceCtx();
-  const node = ctx.createBufferSource();
-  node.buffer = buf;
-  node.connect(ctx.destination);
-  node.onended = () => {
-    if (voiceNode === node) voiceNode = null;
-    onEnded();
-  };
-  voiceNode = node;
-  node.start(0);
-  return { ok: true, seconds: buf.duration, state: ctx.state };
 }
 
 /* 复制兜底：不安全的 http 页面（局域网 IP）里 navigator.clipboard 是 undefined，
