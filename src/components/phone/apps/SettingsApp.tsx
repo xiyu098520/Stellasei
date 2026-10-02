@@ -250,7 +250,7 @@ function VoicePromptEditor({
           icon={<Mic size={20} strokeWidth={2.2} />}
           tone="orange"
           title="启用语音提示词"
-          subtitle="Prompt · 打开后让 TA 按下面的规矩写语音"
+          subtitle="Prompt · 打开后让 TA 按下面的规矩写〔语音〕里的话"
           on={on}
           onToggle={onToggle}
         />
@@ -262,11 +262,12 @@ function VoicePromptEditor({
             value={text}
             onChange={(e) => onChange(e.target.value)}
             onBlur={onCommit}
-            placeholder="写下你希望 TA 写语音时遵守的规矩……"
+            placeholder="写下你希望 TA 在〔语音〕里说的话照什么规矩写……"
             className="min-h-[240px] w-full resize-y rounded-[14px] border-2 border-[#141414] bg-white px-3 py-3 text-[13px] font-medium leading-relaxed text-[#141414] shadow-[3px_3px_0_#141414] outline-none placeholder:text-[#B0AEA8] focus:bg-[#FFFDF5]"
           />
           <p className="mt-3 text-[11px] font-medium leading-relaxed text-[#8C8C8C]">
-            这段话会跟着每次发给聊天模型的提示词一起送过去（关闭开关则不发送）。这里只是你
+            这段话会跟着每次发给聊天模型的提示词一起送过去（关闭开关则不发送）。它只管
+            〔语音〕里说的那些话怎么写，不改 TA 发不发语音、怎么标〔语音〕。这里只是你
             自己的一份规矩草稿——离开输入框即自动保存。
           </p>
         </div>
@@ -438,7 +439,7 @@ export function SettingsApp() {
           icon={<Mic size={20} strokeWidth={2.2} />}
           tone="orange"
           title="语音提示词"
-          subtitle="Voice Prompt · 让 TA 按你的规矩写语音"
+          subtitle="Voice Prompt · 让 TA 按你的规矩写〔语音〕里的话"
           onClick={() => setView("voice-prompt")}
         />
       </SettingGroup>

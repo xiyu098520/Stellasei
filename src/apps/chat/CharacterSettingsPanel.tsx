@@ -25,7 +25,7 @@ type RoleApiCategory = "text" | "image" | "voice";
  * 角色设置（通讯人 → 资料页进入）：比较重的个别配置都在这里。
  * - 三类 API 的个别配置：从「设置」里存好的预设方案中点选（不重新填表单）
  * - 个别语音参数（音色／语速／音调；语音方案带音色时一并套用）
- * - 个别语音提示词（这个角色单独一份写语音的规矩；没有则跟随全局）
+ * - 个别语音提示词（这个角色单独一份「〔语音〕里说的话」的规矩；没有则跟随全局）
  * - 角色生图参考图（从聊天设置迁来，仅此绑定生效）
  *
  * 全页与全 App 同壳：
@@ -638,18 +638,18 @@ export default function CharacterSettingsPanel({
           <GroupTitle title="语音提示词" en="voice prompt" num="03" on={voicePromptOn} />
           <SettingRow
             title="语音提示词"
-            desc={voicePromptOn ? "已开启个别配置" : "跟随全局 · 按全局那份规矩写语音"}
+            desc={voicePromptOn ? "已开启个别配置" : "跟随全局 · 按全局那份规矩写〔语音〕里的话"}
             showArrow={false}
             right={<Switch on={voicePromptOn} onClick={toggleVoicePromptRule} />}
           />
           {voicePromptOn ? (
             <div style={{ padding: "2px 14px 16px" }}>
-              <div style={fieldLabelStyle}>发语音时随提示词送给聊天模型的规矩</div>
+              <div style={fieldLabelStyle}>TA 在〔语音〕里说的话，照这份规矩写（只管内容，不管怎么发）</div>
               <textarea
                 value={vpDraft}
                 onChange={(e) => setVpDraft(e.target.value)}
                 onBlur={commitVoicePromptRule}
-                placeholder="写下你希望 TA 写语音时遵守的规矩……"
+                placeholder="写下你希望 TA 在〔语音〕里说的话照什么规矩写……"
                 style={vpAreaStyle}
               />
             </div>

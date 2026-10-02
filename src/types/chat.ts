@@ -728,16 +728,17 @@ export const DEFAULT_VOICE_EXTRAS: VoiceApiExtras = {
 };
 
 /**
- * 语音提示词配置：一段用户自填的「语音输出规矩」，随每次请求拼进发给聊天模型的
- * 系统提示词（见 chatApi.ts 的 buildStylePrompt「### 发语音」一节），让聊天模型
- * 按这份规矩写〔语音〕内容（比如该在哪些地方插 ElevenLabs 方括号标签）。
+ * 语音提示词配置：一段用户自填的「〔语音〕里说的话」的规矩，随每次请求拼进发给聊天
+ * 模型的系统提示词（见 chatApi.ts 的 buildStylePrompt「### 发语音」一节的【格式】之后），
+ * 让聊天模型按这份规矩写〔语音〕里**那句台词本身**（说什么、什么口吻、要不要插
+ * ElevenLabs 方括号标签）。**不管**要不要发语音、怎么标〔语音〕——那是同一节【规则】的事。
  *
  * 全局一份（ChatPrefs 的 voicePromptOn / voicePromptText）；
  * 角色可单独覆盖：`voicePromptOverride` **存在**＝这个角色用自己这份（不回落全局），
  * 不存在＝跟随全局（与 voiceOverride 同一种 presence＝开启的写法）。
  */
 export interface VoicePromptConfig {
-  /** 语音输出规矩原文。 */
+  /** 语音里说的话的规矩原文。 */
   text: string;
 }
 
