@@ -315,6 +315,33 @@ const RETELL_FALLBACK_HINT = "换个说法，把这一句重新回一遍，别�
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * 翻一句，翻不动再试一次（1.9.57）。
+ *
+ * 恩熙 2026-10-03：「为什么有些会翻，有些不会翻呀？」——译文是每条单独打一次
+ * 翻译接口换来的，网络／限流抽一下，那一条就永久空着（还找补不回来）。这里给它
+ * 两次机会：接口报错、返回空、或者把原话原样吐回来（说明它根本没干活），都当翻
+ * 不动，隔半秒再来一遍；两次都不行才返回 undefined（那一条就不露译文，不拖累别的）。
+ */
+async function translateWithRetry(
+  api: ChatApiSettings,
+  text: string,
+  toLang: string,
+): Promise<string | undefined> {
+  const src = text.trim();
+  if (!src) return undefined;
+  for (let i = 0; i < 2; i++) {
+    try {
+      const t = (await translateText(api, text, toLang)).trim();
+      if (t && t !== src) return t;
+    } catch {
+      /* 抽风了，隔半秒再试一次 */
+    }
+    if (i === 0) await delay(500);
+  }
+  return undefined;
+}
+
 /* 每条气泡的出场间隔（流式预览的节拍，与非流式逐条落库共用同一档）。 */
 const STREAM_REVEAL_INTERVAL_MS = 700;
 
@@ -1886,16 +1913,7 @@ export default function ChatWindow({
         const trSetNow = conv?.translate;
         const wantTrans = trSetNow?.out.on === true && !stopped && parts.length > 0;
         const partTrans: (string | undefined)[] = wantTrans
-          ? await Promise.all(
-              parts.map(async (p) => {
-                try {
-                  const t = await translateText(translateApi, p, "中文");
-                  return t && t !== p ? t : undefined;
-                } catch {
-                  return undefined;
-                }
-              }),
-            )
+          ? await Promise.all(parts.map((p) => translateWithRetry(translateApi, p, "中文")))
           : [];
         if (streamed && !stopped) {
           /* 等节拍器把攒下的气泡放完再落库：预览一撤、真消息整批冒出来，反而跳得更狠。
@@ -2052,16 +2070,7 @@ export default function ChatWindow({
              规矩跟气泡一模一样：一条翻不动就只留那一条没译文，不拖累别的。 */
           const voiceTrans =
             trSetNow?.out.on === true && !stopped
-              ? await Promise.all(
-                  voices.map(async (v) => {
-                    try {
-                      const t = await translateText(translateApi, v, "中文");
-                      return t && t !== v ? t : undefined;
-                    } catch {
-                      return undefined;
-                    }
-                  }),
-                )
+              ? await Promise.all(voices.map((v) => translateWithRetry(translateApi, v, "中文")))
               : [];
           for (let vi = 0; vi < voices.length; vi++) {
             const text = voices[vi];
@@ -4081,6 +4090,9 @@ export default function ChatWindow({
             return;
           }
           setPlayingVoice(m.id);
+          /* 手势当口先把音频设备点着（1.9.57）：iOS 不给「离开手势之后」新建／唤醒的
+             Web Audio 出声。主路万一没走通，备胎路才有声可出——不然就是「点了没声音」。 */
+          primeVoiceAudio();
           const end = () => setPlayingVoice(null);
           /* 主路：媒体元素（参考项目验证过的做法）。走不通再退到 Web Audio。 */
           void playVoiceViaElement(audioUrl, end)
@@ -7938,6 +7950,7 @@ async function playVoiceViaElement(
   onEnded: () => void,
 ): Promise<{ ok: true } | { ok: false; why: string }> {
   const audio = new Audio(dataUrl);
+  audio.preload = "auto";
   voiceEl = audio;
   audio.onended = () => {
     disposeVoiceEl(audio);
@@ -7947,12 +7960,28 @@ async function playVoiceViaElement(
     disposeVoiceEl(audio);
     onEnded();
   };
-  try {
-    await audio.play();
-  } catch (err) {
-    const e = err as { name?: string; message?: string } | null;
+  /* play() 在 iOS 上偶有「永不 settle」的情况（既不出声、也不回绝，界面就卡在「在播」）。
+     拿个计时器跟它赛跑：2.5 秒还没回音就当这条主路废了，丢掉元素退备胎（1.9.57）。 */
+  let playErr = "";
+  const gate = await Promise.race([
+    audio.play().then(
+      () => "ok" as const,
+      (err: unknown) => {
+        const e = err as { name?: string; message?: string } | null;
+        playErr = `${e?.name ?? "?"} ${e?.message ?? ""}`;
+        return "fail" as const;
+      },
+    ),
+    new Promise<"timeout">((r) => window.setTimeout(() => r("timeout"), 2500)),
+  ]);
+  if (gate !== "ok") {
+    audio.onended = null;
+    audio.onerror = null;
     disposeVoiceEl(audio);
-    return { ok: false, why: `play() 被拒绝（${e?.name ?? "?"} ${e?.message ?? ""}）` };
+    return {
+      ok: false,
+      why: gate === "timeout" ? "play() 超时没回音" : `play() 被拒绝（${playErr}）`,
+    };
   }
   /* play() 成了不代表真出声——盯一下 currentTime，没挪就当这条路废了，交给 Web Audio。 */
   if (!(await probeVoiceAudible(audio))) {
@@ -8016,6 +8045,16 @@ function getVoiceCtx(): AudioContext | null {
   /* iOS 上 Web Audio 默认跟着「静音开关」走（媒体元素不跟），能设就设成媒体播放。 */
   applyPlaybackAudioSession();
   return voiceCtx;
+}
+
+/** 必须在用户手势里跑：把那个唯一 AudioContext 建起来并喊醒（1.9.57）。
+    iOS 不给「离开手势之后」才新建／唤醒的音频设备出声——备胎路要在点击的当口就点着，
+    否则主路一旦没走通，退到 Web Audio 时已经拿不到声，听起来就是「点了没声音」。 */
+function primeVoiceAudio(): void {
+  const ctx = getVoiceCtx();
+  if (!ctx) return;
+  applyPlaybackAudioSession();
+  if (ctx.state !== "running") void ctx.resume();
 }
 
 /** data URL 的 base64 段还原成 ArrayBuffer——decodeAudioData 只吃二进制。 */
