@@ -4100,7 +4100,7 @@ export default function ChatWindow({
           }
           setPlayingVoice(m.id);
           const end = () => setPlayingVoice(null);
-          /* 只有媒体元素这一条路：常驻元素 + 每次播放前重设 src（绕开 iOS 26 PWA 的静默 bug）。 */
+          /* 只有媒体元素这一条路：常驻元素 + 播前整个重置、挂新 blob 地址（绕开 iOS 26 PWA 的静默 bug）。 */
           void playVoiceViaElement(audioUrl, end)
             .then((res) => {
               if (!res.ok) setPlayingVoice(null);
@@ -7871,24 +7871,55 @@ function ImageBubble({
   );
 }
 
-/* ── 语音播放：一个常驻元素 + 每次播放前重设 src ──────────────────────────────
-   参考项目（stellasei/components/chat/message-bubble.tsx 的 playSrc）本身没有
-   Web Audio 备胎，只用一个 <audio>：`new Audio(src)` → `play()`。
+/* ── 语音播放：常驻一个 <audio>，每次播前整个重置、挂新的 blob 地址 ──────────────
+   参考项目（stellasei/components/chat/message-bubble.tsx 的 playSrc）只用媒体元素、
+   不碰 Web Audio——方向是对的：iOS 静音拨键会掐掉 Web Audio 的输出（全线无声），
+   媒体元素不受影响。但它「每次 new Audio(src)、播完就摘 src + load() 丢掉」的写法，
+   在 iOS 26 主屏 PWA 里会踩系统回归（WebKit 295518／300990，Apple 论坛 805900）：
+   首次能播，把 App 划掉再打开，audio.play() 会静默 resolve 却不出声——元素被系统
+   扣住不放（stuck / unreleased by the system）；Safari 里一切正常。
 
-   iOS 26 主屏 PWA 有个系统级回归（WebKit 295518 / 300115、Apple 论坛 805900）：
-   首次安装后能播，把 App 划掉再打开，`audio.play()` 会静默 resolve 却不出声——
-   元素被系统扣住不放（stuck / unreleased by the system），Safari 里一切正常。
-   先前「每次点当场 new、播完就 pause + 摘 src + load() 丢掉」的写法正好踩中它。
+   社区里被证实还能出声的两条做法，这里一起用上：
+   1) Alex Suzuki 的复现器（WebKit 295518 留言 7）：整场只留同一个 <audio>，
+      每次请求播放前当场把 .src 重设一遍再 play()。
+   2) WebKit 300990 的建议：别直喂 src，改用 blob 地址（TikTok 就是靠 blob 源躲过
+      这个 PWA 扣留），并强制重置源（清源 → 重挂 → load() → play()）。
 
-   社区里唯一被证实仍能出声的写法（WebKit 295518 留言 7 那个还能跑的复现器）是：
-   整场只留同一个 <audio> 元素，每次请求播放前当场把 .src 重设一遍再 play()。
-   这里就照这个来——元素常驻不释放，每次点播放前重设 src。 */
-let voiceEl: HTMLAudioElement | null = null; /* 常驻元素：整场就这一个，不释放 */
+   所以：元素常驻不丢；每次播前 pause → 摘 src → load → 挂新的 blob 地址 → play。
+   播完只暂停，元素留着——别改成播完就丢，那正是这个 bug 的触发姿势。 */
 
-/** 拿那个常驻元素，没有就造一个（不塞进 DOM，松散元素即可）。 */
+let voiceEl: HTMLAudioElement | null = null; /* 常驻元素：整场就这一个 */
+let voiceObjUrl: string | null = null; /* 这只元素当前挂着的 blob 地址 */
+
+/** 拿常驻元素，没有就造一个（不塞进 DOM，松散元素即可）。 */
 function getVoiceEl(): HTMLAudioElement {
-  if (!voiceEl) voiceEl = new Audio();
+  if (!voiceEl) {
+    voiceEl = new Audio();
+    voiceEl.preload = "auto";
+  }
   return voiceEl;
+}
+
+/** 把常驻元素整个重置：暂停、摘源、撤掉旧 blob 地址。换源前必做。 */
+function resetVoiceEl(): void {
+  const audio = voiceEl;
+  if (audio) {
+    try {
+      audio.pause();
+    } catch {
+      /* 已经没了 */
+    }
+    try {
+      audio.removeAttribute("src");
+      audio.load();
+    } catch {
+      /* 忽略 */
+    }
+  }
+  if (voiceObjUrl) {
+    URL.revokeObjectURL(voiceObjUrl);
+    voiceObjUrl = null;
+  }
 }
 
 /** 停掉正在响的语音（没在响就什么都不做）。元素留着，只是暂停。 */
@@ -7906,29 +7937,81 @@ function isVoiceElPlaying(): boolean {
   return !!voiceEl && !voiceEl.paused && !voiceEl.ended;
 }
 
+/** data: URI → Blob → 临时地址。绕开 iOS 26 PWA 对「直喂 src」的扣留。 */
+function dataUrlToObjectUrl(dataUrl: string): string {
+  if (!dataUrl.startsWith("data:")) return dataUrl; /* 万一是普通地址，原样用 */
+  try {
+    const comma = dataUrl.indexOf(",");
+    const head = dataUrl.slice(0, comma);
+    const mime = /^data:([^;,]*)/.exec(head)?.[1] || "audio/mpeg";
+    const bin = atob(dataUrl.slice(comma + 1));
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return URL.createObjectURL(new Blob([bytes], { type: mime }));
+  } catch {
+    return dataUrl; /* 解不开就原样喂，至少不比原来差 */
+  }
+}
+
 /**
- * 播一条语音。ok:false ＝ 这条路没走通（play() 被拒）。
+ * play() 回来 ≠ 真出声。iOS 26 PWA 扣住元素时它静默 resolve，时间轴却纹丝不动。
+ * 盯时间轴挪没挪（或是否已播完）来判断；一直没动就当这条路没走通。
+ */
+function probeVoiceAudible(audio: HTMLAudioElement): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    let settled = false;
+    const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearInterval(poll);
+      clearTimeout(timer);
+      resolve(ok);
+    };
+    const poll = setInterval(() => {
+      if (audio.ended || audio.currentTime > 0.03) finish(true);
+    }, 60);
+    const timer = setTimeout(() => finish(audio.ended || audio.currentTime > 0.03), 1500);
+  });
+}
+
+/**
+ * 播一条语音。ok:false ＝ 这条路没走通（play() 被拒，或 play() 回来却没声）。
  *
- * 关键是「每次播放前重设 .src」这一步：常驻元素上把同一串 data URL 再赋一遍值，
- * iOS 26 PWA 才肯真正出声。别改成播完就丢元素——那正是这个 bug 的触发姿势。
+ * 两趟：第一趟用常驻元素；真被系统扣住了（静默不响），第二趟丢掉它、换一只全新的
+ * 元素＋新的 blob 地址再来一次。每次播前都强制重置源，这是绕开该 bug 的关键。
  */
 async function playVoiceViaElement(
   dataUrl: string,
   onEnded: () => void,
 ): Promise<{ ok: true } | { ok: false; why: string }> {
-  const audio = getVoiceEl();
-  audio.onended = () => onEnded();
-  audio.onerror = () => onEnded();
-  /* 每次播放前重设 src + 归零，绕开 iOS 26 PWA 的「静默不响」。 */
-  audio.src = dataUrl;
-  audio.currentTime = 0;
-  try {
-    await audio.play();
-  } catch (err) {
-    const e = err as { name?: string; message?: string } | null;
-    return { ok: false, why: `play() 被拒绝（${e?.name ?? "?"} ${e?.message ?? ""}）` };
+  let why = "没走通";
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt > 0) {
+      /* 第一趟那只被系统扣住了：先摘源撤 blob 地址，整个丢掉换新的。 */
+      resetVoiceEl();
+      voiceEl = null;
+    }
+    const audio = getVoiceEl();
+    resetVoiceEl(); /* 播前先清掉上一轮的源与 blob 地址 */
+    voiceObjUrl = dataUrlToObjectUrl(dataUrl);
+    audio.src = voiceObjUrl;
+    audio.onended = () => onEnded();
+    audio.onerror = () => onEnded();
+    try {
+      await audio.play();
+    } catch (err) {
+      const e = err as { name?: string; message?: string } | null;
+      why = `play() 被拒绝（${e?.name ?? "?"} ${e?.message ?? ""}）`;
+      audio.onended = null;
+      audio.onerror = null;
+      continue;
+    }
+    if (await probeVoiceAudible(audio)) return { ok: true };
+    why = "play() 回来却没出声（元素被系统扣住）";
+    audio.onended = null;
+    audio.onerror = null;
   }
-  return { ok: true };
+  return { ok: false, why };
 }
 
 /* 复制兜底：不安全的 http 页面（局域网 IP）里 navigator.clipboard 是 undefined，
