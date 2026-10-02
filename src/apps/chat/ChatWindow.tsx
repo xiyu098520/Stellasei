@@ -620,6 +620,9 @@ export default function ChatWindow({
   /* 语音／转文字 */
   const [playingVoice, setPlayingVoice] = useState<string | null>(null);
   const [showTrans, setShowTrans] = useState<string | null>(null);
+  /* 语音诊断（1.9.62 临时）：点过的那条语音下面摊一行两路结果，
+     用来定位「说在播却没声」到底卡在哪一环——跟生图诊断一个路子，查完就撤。 */
+  const [voiceDiag, setVoiceDiag] = useState<{ id: string; text: string } | null>(null);
   /* 弹窗 */
   const [showViewer, setShowViewer] = useState(false);
   const [viewerCap, setViewerCap] = useState("");
@@ -4105,20 +4108,34 @@ export default function ChatWindow({
              Web Audio 出声。主路万一没走通，备胎路才有声可出——不然就是「点了没声音」。 */
           primeVoiceAudio();
           const end = () => setPlayingVoice(null);
+          /* 1.9.62 临时诊断：两路各自的结果摊在气泡下面，截个图就能定位。 */
+          const sess = (navigator as Navigator & { audioSession?: { type?: string } }).audioSession;
+          const mime = /^data:([^;,]*)/.exec(audioUrl)?.[1] ?? "?";
+          const head = `音频 ${mime} · ${Math.round(audioUrl.length / 1024)}KB · 会话 ${sess ? sess.type ?? "未设" : "不支持"}`;
+          const diag = (text: string) => setVoiceDiag({ id: m.id, text });
           /* 主路：媒体元素（参考项目验证过的做法）。走不通再退到 Web Audio。 */
           void playVoiceViaElement(audioUrl, end)
             .then((res) => {
-              if (res.ok) return;
+              if (res.ok) {
+                diag(`${head}\n主路：在走（过了出声探测）`);
+                return;
+              }
+              diag(`${head}\n主路：${res.why}`);
               return playVoiceViaWebAudio(m.id, audioUrl, end).then((res2) => {
                 if (res2.ok) {
                   /* 上面 play() 失败时可能已经把「在播」标记清了，这里补回来。 */
                   setPlayingVoice(m.id);
+                  diag(`${head}\n主路：${res.why}\n备胎：在走（${res2.seconds.toFixed(1)}s · ${res2.state}）`);
                   return;
                 }
                 setPlayingVoice(null);
+                diag(`${head}\n主路：${res.why}\n备胎：${res2.why}`);
               });
             })
-            .catch(() => setPlayingVoice(null));
+            .catch((err: unknown) => {
+              setPlayingVoice(null);
+              diag(`${head}\n异常：${err instanceof Error ? err.message : String(err)}`);
+            });
         };
         return (
           <div>
@@ -4182,6 +4199,23 @@ export default function ChatWindow({
                 {durSec}″
               </span>
             </div>
+            {voiceDiag?.id === m.id ? (
+              <div
+                style={{
+                  marginTop: 8,
+                  padding: "6px 8px",
+                  borderRadius: 8,
+                  background: "rgba(0,0,0,.045)",
+                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                  fontSize: 10,
+                  lineHeight: 1.55,
+                  color: T.ink2,
+                  whiteSpace: "pre-wrap",
+                }}
+              >
+                {voiceDiag.text}
+              </div>
+            ) : null}
             {showTrans === m.id ? (
               <div
                 style={{
