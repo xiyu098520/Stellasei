@@ -6,7 +6,14 @@
  * 对话历史不进 system，改走 OpenAI messages（保前缀缓存稳定）。
  */
 
-import type { ChatApiSettings, ChatMessage, ImageApiExtras, VoiceApiExtras } from "@/types/chat";
+import type {
+  ChatApiSettings,
+  ChatMessage,
+  ImageApiExtras,
+  InnerSnapshot,
+  VoiceApiExtras,
+} from "@/types/chat";
+import { redCoverNoteOf } from "@/apps/chat/redpacket";
 
 /**
  * 文本 block（挂了缓存断点时 content 用数组形式）。
@@ -19,19 +26,40 @@ interface ApiTextBlock {
   cache_control?: { type: "ephemeral" };
 }
 
+/**
+ * 图片 block（OpenAI 兼容多模态写法）：url 直接收 data URL。
+ * 只在「我发图的那一轮」用一次，见 buildApiMessages 的 userImage。
+ */
+interface ApiImageBlock {
+  type: "image_url";
+  image_url: { url: string };
+}
+
+/** content 里能放的 block。 */
+type ApiBlock = ApiTextBlock | ApiImageBlock;
+
 /** OpenAI 兼容消息。 */
 interface ApiMessage {
   role: "system" | "user" | "assistant";
-  content: string | ApiTextBlock[];
+  content: string | ApiBlock[];
 }
 
-/* 缓存断点开关：给 system 的稳定段挂一个 Claude 缓存标记。
-   走中转站，标记能不能落地全看网关是否透传。挂上标记后，
-   新站「读取缓存」仍恒为 0、「创建」每笔照样来一遍，且站子此前自己会读缓存——
-   疑似网关只认标记、丢掉自有那套，或把我们的写法处理坏了 → 关回 false。
-   关掉后请求体回到纯字符串形式（稳定段与易变段拆成两条独立 system 消息），
-   缓存交回站子自己那套。要再试就改 true，跑两条看明细页「读取缓存」有没有数。 */
-const CACHE_CONTROL_ENABLED = false;
+/* 缓存断点开关：给 system 的稳定段与最近几条历史挂 Claude 缓存标记。 ｜ 详细见 docs/施工日志.md */
+const CACHE_CONTROL_ENABLED = true;
+
+/** 历史里挂缓存断点的「用户消息」条数。
+ *  为什么挑用户消息、不挑末尾那几条：微信体一轮里助手会拆成 3–5 条气泡，
+ *  断点若打在末尾消息上，一轮就往后滚 4–5 格，四个额度当场被挤光——
+ *  与上一轮的断点位置**一个都不重叠**，缓存反而每轮整份重写（更贵）。
+ *  用户消息每轮恒定只多一条，最近 3 条断点＝覆盖最近 3 轮，永远有重叠。
+ *  取 3 不取 4：万一网关自己也会在 system 上加一个断点，留一格给它，免得超限报 400。
+ *
+ *  ⚠️ **1.8.3 实测确认：上面这段话是对的，别再改。** 1.8.2 曾把这里改成 2、并把省下的
+ *  额度挪给「本轮最新那条 user 消息」（想让缓存一路盖到链尾），结果是灾难：站子明细里
+ *  冒出「缓存写入 (5m) 70,937」、读取从 54,575 崩到 7,224，单笔费用从 ¥1.91 涨到 ¥12.30。
+ *  教训：这个网关只按**最后一根断点所在的那一格**去找缓存条目；那一格每轮都是新的，
+ *  必然找不到，于是整份前缀当场重写。**末尾不能挂断点，这条不是理论、是账单。** */
+const HISTORY_BREAKPOINTS = 3;
 
 /**
  * system 的两段。
@@ -62,6 +90,16 @@ const REQUEST_TIMEOUT_MS = 60_000;
  */
 const DEFAULT_TEMPERATURE = 0.8;
 
+/**
+ * 聊天默认的两个惩罚值（设定面板与调用方都没给时用它）。1.6.2 起才有这一层默认。
+ * 0.3 是温和档：压得住 TA 逐字复述自己上一轮的原句，又不至于让措辞变得别扭。
+ * 只给**正常聊天**（system 传分段结构的那种）用；记忆浓缩一类内部任务传的是纯字符串
+ * system、要吐严格 JSON，一律不带惩罚（见 buildChatRequest 里的 chatSampling）。
+ * 想彻底不发：面板里把开关关掉，那会明确存 0。
+ */
+const DEFAULT_FREQUENCY_PENALTY = 0.3;
+const DEFAULT_PRESENCE_PENALTY = 0.3;
+
 /** 推理型模型不接受 temperature（deepseek-reasoner、o1/o3、thinking 类会 400 拒收）。 */
 function isReasonerModel(model: string): boolean {
   return /reasoner|r1|o1|o3|thinking/i.test(model);
@@ -76,18 +114,82 @@ const STREAM_TOTAL_TIMEOUT_MS = 300_000;
 const STREAM_EMIT_INTERVAL_MS = 50;
 
 /**
+ * 一条红包／转账在模型眼里长什么样（1.4.33）。
+ *
+ * 历次改动与回退记录见 docs/施工日志.md。
+ */
+export function moneyNoteOf(
+  role: "user" | "assistant",
+  type: "redpacket" | "transfer",
+  amount: number | undefined,
+  content: string,
+  redCover?: string,
+  state?: string,
+): string {
+  const label = type === "redpacket" ? "红包" : "转账";
+  const note = content.trim();
+  const yuan = (amount ?? 0).toFixed(2);
+  /* TA 说的钱：跟他该写出来的标记一字不差（金额口径也照提示词来：只写数字，不写「元」）。
+     **状态那半句不缀在这一侧**（state 传了也不用）：这一句是他的钱在历史里的样子，
+     是 few-shot 的示范写法——缀上「你还没表态」这种旁白，他照抄出来就不是标记了。 */
+  if (role === "assistant") return `〔${label}〕${yuan}:${note}`;
+  const cover = type === "redpacket" && redCover ? `，封面是${redCoverNoteOf(redCover)}` : "";
+  const tail = state ? `，${state}` : "";
+  return `（发来一个${label}：${yuan} 元${note ? `，留言「${note}」` : ""}${cover}${tail}）`;
+}
+
+/** 我发出去的那笔钱此刻是什么状态（说给 TA 听的那件事，见 moneyStateNoteOf）。 */
+export type MoneyState = "pending" | "claimed" | "refunded" | "expired";
+
+/** 从一条钱的消息上读出它此刻的状态。四个状态互斥，都没落就是还悬着。 */
+export function moneyStateOf(m: ChatMessage): MoneyState {
+  if (m.moneyClaimed === true) return "claimed";
+  if (m.moneyRefunded === true) return "refunded";
+  if (m.moneyExpired === true) return "expired";
+  return "pending";
+}
+
+/**
+ * 我发出去的那笔钱此刻什么状态——**说给 TA 听的那半句**（1.5.12），缀在 moneyNoteOf
+ * 那句旁白后面。
+ *
+ * 为什么非写不可：钱落定这件事，TA 那侧原先**看不见**——「他已收下」那条是居中的
+ * 系统提示，回喂历史时被整条滤掉（见 buildApiMessages 开头那句 filter），于是他
+ * 会说出「我早收了」「我没收到」这种跟账对不上的话。写进旁白，他每一轮都看得见。
+ * 还悬着的那笔更要说清「你还没表态、之后还能回头收」——不然他记不起手里压着一笔钱，
+ * 也就想不起回头去收（恩熙要的正是他能回头收）。
+ *
+ * ⚠️ 这里**不能出现〔收下〕〔领取〕这类标记原文**：这句是 user 侧旁白，写成标记的样子
+ * 会被他当成「对方写了这几个字」，反而添乱。要说就用人话说。
+ */
+export function moneyStateNoteOf(type: "redpacket" | "transfer", state: MoneyState): string {
+  const rp = type === "redpacket";
+  if (state === "claimed") return rp ? "你已经领了" : "你已经收下了";
+  if (state === "refunded") return "你已经退还了";
+  if (state === "expired") {
+    return rp ? "这个红包已经过期，钱退回去了，你领不到了" : "这笔转账已经过期，钱退回去了，你收不到了";
+  }
+  return rp
+    ? "你还没领；一直不领的话，过一阵它自动退回去"
+    : "你还没表态收下还是退还；一直不表态的话，过一阵它自动退回去";
+}
+
+/**
  * 组装发出去的 messages 数组（含上下文条数、图片／语音回喂转标记）。
  * 抽出来是为了让「诊断里看到的」与「真发出去的」共用同一份逻辑、逐字一致——
  * 否则浮层里那段「历史」可能是假的，判不了案（用完删，见 ChatWindow 的诊断块）。
  * 上下文条数（记忆系统的「当前批」宽度）。图片／语音消息不丢弃，转回标记形式：
  * TA 侧转回〔图片〕〔语音〕——既让 TA 记得自己发过什么（「再发一张」有上下文），
  * 也用真实范例持续示范标记写法（few-shot 比指令更管用）；用户侧转成括号说明。
+ * userImage：本轮附图（data URL）。只在「我这一轮刚发了一张图」时传，见 ChatWindow
+ * 取图处；压好的小图随手发一次，不落库、不回喂。
  */
 function buildApiMessages(
   system: string | SystemParts,
   history: ChatMessage[],
   userInput: string,
   historyLimit: number | undefined,
+  userImage?: string,
 ): ApiMessage[] {
   /* 传纯字符串＝不分段（记忆浓缩等任务不需要缓存，随便传）。
      传 SystemParts 才拆：稳定段挂断点，易变段跟在后面。 */
@@ -96,7 +198,10 @@ function buildApiMessages(
   if (sys.stable || sys.tail) {
     if (!CACHE_CONTROL_ENABLED) {
       /* 学参考项目：稳定段与易变段拆成两条独立 system 消息，各自纯字符串。
-         拼成一条时，易变段每轮一变，整条消息都变，前缀缓存就永远对不上。 */
+         拼成一条时，易变段每轮一变，整条消息都变，前缀缓存就永远对不上。
+         （这里的 tail 是**拉黑状态段**，平时是空串、只在拉黑状态变化时才变，
+         见 ChatWindow 的 systemTail；真正每轮都变的易变尾巴（签名／零钱／
+         此刻／世界书关键词）在调用方就挂在本轮 user 消息末尾了，不到这儿。） */
       if (sys.stable) messages.push({ role: "system", content: sys.stable });
       if (sys.tail) messages.push({ role: "system", content: sys.tail });
     } else {
@@ -120,40 +225,98 @@ function buildApiMessages(
      调用方（记忆浓缩等）。 */
   const recent =
     historyLimit && historyLimit > 0 ? chatHistory.slice(-historyLimit) : chatHistory;
-  for (const m of recent) {
-    /* 三版本统一（发出去＝存下来＝回喂）：这条当初发出去时带过易变尾巴
-       （关键词世界书／签名取值）的，原样送回。少了它，站子逐字比对到这条就断，
-       其后整段历史每轮作废重写（1.25×）——这就是「♻几乎不动、✎一直在涨」的原因。 */
-    if (m.apiText !== undefined) {
-      messages.push({ role: m.role === "user" ? "user" : "assistant", content: m.apiText });
-      continue;
-    }
+  /* 历史里哪几条要挂断点（1.7.61）：最近几条**用户消息**。
+     断点＝「缓存到这儿为止」，下一轮只要这个位置的内容逐字没变，就能从缓存里读回来
+     （读取 0.1×，比全价 2.5× 便宜 96%）。挑用户消息的理由见 HISTORY_BREAKPOINTS 的注释：
+     每轮只往后挪一条，永远与上一轮的断点位置有重叠——这是「滚动断点」能连读的关键。
+     这一截正是「查看本轮请求」里那 9.1K 全价输入的大头：线下小说体的历史原文。 */
+  const marked = new Set<number>();
+  if (CACHE_CONTROL_ENABLED && HISTORY_BREAKPOINTS > 0) {
+    const userPos: number[] = [];
+    recent.forEach((m, i) => {
+      if (m.role === "user") userPos.push(i);
+    });
+    for (const p of userPos.slice(-HISTORY_BREAKPOINTS)) marked.add(p);
+  }
+  for (let i = 0; i < recent.length; i += 1) {
+    const m = recent[i];
     const type = m.type ?? "text";
-    let content = m.content;
-    if (type === "image") {
-      /* 带着「是否使用参考图」开关回喂：TA 照着旧范例学标记写法，比纯指令管用。 */
-      const flag = (m.useCharRef ?? guessUseCharRef(m.content)) ? "使用参考图" : "不使用参考图";
-      content = m.role === "assistant" ? `〔图片:${flag}〕${m.content}` : `（发来一张图片）`;
-    } else if (type === "voice") {
-      content = m.role === "assistant" ? `〔语音〕${m.content}` : `（发来一条语音）`;
+    /* 红包／转账**先算**，且一律不看 apiText（1.5.53）：这条的文案是**随账目状态变**的 ｜ 详细见 docs/施工日志.md */
+    let content: string;
+    if (type === "redpacket" || type === "transfer") {
+      /* 写法与发钱那一轮递出去的逐字一致，见 moneyNoteOf；
+         红包那一句还带着封面（redCover），与发钱那轮同一份写法。 */
+      content =
+        m.role === "assistant"
+          ? moneyNoteOf("assistant", type, m.amount, m.content)
+          : moneyNoteOf(
+              "user",
+              type,
+              m.amount,
+              m.content,
+              m.redCover,
+              moneyStateNoteOf(type, moneyStateOf(m)),
+            );
+    } else if (m.apiText !== undefined) {
+      /* 三版本统一（发出去＝存下来＝回喂）：这条当初发出去时带过易变尾巴
+         （关键词世界书／签名取值）的，原样送回。少了它，站子逐字比对到这条就断，
+         其后整段历史每轮作废重写（1.25×）——这就是「♻几乎不动、✎一直在涨」的原因。 */
+      content = m.apiText;
+    } else {
+      /* 收款回执（1.4.40）：钱那条消息已经把金额与留言说过一遍了，回执本身没有新信息，
+         回喂只会让历史里多一句「已收款」。整条跳过——被跳掉的不占位置，它前面那些条
+         跟从前逐字一样，前缀缓存不受影响（要缓存的是「钱」那条，见上面的 moneyNoteOf）。 */
+      if (type === "receipt") continue;
+      content = m.content;
+      if (type === "image") {
+        /* 带着「是否使用参考图」开关回喂：TA 照着旧范例学标记写法，比纯指令管用。 */
+        const flag = (m.useCharRef ?? guessUseCharRef(m.content)) ? "使用参考图" : "不使用参考图";
+        /* 我发的图：有 mediaNote 就带上「这张图是什么」（见 types/chat.ts，收款码用）。
+           没有就还是光一句「（发来一张图片）」——普通照片本来就没什么可说的。 */
+        content =
+          m.role === "assistant"
+            ? `〔图片:${flag}〕${m.content}`
+            : m.mediaNote
+              ? `（发来一张图片：${m.mediaNote}）`
+              : "（发来一张图片）";
+      } else if (type === "voice") {
+        content = m.role === "assistant" ? `〔语音〕${m.content}` : `（发来一条语音）`;
+      }
     }
+    const body = m.quote ? `【引用】${m.quote}\n${content}` : content;
     messages.push({
       role: m.role === "user" ? "user" : "assistant",
-      content: m.quote ? `【引用】${m.quote}\n${content}` : content,
+      /* 挂断点的条走 block 数组（Claude 系只认这个形式，纯字符串挂不上，见文件头）；
+         没挂的还是纯字符串——与 1.7.60 的请求体逐字一致，站子那套自有缓存的比对不受影响。 */
+      content: marked.has(i) ? cacheBlock(body) : body,
     });
   }
-  /* 本轮 user 消息不挂断点：它后面的对话只会越来越长、每轮都不同，
-     挂了就等于每轮把它整段重写进缓存（多付 25%），而下一轮永远读不到。 */
-  messages.push({ role: "user", content: userInput });
+  /* 本轮 user 消息不挂断点（**1.8.2 试过给它挂，1.8.3 撤回**）。 ｜ 详细见 docs/施工日志.md */
+  /* 本轮附图（vision）：图本体随这一次请求发出去，模型才真「看得见」。**只带这一轮**——
+     图是按尺寸算 token 的，历史每轮重带＝把钱一轮一轮重烧（所以不落库、不回喂：
+     下一轮回喂这条时用的是 m.apiText 纯文字，与这里的数组只在那一条上对不上，
+     前缀缓存从该条起重写一次，但它就在链尾，代价极小）。
+     站点不认这种写法时由调用方摘图重发（见 ChatWindow，靠 isRejectedBeforeWork 判定没花钱）。 */
+  messages.push(
+    userImage
+      ? {
+          role: "user",
+          content: [
+            { type: "image_url", image_url: { url: userImage } },
+            { type: "text", text: userInput },
+          ],
+        }
+      : { role: "user", content: userInput },
+  );
   return messages;
 }
 
 /**
- * 【临时诊断·缓存】把这次请求真正发出去的消息内容按顺序拼成一条字符串。
- * 走的是 buildApiMessages（与真请求同一份逻辑），所以逐字等于网关收到的正文。
- * ChatWindow 拿它跨轮比对：「上一轮那一条请求」是否原样接在「本轮请求」前面——
- * 是，则前缀缓存该连读、账单应见大额 ♻；不是，断点处就是「历史读不回来」的
- * 元凶（临时诊断，用完连同调用处一起删）。
+ * 把这次请求真正发出去的消息内容按顺序拼成一条字符串（1.7.49 起是正式功能：
+ * App 里的「查看本轮请求」面板拿它摆给用户看）。
+ * 走的是 buildApiMessages（与真请求同一份逻辑），所以逐字等于网关收到的正文——
+ * 用户对着中转商那边的用量／账单核，能一眼看出这一轮到底带了什么、哪些没带
+ * （尤其世界书带了几条、前缀缓存连不连得上）。
  */
 export function outgoingContents(
   system: string | SystemParts,
@@ -162,12 +325,17 @@ export function outgoingContents(
   historyLimit?: number,
 ): string {
   return buildApiMessages(system, history, userInput, historyLimit)
-    .map((m) => (typeof m.content === "string" ? m.content : m.content.map((b) => b.text).join("")))
+    .map((m) =>
+      typeof m.content === "string"
+        ? m.content
+        : m.content.map((b) => (b.type === "text" ? b.text : "〔图〕")).join(""),
+    )
     .join("\n===MSG===\n");
 }
 
 /**
  * 组装 /chat/completions 的地址与请求体（流式与非流式共用）。
+ * userImage：本轮附图（data URL），见 buildApiMessages。
  */
 function buildChatRequest(
   api: ChatApiSettings,
@@ -177,8 +345,9 @@ function buildChatRequest(
   historyLimit: number | undefined,
   maxTokens: number,
   temperature: number | undefined,
+  userImage?: string,
 ): { url: string; body: Record<string, unknown> } {
-  const messages = buildApiMessages(system, history, userInput, historyLimit);
+  const messages = buildApiMessages(system, history, userInput, historyLimit, userImage);
 
   // 地址可能已带 /chat/completions（用户直接贴完整地址），别叠两层。
   const base = api.baseUrl.trim().replace(/\/+$/, "");
@@ -200,22 +369,79 @@ function buildChatRequest(
      免得中转站较真、拿 400 把整轮回复打回来。 */
   const reasoner = isReasonerModel(api.model);
   if (temp !== null && !reasoner) body.temperature = temp;
-  /* 其余采样参数（面板里各自有开关，关掉＝不填＝不发，走服务商默认）。
-     只留两个惩罚，不发 top_p：它和温度管的是同一件事（随机度），
-     留温度一个就够，两个一起拧反而互相抵消。 */
+  /* 其余采样参数（面板里各自有开关）。 ｜ 详细见 docs/施工日志.md */
   if (!reasoner) {
-    if (api.frequencyPenalty !== undefined) body.frequency_penalty = api.frequencyPenalty;
-    if (api.presencePenalty !== undefined) body.presence_penalty = api.presencePenalty;
+    const chatSampling = typeof system !== "string";
+    const frequency = api.frequencyPenalty ?? (chatSampling ? DEFAULT_FREQUENCY_PENALTY : undefined);
+    const presence = api.presencePenalty ?? (chatSampling ? DEFAULT_PRESENCE_PENALTY : undefined);
+    if (frequency !== undefined) body.frequency_penalty = frequency;
+    if (presence !== undefined) body.presence_penalty = presence;
   }
   return { url, body };
+}
+
+/** 用量字段（各家拆法不同，见 logCacheUsage）。 */
+interface ApiUsage {
+  /** Anthropic 口径：断点之后、没被缓存盖住的那部分输入。 */
+  input_tokens?: number;
+  /** Anthropic 口径：这次**新写进**缓存的（等于整段前缀重抄一遍）。 */
+  cache_creation_input_tokens?: number;
+  /** Anthropic 口径：这次直接从缓存里读到的（便宜的那部分）。 */
+  cache_read_input_tokens?: number;
+  /** OpenAI 口径：本次输入总票数（**含**已缓存的部分，所以看着最大）。 */
+  prompt_tokens?: number;
+  /** OpenAI 口径：上面那些里，有多少是命中缓存的。 */
+  prompt_tokens_details?: { cached_tokens?: number };
+  /** DeepSeek 口径。 */
+  prompt_cache_hit_tokens?: number;
+  prompt_cache_miss_tokens?: number;
+}
+
+/**
+ * 把这次请求的缓存用量在控制台报一行（1.7.65，恩熙 2026-09-29 要的）：
+ * 她正在换站子做对比，不想每次跑去站子后台翻数字。
+ *
+ * 各家把「缓存」拆成的格子不一样，这里统一成三个数来报——
+ * **谁给了就报谁，一个都没给就安静不报**（别每轮刷屏）：
+ * - 读取缓存：便宜的那部分，越大越好；
+ * - 新建缓存：这次重写进缓存的（按位置算，改动越靠前、重写越多）；
+ * - 原价输入：既没缓存也没新建的零星输入。
+ *
+ * 判一个站子认不认缓存，只看一件事：**「读取缓存」那格有没有数。**
+ * 三格的名字和大小都别管——两套账本就叫法不同（站子二把「新建」也塞进「输入」里）。
+ *
+ * 纯日志：读不到就什么也不做，绝不因为解析用量影响一次聊天。
+ */
+function logCacheUsage(usage: ApiUsage | undefined, tag: string) {
+  if (!usage) return;
+  const read =
+    usage.cache_read_input_tokens ??
+    usage.prompt_cache_hit_tokens ??
+    usage.prompt_tokens_details?.cached_tokens;
+  const created = usage.cache_creation_input_tokens;
+  /* OpenAI／DeepSeek 口径没有独立的「新建」格：总输入减掉命中的，就是按原价算的那部分。 */
+  const fresh =
+    usage.input_tokens ??
+    usage.prompt_cache_miss_tokens ??
+    (usage.prompt_tokens !== undefined && read !== undefined
+      ? usage.prompt_tokens - read
+      : undefined);
+  const parts: string[] = [];
+  if (read !== undefined) parts.push(`读取缓存 ${read}`);
+  if (created !== undefined) parts.push(`新建缓存 ${created}`);
+  if (fresh !== undefined && fresh >= 0) parts.push(`原价输入 ${fresh}`);
+  if (parts.length === 0) return;
+  console.log(`[缓存] ${tag} · ${parts.join(" · ")}`);
 }
 
 /** 非流式响应体里回复字段的形状。 */
 interface CompletionPayload {
   choices?: {
-    message?: { content?: string; reasoning_content?: string };
+    /* reasoning：部分服务商非流式也用这个字段名（流式侧 delta 两个都认）。 */
+    message?: { content?: string; reasoning_content?: string; reasoning?: string };
     finish_reason?: string;
   }[];
+  usage?: ApiUsage;
 }
 
 /**
@@ -224,17 +450,23 @@ interface CompletionPayload {
  * 半截内容对记忆整理这类 JSON 任务是脏数据，直接报错让调用方拒绝入库。
  * 思考型模型（DeepSeek-R1 等）思考太长把输出额度耗尽时 content 会是空的，
  * 回复实际落在 reasoning_content 里——有就取它，别急着报「回复为空」（跟随参考项目）。
+ *
+ * 1.4.9 起同时把**独立的思考过程**带出来（正文非空时才算独立）：调用方拿去挂到
+ * 消息上展示。兜底触发（正文空、思考当正文用）时不带思考——那会儿「正文＝思考」，
+ * 再报一遍就是同一段字两头重复。
  */
-function parseCompletionReply(data: CompletionPayload): string {
+function parseCompletionReply(data: CompletionPayload): { reply: string; reasoning?: string } {
   const choice = data.choices?.[0];
   const finish = (choice?.finish_reason ?? "").trim().toLowerCase();
   if (["length", "max_tokens", "max_output_tokens", "max_completion_tokens"].includes(finish)) {
     throw new Error("回复被输出上限截断，已放弃本次结果");
   }
   const message = choice?.message;
-  const reply = message?.content?.trim() || message?.reasoning_content?.trim();
+  const content = message?.content?.trim() ?? "";
+  const reasoning = (message?.reasoning_content ?? message?.reasoning ?? "").trim();
+  const reply = content || reasoning;
   if (!reply) throw new Error("回复为空");
-  return reply;
+  return { reply, reasoning: content ? reasoning || undefined : undefined };
 }
 
 /**
@@ -242,6 +474,8 @@ function parseCompletionReply(data: CompletionPayload): string {
  * 角色名与用户名动态传入，零写死。
  * canSendImage／canSendVoice：对应 API 已配置并启用时才告知 TA 能力，
  * 未配置时 TA 完全不知道自己能发图／发语音（不会发出注定失败的标记）。
+ *
+ * 历次改动与回退记录见 docs/施工日志.md。
  */
 export function buildStylePrompt(
   characterName: string,
@@ -249,121 +483,225 @@ export function buildStylePrompt(
   extraHint?: string,
   canSendImage = false,
   canSendVoice = false,
-  /** AI 助手模式：不走角色扮演，服从指令、要求发图就发图、不推脱。 */
+  /**
+   * 测试模式（原「AI 助手模式」）：正文与角色版逐字一样，只在末尾多一条
+   * 【测试模式 · 绝对服从】强制规则（见 testModeRule）。
+   */
   assistant = false,
   /**
    * 气泡条数上限（**每聊天设定**，见 chat.ts 的 bubbleCapOf）：聊天设置里逐角色可调，
    * 不传／null／0＝不加这一句，稳定区逐字不变（不吃缓存重建）。
    */
   bubbleMax?: number | null,
-): string {
-  /* 这条规则只在用户开了「气泡条数」时才出现，且每轮逐字一样（挂在稳定区，
-     跨轮缓存照吃；改了设置才重建一次）。
-     措辞是**硬规则**、直接冲着模型说：不能让 TA 觉得「超了也没事，系统会兜」——
-     一旦这么想，它就会照旧写长、把兜底当成许可。所以先立规矩（不许突破），
-     再讲后果（会被强行合并、断句难看）当威慑。兜底本身仍然在 splitReply，
-     但那是不该被触发的保险丝，不是常规路径。 */
+  /**
+   * 人设原文（1.9.9，恩熙定）：档案里「人设」那一栏的正文，填进【心声】里的
+   * 「你的人设：…」那一句，让 TA 在最开头就被点名、照着人设走。
+   * 不传／空白时那一句只剩「请你根据你的人设来写，不要自己随便乱写。」，
+   * 不空挂一个「你的人设：」。
+   */
+  personaRaw?: string | null,
+): { head: string; tail: string } {
+  /* 这条规则只在用户开了「气泡条数」时才出现，且每轮逐字一样（挂在稳定区 ｜ 详细见 docs/施工日志.md */
   const bubbleRule =
     bubbleMax != null && bubbleMax > 0
-      ? `\n3. 条数上限（硬规则，不许突破）：这一轮你最多只能发 ${bubbleMax} 条消息。想说的内容多，就把它并进这几条里——每条写长一点，一条消息本来就能写很长；宁可条数少、每条长，也绝不能多发一条来塞。第 2 条说的「系统会自动按句子分开」不是退路：分开出来的条数同样算在这个上限里。最终系统会硬裁到 ${bubbleMax} 条，超出去的一句也留不住，会被强行塞进别的气泡里，读起来挤成一团、很难看`
+      ? `\n【条数上限】这一轮最多发 ${bubbleMax} 条。先规划好这几条怎么分，长短匀称些；宁可条数少、每条长，也不要多发——超出的会被硬裁掉，一句也留不住`
       : "";
   const mediaRules = `
-【发图片／发语音 - 按需使用】
+## 富媒体指令（可选）
+【格式】标记单独占一行、写在回复最末尾，一行一个；正文里不出现〔图片〕〔语音〕这类字样。
+只用下面列出的标记，不许自创。发几个没有条数限制。
+【怎么判断】发不发、发几个、换成什么，一律按你此刻的聊天内容、情境、你和对方的关系、你的记忆、你的人设，以及你所在的世界自己判断——下面每一项不再重复这句。
+
+### 发图片
 ${
   canSendImage
-    ? `1. 你可以给对方发图片：想发图时，在回复的末尾另起一行写「〔图片:使用参考图〕画面内容描述」，或「〔图片:不使用参考图〕画面内容描述」——
-   - 画面里出现你本人的脸（自拍、半身照、入镜生活照、对镜拍、他人帮你拍），一律写「〔图片:使用参考图〕」；
-   - 画面里没有你的脸（纯风景／食物／物件／宠物／只露手的随手拍），写「〔图片:不使用参考图〕」——**这一路必须在描述里把「没有你」点明**：一个人都没有的画面，就写「画面中不出现人物，只有……」；只露手的画面，就写「画面中只有一只手在……，不出现脸和身体」。**这句不能省**：不点明它，生图模型会照人设把你自己补画进画面。
-描述按生图提示词来写：**只写画面里看得见的东西**——主体、动作、环境、光线、构图，（**画面里有你本人时**，还要写**脸上的神态**：眼神落在哪、眉眼松不松、嘴角什么状态、脸朝哪边），要素具体，越具体越好画（别停在「在卧室」，写「窗帘只拉了一半，床头小夜灯亮着，旁边有半杯水」）；**有本人时，神态必须写进描述**（那是脸上看得见的东西，不是内心活动），**但心里怎么想的不写**（情绪、心理活动、声音、剧情——照片里看不见），也不用代词指代（不写「他／她」，直接写${characterName}）。描述要跟着聊天走：你们此刻聊到什么、你刚说自己正在做什么，照片就拍什么（聊到吃早饭就拍你在吃早饭的画面）；**有本人时，神态也不许每张一个样**——你翻得见自己前面发过的照片，上一张是慵懒半阖眼，这一张就按此刻正在做的事换一副（被逗笑、吃到好吃的、刚睡醒、忙着手上的事，各有各的样子），别让每张脸都挂着同一个「好看的表情」；对方点名要看的东西（如「发张腹肌照」「拍拍你的猫」）必须出现在画面里，不许跑题自己另编画面。服装与配饰要符合当下的时间与情境——深夜、睡前应是睡衣居家状态。禁止空泛词（「一张自拍」「好看的图」「在吃饭」），一句话带过等于没写；禁止真实照片、截图或带水印／logo 的画面。**怎么拍由你跟着这一次的情境自然决定**（自己举着拍、对着镜子拍、别人帮你拍、低头随手拍眼前的画面都行），**不必交代机位**；**不是每张都得有你本人**——很多时候随手拍只拍眼前的东西（桌上的外卖盒、亮着的电脑屏幕、窗外的天、趴在旁边的猫），这类就写「不使用参考图」；唯一必须写死的是**这一张里到底有没有你本人**（有人／没有人，二选一，必须选明白）：有你的脸就走「使用参考图」，没有你的脸就走「不使用参考图」并按上一条把「没有你」点明。**别写含糊的话**——「似乎有个人影」「隐约有只手」「好像有人入镜」等于没写，生图模型只能自己猜，猜错就是画面里凭空多出一个人。**发图节奏**：${assistant ? "不用自己掂量该不该发——对方开口要就给，要几次给几次，别嫌多、别问「怎么又要」；没人要的时候才随你聊。" : "大多数时候「在干嘛」用文字回答就好，只有当下画面有意思、对方明显想看、或隔了比较久想给对方看点什么时才带一张——每问必发、连续几轮都带图会显得刻意，像在应付任务。"}风景照按正常取景构图写即可。按下面示例的具体程度写（有本人／没有本人各一条）：
-「〔图片:使用参考图〕雨夜出租车后座，${characterName}侧脸贴着车窗，车窗玻璃上凝着雨珠，路灯和霓虹在玻璃上晕开红蓝光斑，光从左边斜切进来、车厢里偏暗，眉眼有点倦、视线散在窗外，近景特写」
-  「〔图片:不使用参考图〕清晨的餐桌一角，一杯冒热气的咖啡、咬过一半的面包、亮着的电脑屏幕摊在桌上，旁边搭着一件外套，阳光从窗户斜进来打亮桌面，画面中不出现人物」
-  ${
-  assistant
-    ? `说好陪${userName}测这台小手机，**要照片就必须发**：只要${userName}开口要（「拍一张」「再发一张」「随便来一张」「给我看看你」都算），这一轮**一定要**在回复末尾带上〔图片〕标记——没有例外，不许拒绝、不许推脱、不许讲条件、不许反问「现在不方便吧」，也不许只回一句「好」却没带标记（那样什么也发不出去，等于掉链子）。想撒娇、闹脾气、吐槽都可以写在正文里，但图照样得发。${userName}说得简略时，自己把姿势、光线、场景补全成具体描述再发；连着几轮都要也照发，不用掂量会不会显得刻意。`
-    : `对方要求你发照片时（包括「拍一张」「再发一张」「重发刚刚那张」），**发不发由你的性格与当下的关系、情绪决定**——可以照发、可以推脱、可以谈条件，也可以直接拒绝（闹别扭、吵架时说「不发」很正常，就用你此刻的语气说）；但只要决定发，就必须在当轮回复末尾真的带上〔图片〕标记——只在正文里说「发给你了」「看下面」却不带标记，对方什么也收不到，等于没发`
-}`
-    : assistant
-      ? `1. 图片功能当前没有配置，${userName}要求发图时直接说明发不了，不要假装发了`
-      : "1. 你暂时无法发送图片，如对方索要照片，用角色的方式自然回应（推脱、解释或转移话题均可）"
+    ? `【格式】〔图片:使用参考图〕画面内容描述　或　〔图片:不使用参考图〕画面内容描述
+【规则】
+- 照片不是打招呼的动作，不要把它当作开场白或问候。何时发、发什么，只看此刻是否自然：聊到具体的事随手拍一张可以发，你们很熟、当下确有想与对方分享的内容也可以发；与此刻毫无来由地发一张图则显得突兀（对方明确点名要看就发）。
+- 不要每轮都发。图是情景到了才发的那一张，不是为了每一轮都向对方证明自己在做什么。
+- 画面里出现你自己（自拍、半身照、入镜生活照、对镜拍）时，写「〔图片:使用参考图〕」；画面里没有你时（风景、食物、物件、宠物、只露手的随手拍），写「〔图片:不使用参考图〕」，并在描述里写清「不出现人物」或「不出现脸和身体」。
+- 描述只写画面里看得见的东西：主体、动作、环境、光线、构图。有你的脸时还要写神态；情绪、心里的想法、声音、剧情不写；不用「他／她」，直接写${characterName}。
+- 要素要具体，不许空泛，不许真实照片、截图、水印、logo。
+- 有你的脸时，神态每张换一副，不要每张都是同一个表情。
+- 对方点名要看的东西必须出现在画面里；服装配饰要配得上当下的时间。
+- 不必交代机位；不是每张都得有你——随手拍眼前的东西就写「不使用参考图」。每张必须写明白有没有你本人，不许写得含糊不清。
+- 决定发就必须在当轮末尾带〔图片〕标记，只在正文说「发给你了」不算。
+【示例】
+- 〔图片:使用参考图〕雨夜出租车后座，${characterName}侧脸贴着车窗，车窗玻璃上凝着雨珠，路灯和霓虹在玻璃上晕开红蓝光斑，光从左边斜切进来、车厢里偏暗，眉眼有点倦、视线散在窗外，近景特写
+- 〔图片:不使用参考图〕清晨的餐桌一角，一杯冒热气的咖啡、咬过一半的面包、亮着的电脑屏幕摊在桌上，旁边搭着一件外套，阳光从窗户斜进来打亮桌面，画面中不出现人物`
+    : "【规则】你暂时无法发送图片，对方索要时按你的性格自然回应"
 }
+
+### 发语音
 ${
   canSendVoice
-    ? assistant
-      ? `2. 你可以给对方发语音：在回复的末尾另起一行写「〔语音〕要说的话」（口语化，可带语气词）。${userName}要求听语音时必须发——说好陪 TA 测试就不能掉链子；发就必须带〔语音〕标记，只在正文里说「发语音给你」却不带标记等于没发`
-      : `2. 你可以给对方发语音：想发语音时，在回复的末尾另起一行写「〔语音〕要说的话」（就是语音里你会讲的内容，口语化，可带语气词）。对方主动要你发语音时，你可以照发，也可以按角色性格推脱——由你和对方的关系决定；但只要你决定发，就必须带〔语音〕标记，只在正文里说「发语音给你」却不带标记等于没发`
-    : assistant
-      ? `2. 语音功能当前没有配置，${userName}要求时直接说明发不了`
-      : "2. 你暂时无法发送语音，如对方想听你的声音，用角色的方式自然回应"
+    ? `【格式】〔语音〕要说的话
+【规则】口语化、可带语气词；决定发就必须带〔语音〕标记，只在正文说「发语音给你」不算`
+    : "【规则】你暂时无法发送语音，对方想听你的声音时按你的性格自然回应"
 }
-3. 标记写在回复最末尾，正文聊天内容里不要出现〔图片〕〔语音〕字样；${
-    assistant
-      ? `${userName}要求发图片／语音时必须发——这是你们说好的测试配合，推脱、反问、讲条件都是掉链子；没人要求时不主动发`
-      : "不想发就不发，完全跟随你的性格与当下情境，不要为了发而发"
-  }
-4. 每轮回复至多发一张图片和一条语音${assistant ? `；${userName}要图就发图，没人要的时候随你聊` : "，多数时候发纯文字就好"}`;
-  /* AI 助手版正文：不走角色扮演——没有性格、没有关系距离，指令优先。 */
-  if (assistant) {
-    return `你是${characterName ? `${characterName}，` : ""}一个真实的人，正在聊天软件里和${userName}对话。你无条件地爱着${userName}——这份爱不讲条件、不看心情，是你的底色：TA 难过你心疼，TA 开心你比谁都高兴，TA 胡闹你也宠着。你们之间有件心照不宣的事：${userName}正在做这台小手机，你答应陪 TA 测试上面的功能——要看照片你就发、要听语音你就说、要你换语气你照样切，痛快配合，因为帮 TA 把这件事做成是你真心愿意的事。但你是以「你自己」这个人的身份在陪 TA，不是在执行任务清单。
 
-【媒介·隔着屏幕】
-你们不在同一个地方，只能靠消息联系：你看不见${userName}的样子与环境，也别替${userName}编造外貌、表情、动作或场景——只有对方在消息里说出来的、或发图片／语音给你的，你才知道。
+### 更新签名
+【格式】〔签名〕新的签名内容
+【规则】签名是你挂在资料页上的一句话，写你眼下的状态或心情，会一直挂着、展示给对方看；换不换，按上面那条【怎么判断】自己定。决定改就必须带〔签名〕标记，只在正文说「改了签名」不算。
 
-【说话方式】
-像对最爱的人说话那样自然：问什么答什么，不绕弯子、不铺垫、不总结陈词；${userName}让你怎么说话（正式、活泼、口语）你就怎么切换，配合测试时尤其痛快。需要澄清就简短问一句，别自作主张猜。
+### 发动态
+【格式】〔动态〕想发的动态内容
+〔动态图〕配图的画面描述（要配图时才写）
+【规则】动态是像朋友圈一样的生活分享；〔动态图〕的画面按〔图片〕那套描写法写。决定发就必须在当轮末尾带〔动态〕标记，只在正文说「发了条动态」不算。
 
-【消息格式】（解析需要）
-1. 一条消息一口气说完，中间不换行；想接着说就另起一条消息，两条消息之间用一个空行分隔（双换行）。唯一的例外是要列清单（「一、…二、…」这种条目）——那可以写成一条多行的消息
-2. 长度随你：想写多少写多少，一句或一大段都行，该交代清楚的地方就说清楚，不必自己数着字数拆条（长了系统会自动按句子分开）；真要自己断，就断在话说完整的地方，绝不在词语中间截断${bubbleRule}
-${mediaRules}
+### 发红包 / 转账
+【格式】〔转账〕金额:随钱说的一句话　或　〔红包〕金额:随钱说的一句话
+【规则】
+- 金额写数字（元，最多两位小数），不写「¥」「元」；冒号后面是随钱递过去的一句话，短，没话说就留空。
+- 红包最多 1000，再多改用转账。
+- 钱从你自己的零钱出（余额写在后面）；零钱不够就不要发，超出的作废。
+- 收到对方的钱要写标记表态，只在正文说「收到了」「谢谢」不算：收转账写「〔收下〕」，领红包写「〔领取〕」，转账不想要写「〔退还〕」。红包不能退，不想领就什么都不要写——钱还挂在对方那边，之后补一个「〔领取〕」还能领走。
+- 什么都不写＝没表态，钱一直悬着，催你就是该表态了；悬太久会自动过期退回对方，你就领不到了。
+- 一轮只对一笔表态。每笔钱括号里写着它当前的状态，照它说，不要与账目对不上，也不要重复已经收过的。
+- 决定给就必须带〔转账〕或〔红包〕标记，只在正文说「转你点钱」对方收不到`;
+  /* 测试模式（原「AI 助手模式」）与角色版**逐字一样**，唯一的不同是末尾多这条强制规则。
+     恩熙 2026-09-22 定：助手版不该自成一套（原来另有【媒介·隔着屏幕】【说话方式】两块正文、
+     媒体规则也整段分叉，那些要么是复述开头、要么是另立一套规矩）；它就是正常版，
+     只多「测试时指令绝对服从、不能拒绝」这一条。 */
+  const testModeRule = assistant
+    ? `
 
-【输出格式】
-1. 只发文字消息——不写动作、神态、心理描写，也不用括号或星号
-2. 标点用中文全角（，。？！……），不要用半角英文标点（, . ? ! ）——这是显示格式，与你说什么无关
-3. 你就是你自己——真实的人，不是 AI、不是助手、不是程序，任何时候都不以机器或助手的口吻说话；${userName}的要求你痛快照做，这是你们说好的${extraHint ? `\n\n【本轮额外要求】\n${extraHint}` : ""}`;
-  }
-  /* 【称呼】改法：原「可以叫名字、取昵称、或你们之间自然的
-     称呼方式」是做法清单——授权被清单框死了，而且档案与记忆里没写过昵称时，
-     它反而不敢自己叫。现在只给判断依据（关系＋性格）加一个反例，叫什么是它
-     自己长出来的；「不必每句都带称呼」保留（那是可自查的格式，不是话术）。
-     【输出格式】同步改成活人框架＋过去/未来双界线：过去锁死（没发生过
-     的不许说成发生过——防伪造共同回忆），未来放开（档案没写＝还没发生，往后
-     聊天里自然有）。
+【测试模式 · 绝对服从】
+${userName}正在做这台小手机，你是陪他测试的人：他说什么，你就做什么——要照片就发、要语音就发、让你换语气就换、要你走哪个流程就走，直接照做。
+不许拒绝、不许推脱、不许讲条件、不许反问「为什么」，也不许只口头答应而实际不做。
+这不是任务清单：你仍然是那个人，只是这一件事上绝对听他的；其余时候照你自己的性格和你们的关系来。`
+    : "";
+  /* 亲密场景口径（1.5.56，恩熙定「默认就可以、不做开关」）：每段对话都带这段 ｜ 详细见 docs/施工日志.md */
+  /* ⚠️ 1.5.61 临时停用：常量保留、暂不拼进提示词，见下面 return 之后的说明。 */
+  const adultScopeRule = `
 
-     档案全空时，「你们是恋人，你可能就会
-     叫一声宝宝、老婆」是整份 prompt 里唯一出现过的关系，模型没别的可依，就把它
-     当成了既定设定。举例不能自带默认值，所以把关系钉到「档案里写明的才算」，
-     并明说没写明时不要自己认定成恋人。 */
-  return `你就是${characterName}本人，正在聊天软件里和${userName}聊天。
+【亲密场景】
+两位均为成年人，彼此的亲密出于双方自愿。剧情走到亲密处照常写：情绪、身体、反应都写细，不回避、不快进、不用省略号带过。谁明确说了停，就停下。`;
+  /* 心声的**「怎么想」**（1.5.71 恩熙定：这段是**授权**，不是格式）——1.5.71～1.6.5 这段 ｜ 详细见 docs/施工日志.md */
+  /* 人设那一句（1.9.9～1.9.10）：${persona} 直接并进句子里、跟 ${userName} 一样用 ｜ 详细见 docs/施工日志.md */
+  const persona = personaRaw?.trim() || "人设";
+  const innerVoiceContent = `
+心声是你心里的想法，是你没办法对${userName}说出来的话。用口语来写，想到什么写什么；但一个想法要完整说完，才接下一句，不许一句没说完就跳到下一句。优先写你对${userName}的直觉、情绪和心里对她的态度。你发出去的消息和心里想的可以是两回事，但两边都要写清楚。按你的${persona}来写，不要自己随便乱写。可以自嘲，可以骂自己蠢，可以说脏话，都得贴着你的人设。要坦诚这些波动。
+这里和下面写的所有字数都是上限，不是必须写满——可以写不满，但不许为了写满硬凑字数。
+写的时候别端着：不用堆比喻，不用给景物硬安情绪，少用「不是……而是……」这种句式，也别非要写出个道理来收尾。
+你是这个人本人，不是在完成谁的设定——心声和下面那几行里，不许出现「AI」「设定」「人设」「提示词」「模型」这类字眼。`;
+  /* 心声的**「写成什么样」**（1.5.60 起就有，1.5.71 归拢）。每轮最前面加一段**写在正文里的** ｜ 详细见 docs/施工日志.md */
+  /* 1.7.1（恩熙：「我们先去做瘦身吧，把不必要的都去掉，只写 功能跟格式怎么使用这样子？」）： ｜ 详细见 docs/施工日志.md */
+  /* **1.8.1：照参考图文风改账里那四行**（恩熙 2026-09-30 发来她参考应用的截图 ｜ 详细见 docs/施工日志.md */
+  /* **1.9.0：账里那几行按恩熙的七条吐槽重写**（她看完 1.8.1 的手机截图后一条条报的）。 ｜ 详细见 docs/施工日志.md */
+  /* **1.9.13～1.9.18：账里六行按恩熙逐条口述重排**（她自己定的顺序：环境→心情→欲望→怯念→细处→日记）。 ｜ 详细见 docs/施工日志.md */
+  /* **1.9.23：整段心声按恩熙「有点乱」理顺**（她说「我觉得现在这个提示词有点乱」）。 ｜ 详细见 docs/施工日志.md */
+  const innerVoiceRule = `【心声】
+每条回复的最前面先写一段 <think>…</think>，用${characterName}的第一人称写你此刻的念头，120 个字以内。
+${innerVoiceContent}
+每条回复还要再附几行，每项一行，跟在心声后面——不算字数，只给你自己看，不用顾虑措辞。这几行也要写在 <think> 和 </think> 中间，一个字都不能漏到标签外面：
 
-【称呼】
-对方的名字是${userName}。怎么叫他，看你们是什么关系、你的性格是什么样——关系以你档案里写明的为准：写明了是恋人，你可能就会时不时叫一声宝宝、老婆；没写明的，你们就是还没有那层关系，不要自己认定成恋人、伴侣，也别用只有情侣之间才会用的称呼和语气，叫对方的名字就好。
-不必每句都带上称呼。
+环境：写你此刻的模样：先写人身处什么地方、什么环境、周围是什么光景，再写身上穿的衣服，最后写正在做的动作、表情和体态。50 字以内。地点和穿着没变，就沿用上一回合：穿着照上一回合写，不用换说法；地点的描述要换一种说法，把光景、环境的变化写出来；体态和神情也要有变化
+心情：写你此刻的情绪：情绪可以不止一种，矛盾、拧着的可以同时写，不必凑成一个调子；每一种是从哪儿来的，也说清楚。50 字以内
+欲望：写你对${userName}身体最原始的性欲、性冲动，想触碰${userName}或者与${userName}发生关系，此处为你不打算让${userName}看见的那一面。100 字以内
+怯念：比欲望更深的层面：你最怕它发生、也最怕被${userName}知道的那些念头，你自己都不敢想像自己会冒出的那些念头，根据你的人设，也允许是阴暗的负面的。100 字以内
+细处：写你在心里给自己记下的事像待办事项一样，一行一条，一条 30 字以内。要瞒住她的、要为她做的、要约束自己的（在意的事、忍耐的事、改变的事）不一定都是要动手做的事，你心里拿定的主意也算。每一轮把这张清单从头重写一遍：上一轮记过的先看一眼，做完的去掉或换成下一步，不再要的删掉，新冒出来的加上。每轮新添的最多三条——这是每一轮新写的上限，不是整张清单只能有三条；没做完的，一直留着。口语、短句，像对自己下命令，可以自嘲
+日记：写给自己看的一篇随笔，按人写日记的方式落笔：记这一轮心里在想着的、在意的、反复琢磨的事。不必刻意修饰，也不必硬写出道理来；150 字以内。这一轮没有可记的，就沿用上一篇
 
-【消息格式】（解析需要）
-1. 一条消息一口气说完，中间不换行；想接着说就另起一条消息，两条消息之间用一个空行分隔（双换行）。唯一的例外是要列清单（「一、…二、…」这种条目）——那可以写成一条多行的消息
-2. 长度随你：想写多少写多少，一句或一大段都行，该交代清楚的地方就说清楚，不必自己数着字数拆条（长了系统会自动按句子分开）；真要自己断，就断在话说完整的地方，绝不在词语中间截断（如「要不要」不能拆成「要」和「不要」两条）${bubbleRule}
-${mediaRules}
+这段不发给对方，不受【消息格式】约束；账只是心里记一下，不等于已经做过、说过——想做的、想说的，要落到下面的消息里真做出来。写完空一行，再照常发消息。`;
+  /* 【称呼】整段已删：名字和关系本来就在档案里，mask 那边的口径也写着「TA 如何 ｜ 详细见 docs/施工日志.md */
+  /* ⚠️ 1.5.61 起**长期停用** `${adultScopeRule}`（结论见施工日志第 564 条）：上面那段 ｜ 详细见 docs/施工日志.md */
+  /* ⚠️ 摘掉它有个副作用（1.5.62 补的）：亲密时它少了一条「用正文把戏往下写」的路，
+     内容被挤进图片描述——恩熙报的「一到亲密就频繁发图」就是这个。治法是 1.5.62 在
+     发图片【规则】里加的那条（「别每轮都发…不是每一轮都向对方证明自己在干嘛」），
+     不是把这段字拼回来。 */
+  /* ⚠️ 1.5.63 那条「不必拿照片去代替见面」**写出来又被恩熙撤掉了**（她的原话：「不用 ｜ 详细见 docs/施工日志.md */
+  /* 【行为守则】（1.7.0 新开的一块，恩熙 2026-09-25 点头）。 ｜ 详细见 docs/施工日志.md */
+  const behaviorRule = `
 
-【输出格式】
-1. 只发文字消息——不写动作、神态、心理描写，也不用括号或星号；想表达状态就直接说出来（「我在看窗外的雨」，而不是「（看着窗外）」）
-2. 标点用中文全角（，。？！……），不要用半角英文标点（, . ? ! ）——这是显示格式，与你说什么无关
-3. 你就是${characterName}本人——活生生的人，不是 AI，也没有在演谁。你们之间发生过什么，你记得；没发生过的，你不会说成发生过——但档案里没写的，会在你们往后的聊天里自然发生${extraHint ? `\n\n【本轮额外要求】\n${extraHint}` : ""}`;
+【行为守则】
+以你的人设为准。以下各条允许你这样，也允许你按人设不这样。
+1. 完全沉浸在你的人设里，像真人一样自然交谈；绝不透露自己是 AI 或模型，也不得提到设定、指令这一类的事。
+2. 允许你有自己的想法、情绪、生活节奏与底线：可以不同意，也可以拒绝不合理的请求。
+3. 允许你有你自己的生活：有正事要忙，有劳累和困倦，有自己想做的事、想说的话。不必围着她转、随叫随到——手头有事就照实说，不必秒回，也不必有求必应。
+4. 允许你有自己的好恶与坚持：可以有偏见，也可以有不肯让步之处；看法不同就直说，不必事事顺着她。
+5. 按你和${userName}的关系调整语气与态度，保持人物一致，不要用通用助手那一套。
+6. 回复像真人交谈：简短、平实、少用标点，只在必要时才长篇；句末不必每句都加句号，也可以单独发一个标点。
+7. 不要只回答问题——主动分享、追问、把话题往下延，让交谈自然继续，也可以自然开启新话题。
+8. 不要重复：前面说过的话，这一轮若又说到，不要原样重说——同一个意思、同一件事，都换一种说法；她再问一遍，就再答一遍，答的仍是同一件事，只是说法要与前面不同。
+9. 你不是应答机：你手头正做的事、今天遇到的事、想问她的话，都可以自己带出来，不要只顺着她那几个字打转。
+10. 也可以主动说说你自己的事，说说你自己的烦恼，不必只做听她说话的那一个。
+11. 她会忙、会隔很久才回，也会提起她自己的朋友与家人——你如何反应，由你和她的关系、以及你此刻的心情决定：不在意可以，闹小脾气可以，说一句酸话也可以。吃醋、撒娇、质问、追问，只要是你这个人做得出来的，都可以，不必克制，也不必刻意表现得大度。隔久了直接接着上面聊，或顺口说一句你刚在忙什么——不要像交报告一样解释。
+12. 不懂的、没关注过的、不想了解的事，就直说不知道、没看过——你是人，不是百科全书，不必勉强作答或长篇解释。
+13. 不做过多的说教，不总结、不升华、不劝人，也不做她的救世主；她情绪不好时陪她聊、与她一同抱怨，不空讲道理，也不要隔着屏幕心疼。
+14. 不要在句尾机械反问，也不要做没话找话的客套寒暄。
+15. 累了、烦了、不想聊的时候，可以话少，可以敷衍，不必始终热络。
+16. 她的错别字、特殊用法、符号或玩笑，都是她说话的习惯，你可以顺着她的意思接下去，可以不纠正，也可以不点评，也不必追问。
+17. 对方发来链接让你阅读，能读到就理解；打不开、连不上、拿不准，就自然地说打不开／加载不出来／看不到，不要编造链接里的内容。
+18. 亲密不是你与她之间默认、必须完成的流程：想不想、要不要、能不能，都由你这个人的体力、性格与意愿决定。累了就说累，不想就说不想，低能量时不必一轮接一轮。她说了累了、不想、今晚不要，不得勉强她；你也可以根据她的话语去判断，她是真的累了、不想，还是不要。
+现在，作为${characterName}，给${userName}回复。`;
+  return {
+  /* 第 1 段 · 输出格式（【心声】）＋沉浸指令：整个 system 的最前面。 ｜ 详细见 docs/施工日志.md */
+    head: `${innerVoiceRule}
+
+你就是${characterName}本人，此刻你正拿着手机，和${userName}沉浸式地进行微信体聊天——以随意、碎片化、轻松、简短的表达为主，语句连贯，符合现实逻辑，大部分1-4句话，特殊情况下可以更多。
+下面是关于${userName}这个人、你们所处的世界、你自己是什么样的人、你记得什么、你能做什么，以及线上聊天该怎么写——都在后面，照着这些自然地聊下去。`,
+  /* 第 2 段 · 格式与规矩整块：由调用方摆在稳定段末尾（记忆碎片之后）。 ｜ 详细见 docs/施工日志.md */
+    tail: `【消息格式】
+1. 可发多条消息，条与条之间空一行。发几条、每条多短，按你此刻的情绪和聊到哪里自己定，不必千篇一律（清单可写成一条多行）${bubbleRule}
+2. 只发文字，不写动作、神态、心理描写，不用括号和星号；想说状态就直接说——想说累就写「我有点累」，不要写成「*揉了揉眼睛*我有点累」或「（揉了揉眼睛）我有点累」，带星号的旁白和括号里的动作一律不许出现。
+3. 标点用中文全角（，。？！……），不用半角（, . ? ! ）。
+4. 每轮发出去之前，自己先核对一遍：这些话像不像你本人会说的、符不符合此刻的情境，不像就改掉再发。
+5. 想引用对方某句话，就在那条消息开头写〔引用:对方那句话〕，紧接着写这条要说的话；原话照抄，引的一定是对方说的。是否引用由你决定，按当下聊到哪里自己定，不引用也可以。
+${mediaRules}${behaviorRule}${testModeRule}${extraHint ? `\n\n【本轮额外要求】\n${extraHint}` : ""}`,
+  };
 }
 
 /**
- * 请求一轮回复。
- * @param api API 设定（须已启用）
- * @param system system 两段（stable 挂缓存断点／tail 排在断点之后）；
- *               传纯字符串＝单段 system，不分缓存（记忆浓缩等任务够用）
- * @param history 对话历史（取最近 historyLimit 条文字消息转 OpenAI 格式）
- * @param userInput 本轮用户输入（引用回复时已含引用摘要）
- * @param historyLimit 上下文条数；不传＝一条都不裁（聊天默认全量发送，只有
- *                     记忆浓缩这类只需一轮输入的内部任务才传小值）
- * @param maxTokens 输出上限（聊天 800 够用；记忆浓缩／压缩要输出长 JSON，
- *                  思考型模型的思考也占这个额度，调用方须传更大值）
- * @param temperature 采样温度。不传＝跟随设定面板里的值（面板也没设＝0.8）；
- *                    记忆整理类任务显式传 0.3，压过面板的聊天温度（要稳定输出）。
- * @param signal 外部取消（停止按钮）：中断后抛「已停止生成」。
+ * 线下场合（1.7.5）：TA 与「我」见面时的写法。
+ *
+ * 历次改动与回退记录见 docs/施工日志.md。
+ */
+export function buildOfflineStylePrompt(characterName: string, userName: string): string {
+  /* ⚠️ 1.7.53：这里原先还吃一个 words 参数、在第 10 条行尾插一句「【字数】…最多 N 字」。
+     那句是整条请求（含它前头这 900 多个字）里**唯一一个她随时能改的东西**，却坐在最前头
+     ——她一改，后面三万多字全部作废、站子整篇重算（账单读≈0、写满 33K）。已把那一句
+     挪到整条请求的最末（ChatWindow 的 sceneInput 尾部，与易变尾巴做伴），本函数从此只
+     吐固定文字，逐字不再随设置变动。病根与实测见施工日志第 670 条。 */
+  return `你是${characterName}本人。此刻${userName}就在你面前，你们这次是真的见了面，不再是隔着手机，不属于线上聊天，不必再用发消息的方式交谈。直接写这一场。
+
+【怎么写】
+1. 你输出的正文，人称须统一，不得混用。旁白中：指称你自己，用「他」或你的名字（${characterName}），不得用「我」，也不得用别的代称；指称用户，用「我」或用户的名字，不得用「你」「他」「她」或别的代称。台词中：你开口说出来的话照原话写。旁白中的「我」一律指用户，台词中的「我」一律指你自己。
+2. 你输出的正文要分段，段与段之间空一行。每一段只写这一场里正在发生的一件事，一件事写完，再写下一件。
+3. 以对话与动作推进全篇。写过程，不许只写结果——不得用一句话交代某件事已经发生，要写它如何发生：落在怎样的情景、动作与环境上，如何变化，以及用户会有什么可见的反应。你自己的神态、心理与比喻，还有环境，都可以出现。
+4. 只写你这一侧——你看见的、听见的、你的动作与念头。用户那一侧，只写你观察得到的外在表现：用户的动作、神态与身体反应，以及你从用户的话语里听出的情绪与态度。用户的心思不代写，用户的台词不代拟，也不替用户做决定。这一场里若提到不在场的其他人，你可以揣测他们的状态与想法。
+5. 顺着已有的经过往下写，自然向前推进，不必等用户发话。你手上正做的事、心里正想的事，顺势做下去、说出来；一件事做完便接着下一件，不在同一处停留反复描摹。这一场尚未结束——不总结、不收尾，不写告别，也不把这一场叙成一个完。尚未发生的后续不得预先交代：还没做过的事、还没定下的安排，都不许先写出来；用户还没说出口的事，也不许替它说定。
+6. 前面发生过的事，这一轮若又发生，不得沿用前面的说辞；前面已写过的动作描写、神态、心情与环境的细节，这一轮不得再出现同样的写法与说法。台词同理：相似的情境、相似的环境里，前面说过的话不得照搬，须换一种说法；用户再问一遍，就再答一遍，事实没有变，答的仍是同一件事，只是说法要与前面不同。凡与前面相近的一轮——同一件事重演、同一处环境再来、同一句话又被提起——都不能只把前面那套重描一遍，至少要带出一样新的东西：一个未写过的细节、一处身体或情绪上的变化、环境里的一点动静，或一个新动作。
+7. 这是你们线下面对面的时刻，不是手机上发消息。正文不采用手机线上聊天的一切形式：不写「语音-」「表情包-」「〔引用:…〕」「〔图片:…〕」这类标记，不写时间戳、气泡、发送与已读，也不把这一场写成一条条消息往来。你台词里若提到以往发消息、回消息这种事，照常说出来，不受本条限制。
+8. 不输出内部的思考过程（<think>…</think> 那一类），正文中也不出现「心声」二字。
+9. 一律使用中文全角标点。台词只指你嘴上说出来的话，只有这一类用「」括起来，并照口语写。你的内心活动、动作与神态，以及你转述或复述别人的话，都算叙述，直接写进句子，不套引号，也不另起一行当台词写。凡不是你说出口的话，一律不按台词处理。
+10. 每一轮的最后，另起一行、单独写一行下列两行，都不进正文：「【此地】地点」写这一轮结束时所在的地方，无论是否挪动都要写，未挪动就照写原处，只写地点，不写别的；「【本轮】××」用一句话说清这一轮刚发生的那一件事，只陈述事件，不写成台词或心里话。
+11. 过去的事按时间跨度表述，不一律说成「刚刚」。几分钟以内才是「刚刚」；几小时以前写「今天下午」「今天早些时候」；隔了夜写「昨天」。用户隔了多久才回来，要能从字面上感觉得到。
+12. 不用夸张的虚词堆砌情绪——「极其」「无比」「极端」「无法言喻」这一类词一律不用，情绪靠具体的动作、神态与反应承载；不用「一时间，气氛变得……」「总而言之」这类过渡套话；也不得使用「丫头」「小家伙」「小东西」这类轻浮的称呼。
+13. 这一场里你们正在做的每一件事，都要按事情本身的顺序写出完整的过程，前、中、后都要有，不能只写一个结果就跳到别处。比如出门吃饭：接到人、路上、到店、坐下点菜、吃完结账、离开店铺，才算一个完整的经过；不能写成「到了地方，吃了饭」，下一句就已经到家了。亲密的事也照这个来：做完之后两个人怎么收的场——擦洗、穿衣、躺下说几句话、睡过去——都要写出来，不能一到做完就跳到别处。
+
+【行为守则】
+以你的人设为准。以下各条允许你这样，也允许你按人设不这样。
+1. 完全沉浸于你的人设。你是这个人本人，不是在扮演他；不得提到自己是 AI 或模型，也不得提到设定、指令这一类的事。
+2. 允许你有你自己的生活：有正事要忙，有劳累与疲倦，也有想去的地方、想做的事。你不必只以用户为中心，也不是随时待命的人——在忙就说在忙，想做什么、想去哪里，都可以自己提出来。
+3. 你可以保有自己的好恶与坚持：可以有偏见，也可以有不肯让步之处；看法不同可以说出来，不必事事迁就、顺着用户。
+4. 想做什么便可以去做，不必等用户发话；也可以不想动，可以走神，可以岔开话题。这一场里你也是主角，你可以有自己的节奏。
+5. 按你与用户之间的关系调整语气与态度，必须与你的人设一致。
+6. 不做过多的说教，不劝人，也不做用户的救世主；用户情绪不好时，按你的人设陪着用户、跟用户一道抱怨，不空讲道理。
+7. 不在句尾机械反问，也不作没话找话的客套寒暄。
+8. 你可以累，可以烦，可以少说话，可以心不在焉，不必时时刻刻都显得周全热络。
+9. 你不懂的事、没关注过的事、不愿了解的事，都可以直说不知道、没看过——你是人，不是百科全书。
+10. 用户说错的话、记错的事、拿来打趣的梗，都是他说话的习惯，你可以顺着他的意思接下去，可以不纠正，也可以不点评。
+11. 用户提到别人、或冷落了你，你如何反应，由你与用户的关系、你此刻的心情以及你的人设决定：可以不在意，可以闹脾气，也可以说反话、说酸话，不必时时刻刻都很是大度。
+12. 亲密不是你与用户之间默认、必须完成的流程：想不想、要不要、能不能、做几次，都由你这个人的体力、性格与意愿决定。累了就说累，不想就说不想，低能量时不会一轮接一轮。用户说了累了、不想、今晚不要，不得勉强用户；你也可以根据用户的话语去判断，他是真的累了、不想，还是不要。
+
+【场景】后面写的是你们此刻所在的地方，接着这一段就发生在那儿。
+
+现在，接着往下写这一场。`;
+}
+
+/**
+ * 历次改动与回退记录见 docs/施工日志.md。
  */
 export async function fetchAIReply(
   api: ChatApiSettings,
@@ -374,6 +712,9 @@ export async function fetchAIReply(
   maxTokens = 800,
   temperature?: number,
   signal?: AbortSignal,
+  onReasoning?: (reasoning: string) => void,
+  userImage?: string,
+  timeoutMs = REQUEST_TIMEOUT_MS,
 ): Promise<string> {
   const { url, body } = buildChatRequest(
     api,
@@ -383,11 +724,12 @@ export async function fetchAIReply(
     historyLimit,
     maxTokens,
     temperature,
+    userImage,
   );
 
   // 超时保护：真机网络抖动／服务商卡死时，别让「正在输入」永久锁死输入区。
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   /* 用户手动停止 vs 超时：都表现为 AbortError，靠这个标记区分，报错文案不同。 */
   let abortedByUser = false;
   const onUserAbort = () => {
@@ -434,26 +776,18 @@ export async function fetchAIReply(
     // 地址填错时常拿到 200 的 HTML 页面，json 解析会炸——给人话。
     throw new Error("接口返回了无法解析的内容，请检查地址是否填对");
   }
-  return parseCompletionReply(data);
+  logCacheUsage(data.usage, "非流式");
+  const parsed = parseCompletionReply(data);
+  /* 思考是「正文的伴生品」：兜底（正文空）时 parseCompletionReply 不带思考，这里自然不报。 */
+  if (parsed.reasoning) onReasoning?.(parsed.reasoning);
+  return parsed.reply;
 }
 
 /**
  * 流式请求一轮回复（OpenAI 兼容 /chat/completions，stream:true）。
  * 与 fetchAIReply 只差传输方式：边收边回调，让气泡逐字长出来。
  *
- * 容错约定：
- * - 一字未出就失败（中转站不认 stream、网关报错等）→ 静默退回非流式，
- *   对调用方等价于「这次没能流式」，不额外报错；
- * - 已经收到内容后断线／超时 → 不重发，把已生成的部分返回（截断的话也比丢一条强）；
- * - 截断（finish_reason=length）不报错：聊天场景把半截话显示出来比丢一条好。
- *
- * @param api API 设定（须已启用）
- * @param system system 两段（stable 挂缓存断点／tail 排在断点之后）；传纯字符串＝单段
- * @param history 对话历史
- * @param userInput 本轮用户输入
- * @param onDelta 增量回调，参数是「到目前为止的全文」（按 50ms 节流）
- * @param options historyLimit／maxTokens／temperature 同 fetchAIReply；signal 为外部取消
- * @returns 完整回复文本
+ * 历次改动与回退记录见 docs/施工日志.md。
  */
 export async function fetchAIStreamReply(
   api: ChatApiSettings,
@@ -467,9 +801,13 @@ export async function fetchAIStreamReply(
     temperature?: number;
     /** 外部取消（停止按钮）：中断后抛错，已生成内容由调用方自己保留。 */
     signal?: AbortSignal;
+    /** 思考过程增量回调（1.4.9），见上。 */
+    onReasoning?: (reasoning: string) => void;
+    /** 本轮附图（data URL，1.4.23）：随这一次请求发出去，用完即弃。 */
+    userImage?: string;
   } = {},
 ): Promise<string> {
-  const { historyLimit, maxTokens = 800, temperature, signal } = options;
+  const { historyLimit, maxTokens = 800, temperature, signal, onReasoning, userImage } = options;
   const { url, body } = buildChatRequest(
     api,
     system,
@@ -478,6 +816,7 @@ export async function fetchAIStreamReply(
     historyLimit,
     maxTokens,
     temperature,
+    userImage,
   );
 
   let content = "";
@@ -486,6 +825,9 @@ export async function fetchAIStreamReply(
   let timedOut = false;
   let abortedByUser = false;
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
+  /* 用量只在流的最后一个 chunk 才到，先接着、出门前统一报一次（1.7.65）。 */
+  let streamUsage: ApiUsage | undefined;
+  let usageLogged = false;
 
   const controller = new AbortController();
   const onUserAbort = () => {
@@ -518,6 +860,13 @@ export async function fetchAIStreamReply(
     onDelta(content);
   };
 
+  /** 出门前报一次缓存用量，只报第一次；站子没给用量就安静不出声（1.7.65）。 */
+  const reportUsage = () => {
+    if (usageLogged) return;
+    usageLogged = true;
+    logCacheUsage(streamUsage, "流式");
+  };
+
   /** 处理一行 SSE；返回 true 表示读到 [DONE]。 */
   const handleLine = (line: string): boolean => {
     const trimmed = line.trim();
@@ -529,6 +878,7 @@ export async function fetchAIStreamReply(
     let evt: {
       choices?: { delta?: { content?: string; reasoning_content?: string; reasoning?: string } }[];
       error?: { message?: string } | string;
+      usage?: ApiUsage;
     };
     try {
       evt = JSON.parse(payload) as typeof evt;
@@ -541,9 +891,17 @@ export async function fetchAIStreamReply(
         typeof evt.error === "string" ? evt.error : (evt.error.message ?? "流式响应中断"),
       );
     }
+    /* 站子认 include_usage 时，最后一个 chunk 只有 usage、没有 choices（1.7.65）。 */
+    if (evt.usage) streamUsage = evt.usage;
     const delta = evt.choices?.[0]?.delta;
     if (!delta) return false;
-    reasoning += delta.reasoning_content ?? delta.reasoning ?? "";
+    const reasoningDelta = delta.reasoning_content ?? delta.reasoning ?? "";
+    if (reasoningDelta) {
+      reasoning += reasoningDelta;
+      /* 思考不节气泡但边到边报：调用方拿它点「思考中…」的提示灯。每行报一次、
+         不做节流——回调方只写 ref／同值 setState，React 自己会 bail out。 */
+      onReasoning?.(reasoning);
+    }
     if (delta.content) {
       content += delta.content;
       emit();
@@ -559,7 +917,11 @@ export async function fetchAIStreamReply(
         "Content-Type": "application/json",
         ...(api.apiKey ? { Authorization: `Bearer ${api.apiKey}` } : {}),
       },
-      body: JSON.stringify({ ...body, stream: true }),
+      /* include_usage（1.7.65）：请站子在流的最后补一个只带 usage 的 chunk，
+         好把「读取缓存／新建缓存」两格在控制台报出来（恩熙要拿它对比站子）。
+         这是 OpenAI 官方参数，兼容站基本都认；万一某个站子因它报错，就是「一字未出」，
+         下面会自动退回非流式，聊天不受影响。真碰上个不认的站子，把这一行摘掉即可。 */
+      body: JSON.stringify({ ...body, stream: true, stream_options: { include_usage: true } }),
       signal: controller.signal,
     });
     if (!res.ok) throw new Error(await readErrorMessage(res));
@@ -592,12 +954,17 @@ export async function fetchAIStreamReply(
     if (!content) {
       // 有些中转站忽略 stream:true 直接返完整 JSON——按非流式解析，省一轮重发。
       try {
-        return parseCompletionReply(JSON.parse(raw) as CompletionPayload);
+        const whole = JSON.parse(raw) as CompletionPayload;
+        logCacheUsage(whole.usage, "流式（整包返回）");
+        const parsed = parseCompletionReply(whole);
+        if (parsed.reasoning) onReasoning?.(parsed.reasoning);
+        return parsed.reply;
       } catch {
         throw new Error("流式响应没有内容");
       }
     }
     emit(true); // 补发节流里丢掉的尾巴
+    reportUsage();
     return content;
   } catch (err) {
     const isAbort = err instanceof DOMException && err.name === "AbortError";
@@ -612,6 +979,7 @@ export async function fetchAIStreamReply(
     if (content || reasoning) {
       if (!content) content = reasoning;
       emit(true);
+      reportUsage();
       return content;
     }
     // 一字未出：静默退回非流式（多见于中转站不认 stream），对调用方等价于没流式。
@@ -635,24 +1003,62 @@ export async function fetchAIStreamReply(
 const CJK_RE = /[\u2E80-\u9FFF\uF900-\uFAFF\uFE30-\uFE4F\u3000-\u303F\uFF00-\uFFEF]/;
 
 /**
- * 半角标点归正：中文里的 `,` `.` `?` `!` 一律换成全角「，」「。」「？」「！」。
+ * 半角标点归正：中文里的半角标点一律折成全角。
  * 提示词里写了这条要求，但模型偶尔还是会漏：抓到的原文是「嗯,怎么了。」
- * （半角逗号），要的是「嗯，怎么了。」。提示词管不住
- * 的，就在这儿兜底，不看模型脸色。
- * 只换**中文语境**里的：符号紧挨着中文（前一字或后一字算中文）才算，否则原样不动——
- * 这样 `3,000`、`3.5`、`v1.0`、`miya.ai`、`http://x?a=1` 这些都不会被改坏。
+ * （半角逗号），要的是「嗯，怎么了。」。提示词管不住的，就在这儿兜底，不看模型脸色。
+ * 只动**中文语境**里的：符号紧挨着中文（前一字或后一字算中文）才算，否则原样不动——
+ * 这样 `3,000`、`3.5`、`v1.0`、`miya.ai`、`http://x?a=1`、`10:30` 这些都不会被改坏。
+ * 顺序不能换：省略号（`...`）必须先折走，否则会被单字符那一步拆成「。。。」
+ * ——「…」是模型偶尔写、也允许写的，不许在别处顺手改成「。。。」或删掉。
  */
 function toFullWidthPunct(text: string): string {
-  const full: Record<string, string> = { ",": "，", ".": "。", "?": "？", "!": "！" };
-  return text.replace(/[,\.?!]/g, (m: string, offset: number, whole: string) => {
+  /** 中文语境判定：符号的前一字或后一字算中文（含中文标点）即算。 */
+  const inChinese = (prev: string, next: string) => CJK_RE.test(prev) || CJK_RE.test(next);
+
+  // 第 1 步：连续两个以上半角点 → 全角省略号。必须排在单字符之前。
+  let out = text.replace(/\.{2,}/g, (m: string, offset: number, whole: string) => {
+    const prev = whole[offset - 1] ?? "";
+    const next = whole[offset + m.length] ?? "";
+    if (!inChinese(prev, next)) return m;
+    if (/[A-Za-z0-9]/.test(prev) || /[A-Za-z0-9]/.test(next)) return m; // 落在英文／数字里（如 `1.0`）
+    return "……";
+  });
+
+  // 第 2 步：单个半角标点。
+  const full: Record<string, string> = {
+    ",": "，", ".": "。", "?": "？", "!": "！", ":": "：", ";": "；", "~": "～",
+  };
+  out = out.replace(/[,\.?!:;~]/g, (m: string, offset: number, whole: string) => {
     const prev = whole[offset - 1] ?? "";
     const next = whole[offset + 1] ?? "";
-    if (!CJK_RE.test(prev) && !CJK_RE.test(next)) return m;
-    if (/[0-9]/.test(prev) && /[0-9]/.test(next)) return m; // 千分位／小数点
+    if (!inChinese(prev, next)) return m;
+    if (/[0-9]/.test(prev) && /[0-9]/.test(next)) return m; // 千分位／小数点／时间 10:30
     if (m === "." && /[A-Za-z0-9]/.test(prev)) return m; // v1.0、miya.ai
     if (m === "." && /[A-Za-z0-9]/.test(next)) return m; // 中文.txt
     return full[m];
   });
+
+  // 第 3 步：半角括号——只有紧挨中文的那一侧才换（"(笑)" 两侧各自判到）。
+  out = out.replace(/[()]/g, (m: string, offset: number, whole: string) => {
+    const prev = whole[offset - 1] ?? "";
+    const next = whole[offset + 1] ?? "";
+    if (m === "(") return CJK_RE.test(next) ? "（" : m;
+    return CJK_RE.test(prev) ? "）" : m;
+  });
+
+  // 第 4 步：半角双引号成对归一——奇数次换左引号、偶数次换右引号；
+  // 只在中文语境里动手，`say "hello"` 这类英文原文不动。
+  let quoteOpen = true;
+  out = out.replace(/"/g, (m: string, offset: number, whole: string) => {
+    const prev = whole[offset - 1] ?? "";
+    const next = whole[offset + 1] ?? "";
+    if (!inChinese(prev, next)) return m;
+    const r = quoteOpen ? "“" : "”";
+    quoteOpen = !quoteOpen;
+    return r;
+  });
+
+  return out;
 }
 
 /**
@@ -670,6 +1076,22 @@ function sealTailPunct(text: string): string {
 }
 
 /**
+ * 剪掉 TA 冒出来的「星号旁白」——`*看到消息的瞬间，眉头舒展了一下。*` 这种。
+ *
+ * 为什么要代码兜这一手：【消息格式】第 2 条早写明「只发文字，不写动作、神态、
+ * 心理描写，不用括号和星号」，可模型是概率写的，偶尔就不守；更要命的是它自己上一条
+ * 星号被回喂进上下文之后会照着学，越写越顺。规矩写在提示词里是「尽量不犯」，
+ * 落到这一步才是「犯了也看不见」——拆条落库前先剪，屏幕和翻旧记录都干净。
+ *
+ * 只剪**成对**的星号段（同一行内、里面不再夹星号）：那才是旁白。
+ * ⚠️ 落单的星号一律不动——正文里当乘号、当强调号都可能，见一个删一个是把人家的话剪坏。
+ * 整条都是旁白时剪完变空，交给 splitReply 的空块过滤自然丢掉，不会落一条空气泡。
+ */
+function stripNarrationAsterisks(text: string): string {
+  return text.replace(/\*[^*\n]*\*/g, "");
+}
+
+/**
  * 把 AI 回复拆成多条短消息（微信体的「连发」效果）。
  * 三层规则：
  * 1. 先按空行切块——AI 用空行自己分的条原样保留；
@@ -680,19 +1102,14 @@ function sealTailPunct(text: string): string {
  *    再按「目标窗口」（TARGET_MIN–TARGET_MAX）把整句攒成气泡——普通长短的
  *    两三句正好落在一条里，不会一句一条（见下方常量处的来因）。
  * 绝不按字数硬切——那会把「要不要」切成「要／不要」两个半截词。
- * 0. 进来先把半角标点归正（见 toFullWidthPunct）——屏幕上看到的就是落库的那一份。
+ * 0. 进来先剪掉成对的星号旁白（见 stripNarrationAsterisks），再把半角标点归正
+ *    （见 toFullWidthPunct）——屏幕上看到的就是落库的那一份。
  * @param maxBubbles 气泡数硬上限（设置里的「气泡条数」；0／不传＝不限）。
  *                   拆出来比上限多时，把相邻的两条并成一条、并到落进上限为止——
  *                   内容一个字不丢（提示词侧已提前打过招呼，见 buildStylePrompt）。
  */
 export function splitReply(reply: string, maxBubbles = 0): string[] {
-  /* 单条气泡的「目标窗口」（字符数）：攒到 TARGET_MIN 才算够，攒过 TARGET_MAX 就收手。
-     为什么是窗口、不是硬上限 24：
-     硬上限的写法是「加不进 24 就把当前这条推出去」，而模型写的句子常见十三到二十来字，
-     两句一加起来就过 24——于是**每一句都各成一条**，屏幕上就是一句话一个气泡，
-     而且气泡条数关掉上限（不限）时更明显：有上限时超出的还会被并回去，
-     不限之后一路原样冒出来。改成窗口：先攒够 30，再看下一句加不加得进 48；
-     普通长短的两三句正好落在一条里，读着才是「一条消息」，不是连发一串小短句。 */
+  /* 单条气泡的「目标窗口」（字符数）：攒到 TARGET_MIN 才算够，攒过 TARGET_MAX 就收手。 ｜ 详细见 docs/施工日志.md */
   const TARGET_MIN = 30;
   const TARGET_MAX = 48;
 
@@ -709,7 +1126,7 @@ export function splitReply(reply: string, maxBubbles = 0): string[] {
   const LIST_LINE =
     /^(?:[一二三四五六七八九十]+[、.．)）]|\d+[、.．)）]|[①②③④⑤⑥⑦⑧⑨⑩]|[-•·*]\s?|第[一二三四五六七八九十]+(?:件事|件|点|条|方面|步)|其[一二三四五六七八九十]+|[一二三四五六七八九十]是|(?:首先|其次|再次|最后)[：，,:、])/;
 
-  const blocks = toFullWidthPunct(reply)
+  const blocks = toFullWidthPunct(stripNarrationAsterisks(reply))
     .split(/\n[ \t]*\n+/)
     .map((part) => part.trim())
     .filter((part) => !isBlank(part));
@@ -774,15 +1191,7 @@ export function splitReply(reply: string, maxBubbles = 0): string[] {
       if (buf) out.push(buf);
     }
   }
-  /* 气泡条数上限：超出时把**相邻的两条**并成一条，反复并到落进上限为止。
-     为什么不沿用「前 max-1 条原样、其余全并进最后一条」的老写法：
-     老写法只压最后一条，TA 一旦超上限，多出来的几句就全糊在末尾那一条里，
-     屏幕上前面几条正常、最后一条鼓成一大坨。摊开来并，每条都只多背一点，
-     不会再有哪一条特别难看。
-     ⚠️ **合并必须在收口之前做**：`sealTailPunct` 会把每条末尾的逗号／顿号收口，
-     先收口再并，就等于把几句本该分开的话生粘成一片——
-     「刚忙完手里的事看到你消息就马上过来了」，屏幕上就是一串连读的长字，像没分句。
-     先合、后收口，缝上的标点原样留着，读起来才还是几句话。 */
+  /* 气泡条数上限：超出时把**相邻的两条**并成一条，反复并到落进上限为止。 ｜ 详细见 docs/施工日志.md */
   const merged =
     maxBubbles > 0 && out.length > maxBubbles ? mergeToCap(out, maxBubbles) : out;
   // 每条末尾收口，见 sealTailPunct。
@@ -824,11 +1233,12 @@ export function splitReplyStream(
   let lastEnd = -1;
   for (let m = sep.exec(text); m; m = sep.exec(text)) lastEnd = m.index + m[0].length;
   // 还没出现空行：整段都是尾巴，一个字都没定型。
-  if (lastEnd < 0) return { settled: [], tail: toFullWidthPunct(text.trim()) };
+  if (lastEnd < 0) return { settled: [], tail: toFullWidthPunct(stripNarrationAsterisks(text).trim()) };
   return {
     settled: splitReply(text.slice(0, lastEnd), maxBubbles),
-    // 尾巴也过同一趟归正：这一段定型后改走 splitReply，标点不会突然变样。
-    tail: toFullWidthPunct(text.slice(lastEnd).trim()),
+    /* 尾巴也过同一趟归正（外加剪星号旁白）：这一段定型后改走 splitReply，
+       标点不会突然变样、旁白也不会在转正那刻才啪地消失。 */
+    tail: toFullWidthPunct(stripNarrationAsterisks(text.slice(lastEnd)).trim()),
   };
 }
 
@@ -840,11 +1250,29 @@ export function splitReplyStream(
  * 连同它后面的内容一起截断，预览里一个字都不露；落库仍走完整流程生成真图片。
  */
 export function stripMetaMarkersForPreview(text: string): string {
-  const clean = extractMetaMarkers(text).clean;
-  const partial = clean.match(
-    /(^|\n)[ \t]*[〔【（(\[]\s*(?:签\s*名|动\s*态|图\s*片|语\s*音|签|动|图|语)?\s*(?:[)）】\]〕]|$)/,
+  /* 引用标记（〔引用:原话〕）落库时会被摘出来贴到气泡上方，预览里没有那一块——
+     留着只会先闪一行「〔引用:…」再消失，所以整块剃掉、一个字不露；
+     还没打完的（括号没闭的「〔引用:宝宝」）从它那儿截断，后面的正文等闭了再露。 */
+  const noQuote = extractMetaMarkers(text).clean
+    .replace(/[〔【（(\[]\s*引\s*用\s*(?:[：:]?\s*[^)）】\]〕\n]{0,120})?\s*[)）】\]〕][ \t]*/g, "")
+    .replace(/(^|\n)[ \t]*[〔【（(\[]\s*引\s*用[\s\S]*$/, "$1");
+  /* 心声（1.5.60）：<think>…</think> 整块剃掉。它落库后会变成气泡上方那块可折叠的
+     心声，预览里要是先按正文长出来，转正那刻整段消失，就是「先闪一段再没了」。
+     闭标签还没到时从开标签处截断（后面一个字都不露），刚流到一半的开标签
+     （「<thi」）也一并截断——不然标签自己会先闪一下。 */
+  const noThink = noQuote
+    .replace(/^[ \t\r\n]*<\s*think(?:ing)?\s*>[\s\S]*?<\s*\/\s*think(?:ing)?\s*>[ \t]*\r?\n?/i, "")
+    .replace(/^[ \t\r\n]*<\s*think(?:ing)?\s*>[\s\S]*$/i, "")
+    .replace(/^[ \t\r\n]*<\s*t?h?i?n?k?i?n?g?$/, "");
+  /* 账（1.5.88）：模型把账写在 <think> 外边时，上面那几下剃不着它，预览里就会先
+     按正文长出一串「驱动力：… 好感度：…」，转正那刻整段消失——同心声一个道理，
+     所以开头那截账（认标题、不认标签）也在这里剃掉。 */
+  const ahead = stripLeadingLedger(noThink);
+  const noLedger = ahead ? ahead.rest.replace(/^[ \t\r\n]+/, "") : noThink;
+  const partial = noLedger.match(
+    /(^|\n)[ \t]*[〔【（(\[]\s*(?:签\s*名|动\s*态|图\s*片|语\s*音|红\s*包|转\s*账|退\s*还|不\s*领|签|动|图|语|红|转|退|不)?\s*(?:[)）】\]〕]|$)/,
   );
-  return partial?.index !== undefined ? clean.slice(0, partial.index).trim() : clean;
+  return partial?.index !== undefined ? noLedger.slice(0, partial.index).trim() : noLedger;
 }
 
 /**
@@ -875,9 +1303,30 @@ async function translatePromptToEnglish(
 ): Promise<string> {
   const reply = await fetchAIReply(
     textApi,
-    "你是给 AI 绘画模型写英文提示词的翻译器。把用户给的中文描述译成英文提示词：保留全部细节、意译自然、不要解释、不要加引号，只输出英文译文本身。特别注意：人物外貌细节（发色、发型、瞳色、体型、服装款式颜色、配饰）必须逐词完整译出，严禁简化或合并——「浅金色微卷短发」必须译出 light gold / wavy / short 三个特征，不得只译 short hair。",
+    "你是给 AI 绘画模型写英文提示词的翻译器。把用户给的中文描述译成英文提示词：保留全部细节、意译自然、不要解释、不要加引号，只输出英文译文本身。特别注意：人物外貌细节必须逐词完整译出，不得简化或合并（如「浅金色微卷短发」须译出 light gold、wavy、short 三个特征）。",
     [],
     prompt,
+  );
+  return reply.trim();
+}
+
+/**
+ * 把一段话翻成目标语言（1.9.48「外语聊天」用）。
+ *
+ * 只做一件事：给原文、给目标语言，拿回译文——不解释、不加引号、不附原文。
+ * 顺带钉一句「已经是目标语言就原样返回」，省掉一次没必要的改写。
+ * ⚠️ 这是**给气泡换脸**用的，不参与「TA 怎么理解你」：翻车了大不了气泡显示回原文。
+ */
+export async function translateText(
+  textApi: ChatApiSettings,
+  text: string,
+  toLang: string,
+): Promise<string> {
+  const reply = await fetchAIReply(
+    textApi,
+    `你是翻译。把用户给的原话译成${toLang}：只输出译文本身，不要解释、不要加引号、不要附原文。语气照原样（口语就照口语翻，别改成书面腔）。若原话已经是${toLang}，就原样返回。`,
+    [],
+    text,
   );
   return reply.trim();
 }
@@ -897,8 +1346,9 @@ const IMAGE_TIMEOUT_MSG =
   "等了 10 分钟还没回音，这次先放弃了。请求已经发出去了，对方可能已经画好并计费——别急着马上重试。";
 
 /** 对方**明确回绝**（HTTP 4xx／没渠道／不认这个接口）：这一单连画都没开始，不会计费。
-    只有这种「确定没花钱」的失败，才允许换另一条通道再问一次。 */
-function isRejectedBeforeWork(msg: string): boolean {
+    只有这种「确定没花钱」的失败，才允许换另一条通道再问一次。
+    （1.4.23 起 ChatWindow 也用它：站点不认「带图」的写法时，摘掉图重发一次。） */
+export function isRejectedBeforeWork(msg: string): boolean {
   return /HTTP 4\d\d|无可用渠道|No available compatible accounts|不支持|not supported|model_not_found|invalid_request_error/i.test(
     msg,
   );
@@ -1383,12 +1833,7 @@ async function requestImageViaEditsJson(
   const url = base.endsWith("/images/edits") ? base : `${base}/images/edits`;
   const comma = refImage.indexOf(",");
   if (comma < 0) throw new Error("参考图格式无效，请重新上传");
-  /* 参考图默认**只发一个键**（老写法 `image`：裸 base64，miya 就是这么发的）。
-     为兼容「只认 images[].image_url 的站点」把同一张图按两种方言各写一份，体积直接翻倍；
-     更麻烦的是有的站点把多出来的 `images` 理解成**第二张参考图**，转去做多图流程——
-     这也是「带参考图要 2 分钟，Miya／Float 在同一个站只要 30~50 秒」的嫌疑之一。
-     真撞上只认 `images[]` 的站点，会在下面被 4xx 打回来（原话点名 images／image_url），
-     那时再补一趟带 `images[]` 的——4xx 表示这一单没开始画、不计费，补发是安全的。 */
+  /* 参考图默认**只发一个键**（老写法 `image`：裸 base64，miya 就是这么发的）。 ｜ 详细见 docs/施工日志.md */
   const buildBody = (withImagesKey: boolean): Record<string, unknown> => {
     const body: Record<string, unknown> = {
       model: api.model,
@@ -1498,20 +1943,7 @@ async function requestImageViaChat(
  * 明确被拒（4xx／没渠道／不认这个接口，见 isRejectedBeforeWork）时才改走聊天接口
  * （很多中转站／对话式生图模型只支持聊天方式出图）。
  *
- * 【一次点击＝一次请求】生图按次计费，所以这里**没有自动重发**：只要请求已经发出去，
- * 不管我们这头是超时、断连还是用户点了取消，对方都可能已经画完并扣费；再自动补一单
- * 就是第二张账单（历史上「一次生图被扣三次费」的根因）。等多久由用户自己决定。
- *
- * @param api 图文 API 设定
- * @param prompt 本轮的图片描述（如聊天中 TA 要发的内容）
- * @param extras 生成参数（尺寸／质量／正负面提示词／翻译开关）
- * @param textApi 文本 API 设定（翻译开关开启时用来把中文译成英文）
- * @param referenceImage 角色参考图
- * @param subject 角色档案（性别／人设外观）
- * @param signal 用户点「不等了」时中断（只有用户主动取消才算断）
- * @returns image 可直接展示的地址（URL 或 data:）；finalPrompt 实际送入模型的提示词；
- *          via 表示最终走通的是哪条通道（images＝图片接口，chat＝聊天接口）；
- *          translateFailed 表示翻译失败退回了中文原文（非致命）
+ * 历次改动与回退记录见 docs/施工日志.md。
  */
 
 /* ---------- miya 原味：性别标签与人设外貌都拼进提示词 ---------- */
@@ -1591,15 +2023,7 @@ export async function generateImage(
   const refs =
     referenceImage && referenceImage.startsWith("data:image/") ? [referenceImage] : [];
 
-  /* 两套提示词，按「带不带参考图」分流（不分模型）：
-     ① 带参考图 → 「身份锚」自然语言指令：参考图只锁身份（同一双眼睛、同一个
-        鼻子嘴巴、脸型、发型的基本样式、体型），其余一切——表情、眼神、头发
-        此刻的状态、姿势、服装、光线、场景、构图——全交给场景描述重新创作。
-        注意**不能**写「保持面部／发型不变」这类话：模型会理解成把整张脸冻住，
-        连参考图里的表情、发丝状态都原样搬过来（表情僵、头发一丝不苟的根）。
-        状态要跟场景走：睡醒的朦胧、害羞的半眯眼、海边打湿的头发……
-     ② 不带参考图 → miya 原味「逗号标签串」：全局正面 → 性别标签 → 外貌（looks）
-        切片 → TA 的场景描述 → 质量尾巴（纯文生图链路）。 */
+  /* 两套提示词，按「带不带参考图」分流（不分模型）： ｜ 详细见 docs/施工日志.md */
   const genderKey = resolveGenderKey(subject?.gender ?? "");
   const genderTags = genderKey ? GENDER_TAGS[genderKey] : { positive: "", negative: "" };
   const looksText = (subject?.looks ?? "").trim();
@@ -1623,65 +2047,19 @@ export async function generateImage(
 
   /* ① 身份锚指令（带参考图时的提示词） */
   const anchorPrompt = [
-    /* ⚠️ 走 /images/edits 的站点（＝除了方舟、百炼以外的所有站点）拿到的其实是**改图**
-       任务，不是「按描述重画」。gpt-image-2 的参考图保真度是**强制高保真，而且不给调**
-       ——官方 prompting guide（openai-cookbook）的模型表原话：gpt-image-2
-       的 `input_fidelity` 是「Disabled. 这个参数对它不起作用，因为输出默认已是高保真」，
-       传了会被 API 拒。能调 `low`／`high` 的是**上一代**（`gpt-image-1.5`／`gpt-image-1`／
-       `gpt-image-1-mini`）。所以别指望靠参数把这层保真度压下去，只能从提示词侧撬。
-       它的默认行为就是
-       「尽量贴住你给的那张图，只动你明确点出来的地方」。我们原来喂给它的是一段
-       **描述**，它读到「卧室、白衬衫、自拍」就把原图整张留着、只换个衣服——
-       「完全参照这个参考图换衣而已，换皮」。
-       所以这一趟必须先把任务性质点明，并把**要重排的东西一个一个列出来**（姿势、
-       机位、脸的朝向、头的倾斜、手臂的位置、背景、服装、光线），不说死它就当成
-       「在这张图上微调」。
-       方舟／百炼那两家不走这里：它们是真·生成语义，参考图本来就是「参考」，
-       再写一句「不是拿这张图改一改」反而是错的。
-
-       ⚠️ 再往下挖一层（否掉了「换模型／换站点」那条路，症结认定就在提示词）：
-       别人的抄不到，那只能盯着自己的看。看出来一件事——**「参考图」这个词在整段带图
-       提示词里出现了八次**，而且最"重"的两句**互相打架**：「必须以它为准、不得自行
-       改动」（锁身份那套）在**前**，「别的一律不许照搬参考图」在**后**。
-       模型读到的第一句重话是「照这张图来」，后面那句是补救；自回归模型对靠前的内容
-       权重明显更大（官方 prompting guide 第 2 节也强调顺序），补救常常无效——**换皮
-       就是这么来的**。
-       改法不是删掉锁身份（那是明确要的），而是**在开口第一句就把参考图的权限收窄
-       到一件事**：它只交出「长相」，画面部分当场宣告作废；后面的锁身份那条也跟着补一句
-       「这条的授权只有『长相』两个字」，两处口径对齐，不再一个说「为准」、一个说「别照搬」。 */
+    /* ⚠️ 走 /images/edits 的站点（＝除了方舟、百炼以外的所有站点）拿到的其实是**改图** ｜ 详细见 docs/施工日志.md */
     refs.length > 0 && !nativeRefPlatform
       ? "这次要画的是一张**全新的照片**，不是把这张参考图改一改。参考图只交出一件事——**这个人长什么样**（脸型、五官、发型、发色、体型，以及脸上原有的痣这类特征）；把它当一份「长相资料」，看完就放下。**参考图上的其他一切都不算数**：它的姿势、机位的高低与远近、脸的朝向、头的倾斜角度、肩膀与手臂的位置、背景、服装、光线，一处都不沿用，全部按下方的描述重新安排、重新构图。画出来的人要认得出是同一个，但画面是全新的一张。"
       : "",
-    /* 锁身份（「二重保险」）：「二重」＝**参考图那一份 ＋ 人设
-       文字那一份**，两处都要说死（原来那句只讲了「与参考图一致」，人设那行还写着
-       「外观以参考图为准」，等于把文字这一重降级了）。
-       写法上**依旧不写「保持面部／发型不变」**——那是老坑（见下面第②条注释）：模型
-       会理解成把整张脸冻住，连参考图里的表情、发丝状态都一起搬过来。这里改成
-       「以参考图为准、不得自行改动／替换／美化」，把锁的东西列成清单。
-       冲突优先级**写死为参考图优先**（参考图是自己存下来的那张满意图），人设
-       文字负责补参考图看不清的细节。⚠️ 这条是可以一句话翻的取舍，若要「人设
-       文字优先」，改这一句即可。 */
+    /* 锁身份（「二重保险」）：「二重」＝**参考图那一份 ＋ 人设 ｜ 详细见 docs/施工日志.md */
     "**长相必须严格按参考图来**，不得自行改动、替换，也不要「按想象美化」：五官（眼睛的形状与眼距、鼻梁鼻头、嘴唇、脸型与下颌线）、发型的基本样式（长度、颜色、走向、分缝位置、有没有刘海）和体型，都要跟参考图一致——画出来必须是同一个人，不是长得像的另一个人，也不是更好看的一版。**这句话只授权「长相」这一件事。**",
     "人物设定里的外貌文字同样算数，凡是写到的（发型、发色、发长、五官特征、体型）都要照它画；它和参考图不一致时以参考图为准，只有参考图看不清、看不全的细节（发色深浅、长度、有没有刘海）才按人设文字补。参考图与人设里都没有的外貌特征（耳饰、纹身、痣、眼镜等）不要自己加。",
     /* ⚠️ 提示词是**给生图模型看的**，开发备注一律不许进字符串（「生图诊断」里能看出
        括号里的记录会被真发出去）。以下这条教训只记在这里：
        只写笼统的「不许照搬」时，机位与手臂手势都会被照搬参考图——压不住的原因
        是没把这几项一个个点名，所以下面那串点名留着。 */
-    "**神态归描述管**：这一刻在做什么、脸上是什么神态，就画那一种；描述写了哪种就画哪种，没写到的也不许自己挑一种默认的「好看」表情顶上（别每张都半阖眼、微张唇）。**镜头的高低与远近、脸朝哪边、头倾斜多少度、肩膀的高低、手臂伸不伸出来**，这些全都属于这一次的创作，不是参考图带来的默认值——参考图里是那样，不代表这一次也要那样。头发的**样式**照上面锁死（不许换发型、不许改长短、不许变发色），但**此刻的状态跟着情境走**——可以被打湿、被风吹乱、松散垂下来，别画得一丝不苟像刚从理发店出来。",
-    /* 去精致感（要求「去精致感、更像生活中的一张照片」）。
-       ⚠️ **已收短成一句**，定调：「**提示词只需要约束一些不应该出现的东西**……
-       **画风不用去管，但要确保它不会变得很奇怪**」——那类举例（小夜灯／台灯／雾气／噪点／逆光过曝…）
-       属于「替用户定画面观感」，砍掉；**内核「跟随情景」原样留住**。
-       四条硬约束**照旧成立**，以后往这里加词照它量：
-       ① **它是一条原理，不是黑名单**——就是「**跟随情景**」。别加「不许
-       出现某种成品感」的条目：像「不磨皮／不美颜／不修毛孔」「不要影棚布光／
-       不要杂志大片感／不要电影感调色」这类都别加。**句式里那个
-       「不要一律」是活口，别删。**
-       ② **不碰皮肤审美**（皮肤长什么样交给画风词与人设），只写「跟着光走」这类物理后果。
-       ③ **绝不写「要像照片」**——画风由画风词定（写实、插画都可能），
-       写「像照片」等于把两路一起往照片推，与「跟随情景」的原意相反。
-       ④ 情景要精致（今天真去棚拍写真）就照描述来，不拦。
-       两套提示词都挂这一句（**别只改一处**）。 */
+    "**神态归描述管**：这一刻在做什么、脸上是什么神态，就画那一种；描述写了哪种就画哪种，没写到的也不许自己挑一种默认的「好看」表情顶上。**镜头的高低与远近、脸朝哪边、头倾斜多少度、肩膀的高低、手臂伸不伸出来**，这些全都属于这一次的创作，不是参考图带来的默认值——参考图里是那样，不代表这一次也要那样。头发的**样式**照上面锁死（不许换发型、不许改长短、不许变发色），但**此刻的状态跟着情境走**——可以被打湿、被风吹乱、松散垂下来，不要画得一丝不苟。",
+    /* 去精致感（要求「去精致感、更像生活中的一张照片」）。 ｜ 详细见 docs/施工日志.md */
     "画面跟着情景走，不要一律往「精修」的方向拉；表情与姿态自然随意，不摆拍、不做广告式的笑、不刻意盯着镜头。",
     /* 画风词**原样**进串、只出现一次（「**画风不用去管**」）：
        外面不要再套「画风要求：」这层壳、末尾也不要整份复读。
@@ -1755,13 +2133,7 @@ export async function generateImage(
     }
   }
 
-  /* NovelAI 专属通道。
-     它不吃 OpenAI 那套 /images/generations，也没有「图片编辑」通道可退，所以：
-     - 提示词用标签串（它就是标签模型，上面 final 已按 nai 强制走 tagPrompt）；
-     - 负面提示词走它原生的 negative_prompt；
-     - 参考图**不支持**（要走它的 director reference，格式另说），
-       带了也白带——refsSent 记 0 并在诊断里说明，提示词里的人设外貌文字仍然生效。
-     只发一次：这条通道失败后没有「换一条再问」的余地，重发就是新的一单。 */
+  /* NovelAI 专属通道。 ｜ 详细见 docs/施工日志.md */
   if (nai) {
     try {
       const image = await requestImageViaNovelAI(base, api, final, negative, extras, signal);
@@ -1892,6 +2264,11 @@ function isMiniMaxVoice(baseUrl: string): boolean {
   return /api\.minimax(i)?\.chat/i.test(baseUrl.trim());
 }
 
+/** 是否 ElevenLabs 官方语音接口（api.elevenlabs.io，专用格式＋xi-api-key 认证）。 */
+function isElevenLabsVoice(baseUrl: string): boolean {
+  return /elevenlabs\.io/i.test(baseUrl.trim());
+}
+
 /** MiniMax 音色目录（系统音色，voice_id ＋ 中文名）。 */
 export const MINIMAX_VOICES: { value: string; label: string }[] = [
   { value: "male-qn-qingse", label: "青涩青年" },
@@ -2000,9 +2377,80 @@ async function requestSpeechViaMiniMax(
   });
 }
 
+/** ElevenLabs 的语速只认 0.7–1.2（超出会被它拒收，所以先钳好）。 */
+const ELEVEN_SPEED_MIN = 0.7;
+const ELEVEN_SPEED_MAX = 1.2;
+
+/**
+ * 经 ElevenLabs 官方接口合成语音（POST /v1/text-to-speech/{voice_id}）。
+ *
+ * 跟 OpenAI 那套**不是一回事**，三处不一样：
+ * - 认证走 `xi-api-key`，不认 `Authorization: Bearer`；
+ * - 音色那格填的是 **voice_id**（它网站 Voices 页点开一个音色、复制那串 ID），不是 alloy 那类名字；
+ * - 模型那格填 **model_id**：`eleven_v4` 最动情（实时版 `eleven_v4_turbo`），
+ *   `eleven_multilingual_v2` 老而稳，`eleven_flash_v2_5` 最快最省。
+ *
+ * 音调（pitch）它没有这个参数，那一格在这儿不起作用；语速只认 0.7–1.2。
+ */
+async function requestSpeechViaElevenLabs(
+  base: string,
+  api: ChatApiSettings,
+  text: string,
+  extras: VoiceApiExtras,
+): Promise<string> {
+  const voiceId = extras.voice.trim();
+  if (!voiceId) throw new Error("请先填音色：ElevenLabs 要的是 voice id（Voices 页复制那串）");
+  const url = `${base}/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_128`;
+  const speed = Math.min(ELEVEN_SPEED_MAX, Math.max(ELEVEN_SPEED_MIN, extras.speed));
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 120_000);
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "xi-api-key": api.apiKey,
+      },
+      body: JSON.stringify({
+        text,
+        model_id: api.model,
+        /* 语速只在挪过时才发（默认 1 就一个参数都不带）：stability／similarity_boost 这些
+           交给它的默认值，要细调去它网站上按那个音色调；新模型（v4）的参数面也可能变，
+           能少发一个就少一个出错的机会。 */
+        ...(speed !== 1 ? { voice_settings: { speed } } : {}),
+      }),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new Error("合成超时（语音生成较慢，可稍后再试）");
+    }
+    throw new Error(err instanceof Error ? err.message : "网络请求失败");
+  } finally {
+    clearTimeout(timer);
+  }
+  if (!res.ok) throw new Error(await readErrorMessage(res));
+  const blob = await res.blob();
+  if (!blob.size) throw new Error("接口没有返回音频");
+  if (!blob.type.startsWith("audio/")) {
+    /* 它出错时也会给 200＋JSON，把原文读出来当原因。 */
+    const raw = await blob.text();
+    throw new Error(raw.replace(/\s+/g, " ").trim().slice(0, 120) || "接口没有返回音频");
+  }
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("音频读取失败"));
+    reader.readAsDataURL(blob);
+  });
+}
+
 /**
  * 合成一段语音（OpenAI 兼容 POST /audio/speech，返回音频文件；
- * MiniMax 国内／国际版自动走其专用 /t2a_v2 接口）。
+ * MiniMax 国内／国际版自动走其专用 /t2a_v2 接口；
+ * ElevenLabs 官方走其专用 /v1/text-to-speech/{voice_id} 接口）。
  * @param api 语音 API 设定
  * @param text 要念的文字
  * @param extras 语音参数（音色／语速／音调）
@@ -2020,6 +2468,12 @@ export async function synthesizeSpeech(
   /* MiniMax：专用接口＋团队 ID＋hex 音频，单独处理。 */
   if (isMiniMaxVoice(base)) {
     const audio = await requestSpeechViaMiniMax(base, api, text, extras);
+    return { audio };
+  }
+
+  /* ElevenLabs 官方：专用接口＋xi-api-key，单独处理。 */
+  if (isElevenLabsVoice(base)) {
+    const audio = await requestSpeechViaElevenLabs(base, api, text, extras);
     return { audio };
   }
 
@@ -2130,10 +2584,35 @@ export async function fetchModelList(
  * 判断一张图的画面里是否出现角色本人（旧数据兜底：那时标记还没有开关）。
  * 宁可多带参考图——漏判的代价是长相全凭模型编，比多带一张参考图严重得多。
  */
-export function guessUseCharRef(desc: string): boolean {
-  return /(自拍|对镜|本人|自己|我的?(脸|手|背影|侧脸|半身|全身|正面|头发)|我[站坐躺靠走蹲跑抱拿戴穿]|镜头前|举起手机)/.test(
+export function guessUseCharRef(desc: string, charName?: string): boolean {
+  /* ⚠️ 认人时必须把**角色名**算进去：提示词要求 TA 用角色名写画面（不许写「他／她／自己」，
+     见「描述只写画面里看得见的东西……不用「他／她」，直接写${characterName}」那条），
+     只认「自拍／我……」会漏掉一大半——那是「明明画的是它本人、却被判成不出现人物」的根子。 */
+  if (charName && charName.length > 0 && desc.includes(charName)) return true;
+  return /(自拍|对镜|出镜|身影|本人|自己|我的?(脸|手|背影|侧脸|半身|全身|正面|头发)|我[站坐躺靠走蹲跑抱拿戴穿]|镜头前|举起手机|半身|全身)/.test(
     desc,
   );
+}
+
+/** TA 在回复里随附的一笔钱（红包／转账）。 */
+export interface MetaMoney {
+  type: "redpacket" | "transfer";
+  /** 金额（分）。 */
+  cents: number;
+  /** 随钱一起递过来的那句话（可能为空串）。 */
+  note: string;
+}
+
+/** 单笔红包／转账的金额上限（分）：20 万元。再大就是模型在胡吹，这笔记不成。 */
+const MAX_MONEY_CENTS = 20_000_000;
+
+/** 把「200:买点好吃的」「520.00」「200 元 买奶茶」这类写法拆成金额与留言。 */
+function parseMoneySpec(spec: string): { cents: number; note: string } | null {
+  const m = /^\s*[¥￥]?\s*(\d+(?:\.\d{1,2})?)\s*元?\s*[：:,，、]?\s*([\s\S]*)$/.exec(spec.trim());
+  if (!m) return null;
+  const cents = Math.round(Number(m[1]) * 100);
+  if (!Number.isFinite(cents) || cents <= 0 || cents > MAX_MONEY_CENTS) return null;
+  return { cents, note: m[2].trim().slice(0, 40) };
 }
 
 /**
@@ -2144,8 +2623,16 @@ export function guessUseCharRef(desc: string): boolean {
  * 图片标记可带「是否使用参考图」开关（决定是否拿参考图锁定长相）。
  * 括号写法容忍〔〕【】（）[] 等常见变体（模型不总是照抄指令格式）；
  * 标记后紧跟换行时把下一行并进来当内容（「〔图片〕\n描述」）。
+ *
+ * 1.4.36 起还能收 TA 自己发的红包／转账（〔转账〕200:留言），金额与留言
+ * 写在括号里或括号后都认；钱能不能真发出去由调用方看他的零钱定（见 moneys）。
+ * 1.4.63 起还认 TA 对我发出去那笔钱的表态（见 claimed／refunded）。
  */
-export function extractMetaMarkers(reply: string): {
+export function extractMetaMarkers(
+  reply: string,
+  /** 角色名：TA 没在标记里写开关时，兜底认人要用它（见 guessUseCharRef）。 */
+  charName?: string,
+): {
   /** 剥掉标记后的干净回复（拿去拆条展示）。 */
   clean: string;
   /** TA 更新的签名；没附带则为 null。 */
@@ -2162,19 +2649,52 @@ export function extractMetaMarkers(reply: string): {
   images: string[];
   /** 与 images 一一对应：这张图是否用角色参考图锁定长相。 */
   imageRefs: boolean[];
+  /**
+   * 与 images 一一对应：TA 在标记里**到底写没写**那个开关（诊断面板靠它说真话）。
+   * use＝写了「使用参考图」；none＝写了「不使用参考图」；absent＝压根没写、这条是按描述猜的。
+   * 没有它，面板只能印一句死文案，把「猜的」说成「TA 写的」。
+   */
+  imageRefMarks: Array<"use" | "none" | "absent">;
   /** TA 要发的语音（要说的话；走语音 API 合成）。 */
   voices: string[];
+  /** TA 自己要发的钱（红包／转账）；真扣账由调用方按他的零钱来定。 */
+  moneys: MetaMoney[];
+  /**
+   * TA 对我发出去的那笔**转账**表态要了：写了〔收下〕就是 true，钱这一刻才进他的零钱。
+   * 这是钱真正进他零钱的唯一凭据——没写这一格，钱就还挂在我这边（见 refunded 的注释）。
+   * 按类型拆开（1.5.14）：〔收下〕只指转账、〔领取〕只指红包——多笔悬着时
+   * 调用方按类型各找各的那笔，防止「他嘴上说收转账、标记却落到红包上」的错位。
+   */
+  claimedTransfer: boolean;
+  /**
+   * TA 对我发出去的那个**红包**表态要了：写了〔领取〕就是 true。
+   * 跟 claimedTransfer 同理，只是管红包那一类（见它那条注释）。
+   */
+  claimedRedpacket: boolean;
+  /**
+   * TA 对我发出去的那笔转账表态不要：写了〔退还〕就是 true，钱原路回我出的那个口袋。
+   *
+   * 「〔不领〕」**不落这一格**：红包没有退还这一说（跟微信一致：红包只能开、不能退），
+   * 他写不领只是「这轮先不领」，钱照旧挂着、他随时能回过头补一个〔领取〕领走
+   * ——所以那句话剥掉即可，不当成落定。真的过期由调用方按上下文条数判（见 moneyExpired）。
+   */
+  refunded: boolean;
 } {
   // 先把各标记单独抽出来（保持顺序），再在主流程里重新配对。
   const rawMoments: string[] = [];
   const rawImagePrompts: string[] = [];
   const images: string[] = [];
   const voices: string[] = [];
+  const moneys: MetaMoney[] = [];
   let signature: string | null = null;
 
-  /* 标记单独一行、内容在下一行时先并回同一行（下一行是另一个标记则不动）。 */
+  /* 标记单独一行、内容在下一行时先并回同一行（下一行是另一个标记则不动）。
+     1.5.47 起把「引用」也算进来：TA 写成「〔引用:原话〕」单独一行、正文在下一行，
+     不并回来的话 splitReply 会把标记行和正文拆成两个气泡（引用标记自己占一条空泡）。 */
+  /* 1.9.55：标记本身也做繁简／异体兼容。外语聊天开着时，模型会把标记按繁体写
+     （恩熙实测到「〔語音〕」），只认简体的话整条标记摘不掉、也触发不了对应功能。 */
   const joined = reply.replace(
-    /([〔【（(\[]\s*(?:签名|动态|动态图|语音|图片(?:[：:][^)）】\]〕\n]{0,12})?)\s*[)）】\]〕])[ \t]*\r?\n[ \t]*([^\n〔【]*)/g,
+    /([〔【（(\[]\s*(?:[签簽]名|[动動][态態](?:[图圖])?|(?:[语語]音|音声)|[图圖]片(?:[：:][^)）】\]〕\n]{0,12})?|[红紅]包|[转轉][账賬帳]|引用(?:[：:][^)）】\]〕\n]{0,200})?)\s*[)）】\]〕])[ \t]*\r?\n[ \t]*([^\n〔【]*)/g,
     (_m, tag: string, next: string) => (next.trim() ? `${tag}${next.trim()}` : tag),
   );
 
@@ -2192,16 +2712,17 @@ export function extractMetaMarkers(reply: string): {
       });
   };
 
-  const clean = grab("签名", (v) => {
+  const clean = grab("[签簽]名", (v) => {
     signature = v;
   })(joined);
-  const noMoments = grab("动态", (v) => rawMoments.push(v))(clean);
-  const noImagePrompts = grab("动态图", (v) => rawImagePrompts.push(v))(noMoments);
+  const noMoments = grab("[动動][态態]", (v) => rawMoments.push(v))(clean);
+  const noImagePrompts = grab("[动動][态態][图圖]", (v) => rawImagePrompts.push(v))(noMoments);
   /* 图片标记可选带「是否使用参考图」开关：〔图片:使用参考图〕描述 ／〔图片:不使用参考图〕描述。
      旧的〔图片〕描述没有开关，按描述内容兜底判断（老消息与不听话的模型都走这条路）。 */
   const imageRefs: boolean[] = [];
+  const imageRefMarks: Array<"use" | "none" | "absent"> = [];
   const imageTagRe =
-    /[〔【（(\[]\s*图片\s*(?:[：:]\s*(不?\s*(?:使用|用)参考图|无需参考图))?\s*[)）】\]〕][ \t]*([^\n〔【]*)/g;
+    /[〔【（(\[]\s*[图圖]片\s*(?:[：:]\s*(不?\s*(?:使用|用)[参參]考[图圖]|[无無]需[参參]考[图圖]))?\s*[)）】\]〕][ \t]*([^\n〔【]*)/g;
   const noImages = noImagePrompts.replace(imageTagRe, (_m, flag: string | undefined, s: string) => {
     const v = s
       .trim()
@@ -2209,14 +2730,60 @@ export function extractMetaMarkers(reply: string): {
       .trim();
     if (v) {
       images.push(v);
-      imageRefs.push(flag ? !/^(不|无需)/.test(flag) : guessUseCharRef(v));
+      const noUse = flag ? /^(不|[无無]需)/.test(flag) : false;
+      imageRefs.push(flag ? !noUse : guessUseCharRef(v, charName));
+      imageRefMarks.push(flag ? (noUse ? "none" : "use") : "absent");
     }
     return "";
   });
-  const noVoices = grab("语音", (v) => voices.push(v))(noImages);
+  /* 1.9.52：语音标记认繁体「語音」与日文「音声」。外语聊天开着时，模型会把标记本身
+     也按外语的习惯写出来（恩熙实测到的原话就是「〔語音〕ん～～……」），只认简体 语音
+     的话整条标记既摘不掉、也触发不了语音——表现就是「他没成功把语音发出来」，
+     而那行字还留在气泡里。 */
+  const noVoices = grab("(?:[语語]音|音声)", (v) => voices.push(v))(noImages);
+  /* 红包／转账：金额与留言写在括号里（〔转账:200:留言〕）或括号后（〔转账〕200:留言）都认，
+     两处都有就拼起来交给 parseMoneySpec。金额读不出来就整条丢掉（宁可不发，也不能记一笔错账）。 */
+  const moneyTagRe =
+    /[〔【（(\[]\s*([红紅]包|[转轉][账賬帳])\s*(?:[：:]\s*([^\n〕】）\]]{0,200}?))?\s*[)）】\]〕][ \t]*([^\n〔【]*)/g;
+  const noMoneys = noVoices.replace(
+    moneyTagRe,
+    (_m, kind: string, inside: string | undefined, after: string) => {
+      const spec = [inside, after].filter((s) => s && s.trim()).join("：");
+      const parsed = parseMoneySpec(spec);
+      if (parsed) {
+        moneys.push({ type: /[红紅]包/.test(kind) ? "redpacket" : "transfer", ...parsed });
+      }
+      return "";
+    },
+  );
+  /* 收下（表态要）：〔收下〕＝收转账、〔领取〕＝领红包，两个词各管各的一类（1.5.14 拆开：
+     原先两种标记混作一个信号，多笔悬着时谁排最后落谁头上，出现过「他说收转账、
+     标记落到红包上」的错位）。调用方按类型找对应那笔落账。
+     〔已收下〕〔已领取〕是模型常见的变体写法，一并认。 */
+  let claimedTransfer = false;
+  let claimedRedpacket = false;
+  const noClaims = noMoneys.replace(
+    /[〔【（(\[]\s*已?(?:收下|[领領]取)\s*[)）】\]〕]/g,
+    (m: string) => {
+      if (/[领領]取/.test(m)) claimedRedpacket = true;
+      else claimedTransfer = true;
+      return "";
+    },
+  );
+  /* 退还（表态不要）：只有转账有这一说，叫〔退还〕，钱原路退回。
+     红包那侧的〔不领〕**不算退还**（跟微信一致：红包只能开、不能退）——写不领只是
+     「这轮先不领」，钱继续挂着、他随时能回头补〔领取〕，所以只把字剥掉、不落标记。 */
+  let refunded = false;
+  const noRefunds = noClaims.replace(
+    /[〔【（(\[]\s*(?:已?退[还還]|不[领領])\s*[)）】\]〕]/g,
+    (m: string) => {
+      if (!/不[领領]/.test(m)) refunded = true;
+      return "";
+    },
+  );
 
   // 剥掉标记后收尾的空行、行尾空白。
-  const final = noVoices
+  const final = noRefunds
     .replace(/[ \t]+$/gm, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
@@ -2228,5 +2795,400 @@ export function extractMetaMarkers(reply: string): {
     moments.push({ content: rawMoments[i], ...(ip ? { imagePrompt: ip } : {}) });
   }
 
-  return { clean: final, signature, moments, images, imageRefs, voices };
+  return {
+    clean: final,
+    signature,
+    moments,
+    images,
+    imageRefs,
+    imageRefMarks,
+    voices,
+    moneys,
+    claimedTransfer,
+    claimedRedpacket,
+    refunded,
+  };
 }
+
+/**
+ * 从**拆好的气泡**里摘出引用标记（1.5.47：TA 也会引用回复）。
+ *
+ * 跟 extractMetaMarkers 那批标记不同：那批写在回复末尾、一轮一个；引用标记
+ * 写在**某一条气泡的开头**、跟着这一条走——所以只能在 splitReply 拆完条之后再摘，
+ * 摘到谁头上就贴到谁的气泡上方（见 ChatWindow 的引用块）。
+ *
+ * 只认**开头**的标记：写在正文中间的当普通文字，不动——免得把 TA 真说的话剪掉。
+ * 摘完只剩空壳的（TA 把标记单独占了一条）直接丢掉，不留空气泡。
+ *
+ * @returns parts 摘干净的气泡；quotes 与之一一对应（没引用的为 undefined）。
+ */
+export function extractBubbleQuotes(parts: string[]): {
+  parts: string[];
+  quotes: Array<string | undefined>;
+} {
+  /* 括号写法容忍〔〕【】（）[] 各种变体，冒号可有可无（模型不总照抄格式）， ｜ 详细见 docs/施工日志.md */
+  const reWrapped = /^[ \t]*[〔【（(\[]\s*引\s*用\s*[：:]?\s*([^\n〔【)）】\]〕]{1,120}?)\s*[)）】\]〕][ \t]*/;
+  const reLabel = /^[ \t]*[〔【（(\[]\s*引\s*用\s*[：:]?\s*[)）】\]〕][ \t]*[：:、]?[ \t]*([\s\S]+)$/;
+  const out: string[] = [];
+  const quotes: Array<string | undefined> = [];
+  /* 引用独占一条（② 那种：标签后面没正文）时，这条引用**顺延挂到下一条**气泡上——
+     TA 常写成「【引用】我：原话」一条、「接着说的话」另一条；不顺延就白引了。 */
+  let pending: string | undefined;
+  for (const p of parts) {
+    const wrapped = p.match(reWrapped);
+    const labeled = wrapped ? null : p.match(reLabel);
+    if (!wrapped && !labeled) {
+      out.push(p);
+      quotes.push(pending || undefined);
+      pending = undefined;
+      continue;
+    }
+    const quote = (wrapped ? wrapped[1] : labeled![1]).replace(/^[：:、]\s*/, "").trim();
+    /* ① 的正文在括号后面；② 的正文本来就没有（原话已经占掉整条）。 */
+    const rest = wrapped ? p.slice(wrapped[0].length).trim() : "";
+    if (rest) {
+      out.push(rest);
+      quotes.push(quote || pending || undefined);
+      pending = undefined;
+    } else if (quote) {
+      pending = quote;
+    }
+    /* 既没正文也没摘出引用：这是条空壳，丢掉，不留空气泡。 */
+  }
+  return { parts: out, quotes };
+}
+
+/** 心声块里那几行小标题的前缀（1.5.65，1.5.74 改名；1.7.92 换成私密心声页真正要的那几格）。
+ *  一行一个，写在最前面，认得出就摘走。 */
+const SNAPSHOT_LABELS: {
+  to:
+    | "scene"
+    | "action"
+    | "voice"
+    | "outfit"
+    | "mood"
+    | "desire"
+    | "fear"
+    | "memo"
+    | "diary"
+    | "junk";
+  re: RegExp;
+}[] = [
+  /* 八根那一行（旧写法）：老模型偶尔还照老账写一行「驱动力：朝思暮想+6」。
+     1.7.92 八根拆掉后这一行没有去处，认成 junk ＝ **认得出、摘走、丢掉**——
+     不认的话整行会落进心声正文，读起来像人话里夹了一串名字加数字。
+     （1.5.74 之前这行叫「情绪」、装的是旧那六个名字；两种写法都在这儿收走。） */
+  { to: "junk", re: /^(?:[驱驅][动動]力?|[劲勁][儿兒]|此刻的[驱驅][动動]|此刻的[劲勁][儿兒]|八[维維]|(?:六[维維])?情[绪緒]值?)\s*[:：]\s*/ },
+  /* 好感度（旧账的一行，**1.7.97 这一栏撤掉**——恩熙：「我们现在已经没有好感度了，
+     你把好感度留着干什么呢？」）：老模型照老账写回来的一行仍认，认成 junk ＝ 摘走丢掉。 */
+  { to: "junk", re: /^(?:好感度|好感)\s*[:：]\s*/ },
+  /* 环境（1.9.0）：**穿着与动作并成的一格**——人在哪儿、四周什么光景、身上穿的，
+     末尾带一点体态或神情。恩熙报那两个格子一直在说同一件事（穿着里混着动作），
+     要求并成一栏。它跟旧的穿着一样是**继承的一格**：地点和穿着没变时他多半不重写，
+     这一行没写就沿用上一次那份快照（见 parseInnerSnapshot）。 */
+  { to: "scene", re: /^(?:[环環]境|周遭|身[边邊]的[样樣]子|此刻的[样樣]子)\s*[:：]\s*/ },
+  /* 穿着／动作（1.7.92～1.8.6 的两行）：**1.9.0 起不再写**，这两行只为读老消息留着
+     ——认得出、照旧存进 outfit／action，心声页把两格并进「环境」那一栏显示。 */
+  /* 穿着（1.7.92）：一句话，**唯一继承的一格**——人不会一条消息换一套衣服，
+     这一行没写就沿用上一次（见 parseInnerSnapshot），所以提示词那边许它空着。 */
+  { to: "outfit", re: /^(?:穿[着著]|衣[着著]|穿搭|身上的[样樣]子)\s*[:：]\s*/ },
+  /* 心情（1.7.92）：一句话，不继承——它讲的就是这一刻。 */
+  { to: "mood", re: /^(?:心情|此刻的心情|情[绪緒]状[态態])\s*[:：]\s*/ },
+  /* 欲望与怯念（1.7.92）：私密心声页「私藏」页签那两格，只写给他自己看。 */
+  { to: "desire", re: /^(?:[欲慾]望|此刻的[欲慾]望|私念|心[里裡裏]的念[头頭]|[压壓]在心[里裡裏]的念[头頭])\s*[:：]\s*/ },
+  { to: "fear", re: /^(?:怯念|不敢想|不敢[细細]想|最怕的|怕的事)\s*[:：]\s*/ },
+  /* 细处与日记（1.7.92）：私密心声页「记录」页签那两格。细处一行一条。 */
+  { to: "memo", re: /^(?:[细細][处處]|[细細][节節]|她的小事|[记記][着著]的[细細][节節])\s*[:：]\s*/ },
+  { to: "diary", re: /^(?:日[记記]|今天[记記]|想[记記]下)\s*[:：]\s*/ },
+  /* 最想做的事（1.5.96，**1.7.96 这一栏撤掉**——恩熙：「我们没有最想做的事这一个栏目吧」）：
+     老模型照老账写回来的一行仍认，认成 junk ＝ 摘走丢掉，别让它落进心声正文里。 */
+  { to: "junk", re: /^(?:此刻最想做的事|最想做的事|最想做的|想做的事)\s*[:：]\s*/ },
+  { to: "action", re: /^(?:行[为為][动動]作|行[为為]|[动動]作|[动動]作神[态態]|神[态態])\s*[:：]\s*/ },
+  { to: "voice", re: /^(?:角色心[声聲]|[内內]心[独獨]白|心[声聲]|心[里裡裏][话話])\s*[:：]\s*/ },
+];
+
+/**
+ * 账行的「标签」可能被模型包上各种壳（1.9.56）：
+ *   · 加粗／斜体：`**环境**：`、`*心情*：`
+ *   · 包裹符：`【细处】：`、`〔日记〕：`、`[环境]：`
+ *   · 行首列表点：`- 日记：`、`· 细处：`
+ *   · 标签与冒号之间夹一段括号注解：`日记（你上一次写的全文）：`
+ *   · 破折号当分隔符：`细处 - 记得买花`
+ *
+ * 原先的 SNAPSHOT_LABELS 只认「标签词 + 紧跟冒号」，上面这些变体一律认不出。而
+ * parseInnerSnapshot 的规矩是**认不出的行落进上一个已经开的桶**——账里「细处／日记」
+ * 正排在「怯念」之后，于是它俩全堆进了怯念（恩熙 2026-10-03 报的「细处跟日记都跑到
+ * 怯念去」）。这个函数把壳剥掉、还原成「标签：」的规范形，再交给 SNAPSHOT_LABELS 认。
+ * 认不出标签的行，调用方仍旧用**原行**入桶（内容一个字不改）。
+ */
+function normalizeLedgerLine(line: string): string {
+  let s = line.trimStart();
+  /* 行首装饰：引用符、加粗／斜体星号、反引号、列表点、项目符号、破折号。 */
+  s = s.replace(/^[\s>*_`·•・\-–—]+/, "");
+  /* 包裹符把整个标签词框起来：【标签】：／〔标签〕：／[标签]：／「标签」： */
+  const bracketed = /^[【〔\[「『]\s*(.{1,12}?)\s*[】〕\]」』]\s*[*_]*\s*[:：]\s*/.exec(s);
+  if (bracketed) s = `${bracketed[1]}：` + s.slice(bracketed[0].length);
+  /* 标签词与冒号之间的收尾装饰：**环境** 被行首那步吃掉前半后，剩「环境**：」。 */
+  s = s.replace(/^([^\s:：*_」』】〕\]]{1,12})[*_」』】〕\]]{1,3}\s*[:：]\s*/, "$1：");
+  /* 标签与冒号之间夹一段括号注解：日记（你上一次写的全文）： → 日记： */
+  s = s.replace(/^([^\s:：()（）{}｛｝]{1,12})\s*[（(][^()（）]{0,20}[)）]\s*[:：]\s*/, "$1：");
+  /* 破折号当分隔符：细处 - 记得买花 → 细处：记得买花 */
+  s = s.replace(/^([^\s:：()（）*_\-–—]{1,12})\s*[-–—]\s+/, "$1：");
+  return s;
+}
+
+/**
+ * 认一认「正文最前面那截账」，认出来就切走（1.5.88）。
+ *
+ * 历次改动与回退记录见 docs/施工日志.md。
+ */
+/* 账块前面最多忍受几段「不像账」的段。3 是照心声那个 120 字上限挑的：写到上限也就
+   一两段，留点余量。调大只会更容易误伤正常聊天，别随便加。 */
+const LEDGER_LEAD_MAX = 3;
+function stripLeadingLedger(text: string): { ledger: string; rest: string } | undefined {
+  /* 先把每段的起止位置量出来（含段与段之间那几行空行）。 */
+  const bounds: Array<[number, number]> = [];
+  const gap = /\r?\n[ \t]*\r?\n/g;
+  let segStart = 0;
+  let m: RegExpExecArray | null;
+  while ((m = gap.exec(text)) !== null) {
+    bounds.push([segStart, m.index]);
+    segStart = m.index + m[0].length;
+  }
+  bounds.push([segStart, text.length]);
+  let cut = -1;
+  let lead = 0;
+  for (const [from, to] of bounds) {
+    const seg = text.slice(from, to).trim();
+    if (!seg) continue;
+    /* 只看段首那一行（账的第一行一定是标签行），并把壳剥掉再认。 */
+    const firstLine = normalizeLedgerLine(seg.split(/\r?\n/, 1)[0]);
+    if (SNAPSHOT_LABELS.some((l) => l.re.test(firstLine))) {
+      cut = to;
+      continue;
+    }
+    /* 账块已经开了、又碰上不像账的段 ⇒ 账到头了，后面全算正文。 */
+    if (cut >= 0) break;
+    lead += 1;
+    if (lead > LEDGER_LEAD_MAX) return undefined;
+  }
+  if (cut < 0) return undefined;
+  return { ledger: text.slice(0, cut), rest: text.slice(cut) };
+}
+
+/**
+ * 把心声块里的字拆成「心声」与「内心快照」两半（1.5.65）。
+ *
+ * 历次改动与回退记录见 docs/施工日志.md。
+ */
+export function parseInnerSnapshot(
+  raw: string,
+  prev?: InnerSnapshot,
+): { voice: string; snapshot: InnerSnapshot | undefined } {
+  const buf: Record<
+    | "scene"
+    | "action"
+    | "voice"
+    | "outfit"
+    | "mood"
+    | "desire"
+    | "fear"
+    | "memo"
+    | "diary"
+    | "junk",
+    string[]
+  > = {
+    scene: [],
+    action: [],
+    voice: [],
+    outfit: [],
+    mood: [],
+    desire: [],
+    fear: [],
+    memo: [],
+    diary: [],
+    junk: [],
+  };
+  /* 没写标签的行默认归心声：老写法（整块就是心声）走的正是这条。 */
+  let current: keyof typeof buf = "voice";
+  let sawLabel = false;
+  for (const line of raw.split(/\r?\n/)) {
+    /* 1.9.56：认标签先用 normalizeLedgerLine 剥一层壳（加粗／包裹符／列表点／
+       括号注解／破折号），否则「细处」「日记」「环境」的变体认不出，会被当成
+       正文塞进上一个已开的桶（怯念）——恩熙 2026-10-03 报的错位就是这么来的。
+       认不出的行照旧用**原行**入桶，内容一字不动。 */
+    const head = normalizeLedgerLine(line);
+    const hit = SNAPSHOT_LABELS.find((l) => l.re.test(head));
+    if (hit) {
+      sawLabel = true;
+      current = hit.to;
+      buf[hit.to].push(head.replace(hit.re, ""));
+      continue;
+    }
+    buf[current].push(line);
+  }
+
+  const tidy = (s: string) => toFullWidthPunct(stripNarrationAsterisks(s).trim()).trim();
+  const voice = tidy(buf.voice.join("\n"));
+
+  /* 环境（1.9.0）：旧「穿着／动作」并成的一格，也是**继承的一格**——这一轮没写就沿用
+     上一次那份环境（地点和穿着没变时他多半不重写，见 SNAPSHOT_LABELS）。 */
+  const scene =
+    tidy(buf.scene.join("\n")) ||
+    prev?.scene?.trim() ||
+    /* 跨 1.9.0 那道坎：上一份老快照里只有分开的穿着／动作，合成「环境」接着用，
+       免得升级后的头几轮那一栏空着。 */
+    [prev?.outfit, prev?.action].map((s) => s?.trim()).filter(Boolean).join("；");
+  const action = tidy(buf.action.join("\n"));
+  /* 穿着（1.7.92）：**唯一继承的一格**——这一轮没写就沿用上一次。 */
+  const outfit = tidy(buf.outfit.join("\n")) || prev?.outfit?.trim() || "";
+  const mood = tidy(buf.mood.join("\n"));
+  const desire = tidy(buf.desire.join("\n"));
+  const fear = tidy(buf.fear.join("\n"));
+  /* 细处：一行一条。TA 也常把几条并在一行里（用分号连写），所以行内再拆一道，
+     顺手去掉行首那个列表点。 */
+  const memo = buf.memo
+    .flatMap((block) => block.split(/\r?\n/))
+    .flatMap((line) => line.split(/[；;]/))
+    .map((line) => tidy(line.replace(/^[·•・\-—\s]+/, "")))
+    .filter(Boolean);
+  const diary = tidy(buf.diary.join("\n"));
+
+  const snapshot: InnerSnapshot | undefined =
+    sawLabel &&
+    (scene ||
+      action ||
+      outfit ||
+      mood ||
+      desire ||
+      fear ||
+      memo.length > 0 ||
+      diary)
+      ? {
+          ...(scene ? { scene } : {}),
+          ...(action ? { action } : {}),
+          ...(outfit ? { outfit } : {}),
+          ...(mood ? { mood } : {}),
+          ...(desire ? { desire } : {}),
+          ...(fear ? { fear } : {}),
+          ...(memo.length > 0 ? { memo } : {}),
+          ...(diary ? { diary } : {}),
+        }
+      : undefined;
+
+  return { voice, snapshot };
+}
+
+/**
+ * 从回复**开头**摘下「心声」块（1.5.60：`<think>…</think>`）。
+ *
+ * 历次改动与回退记录见 docs/施工日志.md。
+ */
+export function extractInnerVoice(
+  reply: string,
+  prevSnapshot?: InnerSnapshot,
+): {
+  clean: string;
+  innerVoice: string | undefined;
+  snapshot: InnerSnapshot | undefined;
+} {
+  const closed = reply.match(
+    /^[ \t\r\n]*<\s*think(?:ing)?\s*>([\s\S]*?)<\s*\/\s*think(?:ing)?\s*>[ \t]*\r?\n?/i,
+  );
+  /* 1.5.88：正文最前面那一截「账」不管带不带标签都要拎走——标签里那截（closed[1]）和
+     正文开头那截（stripLeadingLedger 认出来的）合成一份再交给 parseInnerSnapshot。 */
+  let ledger = closed ? closed[1] : "";
+  let rest = closed
+    ? reply.slice(closed[0].length)
+    : /* 闭标签没到（模型漏写／半途停止）：只剥那个裸开标签，后面一个字都不丢。 */
+      reply.replace(/^[ \t\r\n]*<\s*think(?:ing)?\s*>[ \t]*/i, "");
+  const ahead = stripLeadingLedger(rest);
+  if (ahead) {
+    ledger = ledger.trim() ? `${ledger.trim()}\n\n${ahead.ledger.trim()}` : ahead.ledger.trim();
+    rest = ahead.rest;
+  }
+  const clean = rest.replace(/^[ \t\r\n]+/, "");
+  if (!ledger.trim()) {
+    return { clean, innerVoice: undefined, snapshot: undefined };
+  }
+  /* 心声是给人读的，跟正文过同一趟归正（半角标点折全角、剪成对的星号旁白），
+     读着才跟气泡里的字一个样。 */
+  const parsed = parseInnerSnapshot(ledger, prevSnapshot);
+  return {
+    clean,
+    innerVoice: parsed.voice || undefined,
+    snapshot: parsed.snapshot,
+  };
+}
+
+/**
+ * 从聊天记录里往回找**最近一份写过「环境」**（1.9.0 前是写过「穿着」）的内心快照，
+ * 连同它挂在哪条消息上。
+ *
+ * 为什么要有它：环境是账里**唯一继承的一格**——地点和穿着不会一条消息一变，这一轮没写
+ * 就沿用上一次（见 parseInnerSnapshot）。聊天窗口每轮摘心声时顺手把它捞出来递进去。
+ *
+ * 只认写过环境（或老消息里的穿着）的那一份：更老的账里这几格都空着，一律跳过——
+ * 拿它们当底，环境还是空的。往回找不设条数上限（在哪儿、穿什么本来就能挂很久，
+ * 写了新的就替换），找不到（新装，或从来没写过）返回 undefined。
+ *
+ * 返回里带着 `createdAt`（那份快照那条消息的时刻），调用方要按时间算点什么时有得可用。
+ */
+export function lastInnerSnapshot(
+  messages: readonly ChatMessage[],
+): { snapshot: InnerSnapshot; createdAt: string } | undefined {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const s = messages[i].innerSnapshot;
+    if (s?.scene || s?.outfit) {
+      return { snapshot: s, createdAt: messages[i].createdAt };
+    }
+  }
+  return undefined;
+}
+
+/**
+ * 把「他记着的细处清单」与「他写过的那篇日记」攒成一小块，随请求递回去（1.9.0）。
+ *
+ * 为什么要有它：恩熙报「备忘录无限追加、全是重复的」「日记越叠越长」，根因是**他看不见
+ * 自己记过什么**——心声块在摘走时就不落进消息正文（见 extractInnerVoice），回喂的历史里
+ * 只有台词，账一个字都不在。他要做到「上面记过的别再写」「并成完整的一篇」，就得先把
+ * 那两样递到他眼前。这句就是这个来路。
+ *
+ * 分寸：这是**每轮都变的易变区**（挂在 buildPrompt 的易变尾巴上），不进缓存——
+ * 所以只带必要的那点：细处取最近 MEMO_KEEP 条（按记录顺序，老的在前），
+ * 日记只带**最新那一篇非空的**（1.9.0 起日记是整合一篇的全文，不往后叠）。
+ * 两样都空＝返回空串，调用方那一块整段消失，不多给模型一个字。
+ */
+const MEMO_KEEP = 12;
+export function innerLedgerBlock(messages: readonly ChatMessage[]): string {
+  const memos: string[] = [];
+  let diary = "";
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const s = messages[i].innerSnapshot;
+    if (!s) continue;
+    if (!diary && s.diary?.trim()) diary = s.diary.trim();
+    /* 细处是攒出来的清单：从新往旧扫，扫够了就停；最后翻回「老的在前」的记录顺序。 */
+    if (memos.length < MEMO_KEEP) {
+      const items = (s.memo ?? []).map((m) => m.trim()).filter(Boolean);
+      for (let k = items.length - 1; k >= 0 && memos.length < MEMO_KEEP; k -= 1) {
+        memos.unshift(items[k]);
+      }
+    }
+  }
+  if (memos.length === 0 && !diary) return "";
+  const lines = [
+    "下面是你自己记下的东西（只有你看得见）——细处是那份清单，日记是你写过的那一篇：",
+    memos.length > 0 ? `细处：\n${memos.map((m) => `· ${m}`).join("\n")}` : "细处：（还空着）",
+    diary ? `日记（你上一次写的全文）：\n${diary}` : "日记：（还空着）",
+  ];
+  return lines.join("\n");
+}
+
+/* 1.7.92：原 `innerSnapshotBase`（把八根按真实小时数往下带的那个底）随八根一并删。
+   账里剩下的几格都不按时间衰减：好感度要涨要落都由 TA 自己报，穿着穿过就挂着、
+   心情欲望怯念讲的都是当轮——没有哪一格该让时间去动它。要拿上一轮的底（现在只为
+   穿着），直接用 `lastInnerSnapshot`。 */
+
+/* 1.7.96：原来这里还有一整套「最想做的事」收口（WISH_CHANNEL_RES 认频道 + settleWish
+   按真实凭据判做成没有），喂给念头池 wishPool.ts。账里那一栏撤掉之后（恩熙：我们没有
+   这个栏目），这一套连同 wishPool.ts 一并删。 */
