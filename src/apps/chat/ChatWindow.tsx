@@ -1318,7 +1318,7 @@ export default function ChatWindow({
         }
         setMessages((prev) => prev.map((x) => (x.id === m.id ? working : x)));
         try {
-          const res = await synthesizeSpeech(effVoiceApi, m.content, effVoiceExtras);
+          const res = await synthesizeSpeech(effVoiceApi, voiceSpokenText(m.content), effVoiceExtras);
           const done: ChatMessage = { ...working, pending: false, audioUrl: res.audio };
           await updateMessage(character.id, maskId, done);
           setMessages((prev) => prev.map((x) => (x.id === m.id ? done : x)));
@@ -7950,6 +7950,19 @@ function stopVoiceEl(): void {
 /** 语音此刻在响吗——不看界面上的标记，那玩意会卡住骗人。 */
 function isVoiceElPlaying(): boolean {
   return !!voiceEl && !voiceEl.paused && !voiceEl.ended;
+}
+
+/** 朗读前洗掉「演给人看、不该念出来」的部分：（）／() 里的动作、心理、场景描写。
+    恩熙那套提示词把「带括号＝不可发声／不带括号＝台词」定死了，可送 TTS 的一直是这条
+    原文，括号里的动作也就被一起念了（她的原话：「他现在会读括号内的动作」）。
+    只洗圆括号——十一 ElevenLabs 的英文方括号标签（[gasp] 之类）是给 TTS 的指令，留着。
+    洗空了（整条都是动作）就退回原文，宁可照念也别把语音合成成空的。 */
+function voiceSpokenText(content: string): string {
+  const cleaned = content
+    .replace(/（[^）]*）|\([^)]*\)/g, " ")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+  return cleaned || content.trim();
 }
 
 /** 系统版本，只给诊断行报数用。 */
