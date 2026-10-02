@@ -620,9 +620,6 @@ export default function ChatWindow({
   /* 语音／转文字 */
   const [playingVoice, setPlayingVoice] = useState<string | null>(null);
   const [showTrans, setShowTrans] = useState<string | null>(null);
-  /* 语音诊断（1.9.62 临时）：点过的那条语音下面摊一行两路结果，
-     用来定位「说在播却没声」到底卡在哪一环——跟生图诊断一个路子，查完就撤。 */
-  const [voiceDiag, setVoiceDiag] = useState<{ id: string; text: string } | null>(null);
   /* 弹窗 */
   const [showViewer, setShowViewer] = useState(false);
   const [viewerCap, setViewerCap] = useState("");
@@ -4104,38 +4101,21 @@ export default function ChatWindow({
             return;
           }
           setPlayingVoice(m.id);
-          /* 手势当口先把音频设备点着（1.9.57）：iOS 不给「离开手势之后」新建／唤醒的
-             Web Audio 出声。主路万一没走通，备胎路才有声可出——不然就是「点了没声音」。 */
-          primeVoiceAudio();
           const end = () => setPlayingVoice(null);
-          /* 1.9.62 临时诊断：两路各自的结果摊在气泡下面，截个图就能定位。 */
-          const sess = (navigator as Navigator & { audioSession?: { type?: string } }).audioSession;
-          const mime = /^data:([^;,]*)/.exec(audioUrl)?.[1] ?? "?";
-          const head = `音频 ${mime} · ${Math.round(audioUrl.length / 1024)}KB · 会话 ${sess ? sess.type ?? "未设" : "不支持"}`;
-          const diag = (text: string) => setVoiceDiag({ id: m.id, text });
           /* 主路：媒体元素（参考项目验证过的做法）。走不通再退到 Web Audio。 */
           void playVoiceViaElement(audioUrl, end)
             .then((res) => {
-              if (res.ok) {
-                diag(`${head}\n主路：在走（过了出声探测）`);
-                return;
-              }
-              diag(`${head}\n主路：${res.why}`);
+              if (res.ok) return;
               return playVoiceViaWebAudio(m.id, audioUrl, end).then((res2) => {
                 if (res2.ok) {
                   /* 上面 play() 失败时可能已经把「在播」标记清了，这里补回来。 */
                   setPlayingVoice(m.id);
-                  diag(`${head}\n主路：${res.why}\n备胎：在走（${res2.seconds.toFixed(1)}s · ${res2.state}）`);
                   return;
                 }
                 setPlayingVoice(null);
-                diag(`${head}\n主路：${res.why}\n备胎：${res2.why}`);
               });
             })
-            .catch((err: unknown) => {
-              setPlayingVoice(null);
-              diag(`${head}\n异常：${err instanceof Error ? err.message : String(err)}`);
-            });
+            .catch(() => setPlayingVoice(null));
         };
         return (
           <div>
@@ -4199,23 +4179,6 @@ export default function ChatWindow({
                 {durSec}″
               </span>
             </div>
-            {voiceDiag?.id === m.id ? (
-              <div
-                style={{
-                  marginTop: 8,
-                  padding: "6px 8px",
-                  borderRadius: 8,
-                  background: "rgba(0,0,0,.045)",
-                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-                  fontSize: 10,
-                  lineHeight: 1.55,
-                  color: T.ink2,
-                  whiteSpace: "pre-wrap",
-                }}
-              >
-                {voiceDiag.text}
-              </div>
-            ) : null}
             {showTrans === m.id ? (
               <div
                 style={{
@@ -7962,40 +7925,21 @@ function isVoiceCtxPlaying(): boolean {
 }
 
 /**
- * 出声探测（1.9.56）：iOS 主屏 PWA 上有个 WebKit 老 bug（295518）——第一条语音响过之后，
- * 后面再 `play()` 会「成功 resolve 却不出声」，元素卡在 currentTime=0 干瞪眼，
- * 界面还显示在播。这一探：play() 回来后盯一小会儿 currentTime，挪了（或已播完）才算真出声；
- * 一直没挪就当作没走通，丢掉这个元素，让调用方退到 Web Audio 那条备胎路。
- */
-function probeVoiceAudible(audio: HTMLAudioElement): Promise<boolean> {
-  return new Promise((resolve) => {
-    const started = Date.now();
-    const tick = () => {
-      if (audio.ended || audio.currentTime > 0.05) {
-        resolve(true);
-        return;
-      }
-      if (Date.now() - started >= 700) {
-        resolve(false);
-        return;
-      }
-      window.setTimeout(tick, 60);
-    };
-    window.setTimeout(tick, 120);
-  });
-}
-
-/**
  * 用媒体元素播一条语音——照参考项目：当场 new 一个 <audio>，src 直接给 data URL，
  * 播完就 pause + removeAttribute("src") + load() 把它丢掉，页面上不留活元素。
- * ok:false ＝ 这条路没走通（play() 被拒／加载失败／**压根没出声**），调用方可以再试 Web Audio。
+ * ok:false ＝ 这条路没走通（play() 被拒／加载失败），调用方可以再试 Web Audio。
+ *
+ * 1.9.64 回退：1.9.56 曾在这儿加过「出声探测」+ 2.5 秒赛跑——play() 回来后盯 currentTime，
+ * 700ms 不挪就判无声、丢掉元素退 Web Audio。可这台 iOS 26 主屏 PWA 上 Web Audio 那条备胎
+ * 也点不着音频设备（Failed to start the audio device），于是两路一起哑；而主路本来只是
+ * 「启动稍慢」也被误判成没出声给掐了。现在退回参考项目原本的写法：play() 只要 resolve
+ * 就当在走，不加探测、不加超时。
  */
 async function playVoiceViaElement(
   dataUrl: string,
   onEnded: () => void,
 ): Promise<{ ok: true } | { ok: false; why: string }> {
   const audio = new Audio(dataUrl);
-  audio.preload = "auto";
   voiceEl = audio;
   audio.onended = () => {
     disposeVoiceEl(audio);
@@ -8005,35 +7949,12 @@ async function playVoiceViaElement(
     disposeVoiceEl(audio);
     onEnded();
   };
-  /* play() 在 iOS 上偶有「永不 settle」的情况（既不出声、也不回绝，界面就卡在「在播」）。
-     拿个计时器跟它赛跑：2.5 秒还没回音就当这条主路废了，丢掉元素退备胎（1.9.57）。 */
-  let playErr = "";
-  const gate = await Promise.race([
-    audio.play().then(
-      () => "ok" as const,
-      (err: unknown) => {
-        const e = err as { name?: string; message?: string } | null;
-        playErr = `${e?.name ?? "?"} ${e?.message ?? ""}`;
-        return "fail" as const;
-      },
-    ),
-    new Promise<"timeout">((r) => window.setTimeout(() => r("timeout"), 2500)),
-  ]);
-  if (gate !== "ok") {
-    audio.onended = null;
-    audio.onerror = null;
+  try {
+    await audio.play();
+  } catch (err) {
+    const e = err as { name?: string; message?: string } | null;
     disposeVoiceEl(audio);
-    return {
-      ok: false,
-      why: gate === "timeout" ? "play() 超时没回音" : `play() 被拒绝（${playErr}）`,
-    };
-  }
-  /* play() 成了不代表真出声——盯一下 currentTime，没挪就当这条路废了，交给 Web Audio。 */
-  if (!(await probeVoiceAudible(audio))) {
-    audio.onended = null;
-    audio.onerror = null;
-    disposeVoiceEl(audio);
-    return { ok: false, why: "元素没出声（currentTime 不往前走）" };
+    return { ok: false, why: `play() 被拒绝（${e?.name ?? "?"} ${e?.message ?? ""}）` };
   }
   return { ok: true };
 }
@@ -8090,19 +8011,6 @@ function getVoiceCtx(): AudioContext | null {
   /* iOS 上 Web Audio 默认跟着「静音开关」走（媒体元素不跟），能设就设成媒体播放。 */
   applyPlaybackAudioSession();
   return voiceCtx;
-}
-
-/** 点击的当口，只把本页音频会话摆成「媒体播放」类别——**不建 AudioContext**（1.9.62）。
-
-    1.9.57 起这里会顺手把那个唯一的 AudioContext 建起来并 resume()，图的是备胎路能在
-    手势里点着火。可 iOS 26 主屏 PWA 上这个 AudioContext 起不来（InvalidStateError
-    「Failed to start the audio device」）；它一起不来，整个页面的音频会话就被它拖坏——
-    主路那条媒体元素虽然照跑（时间在走、图标变暂停、出声探测也过得去），却一声都送不
-    出来，看起来就是「点哪条都听不了」（恩熙 2026-10-03）。
-    媒体元素本来就不靠 AudioContext，也不受静音拨键影响；那就别在点击当口碰它，让它
-    保持干净。备胎路（Web Audio）真要用到时自己再建，建不起来也是它自个儿的事。 */
-function primeVoiceAudio(): void {
-  applyPlaybackAudioSession();
 }
 
 /** data URL 的 base64 段还原成 ArrayBuffer——decodeAudioData 只吃二进制。 */
