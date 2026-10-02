@@ -7896,52 +7896,94 @@ function ImageBubble({
   );
 }
 
-/* ── 语音播放：整场只留同一个 <audio>，每次播前当场重设 src ─────────────────────
+/* ── 语音播放：常驻 <audio>，播前当场重设 src；被系统扣住时换元素再试 ─────────────
    参考项目（stellasei/components/chat/message-bubble.tsx 的 playSrc）只用媒体元素、
    不碰 Web Audio——方向是对的：iOS 静音拨键会掐掉 Web Audio 的输出（全线无声），
    媒体元素不受影响。
 
-   但 iOS 26 主屏 PWA 另有系统回归（WebKit 295518 未修／300990 是同源视频版，
-   Apple 论坛 805900）：首次能播，把 App 划掉再打开，audio.play() 会静默 resolve
-   却不出声——元素被系统扣住不放（Safari 里一切正常）。恩熙那句「刚刚本来可以、
-   突然就不行」正是它：冷启动后的那一次就哑了。
+   但 iOS 26 主屏 PWA 另有系统回归（WebKit 295518／300990 同源，Apple 论坛 805900）：
+   首次能播，把 App 划掉再打开，audio.play() 会静默 resolve 却不出声——元素被系统
+   扣住不放（Safari 里一切正常）。恩熙那句「刚刚本来可以、突然就不行」正是它。
 
-   社区里被 bug 报告者确认「仍能出声」的复现器（WebKit 295518 留言 7，作者
-   Alex Suzuki，源码 github.com/suzukieng/wa-pwa）只做四件事：
-     ① 整场只留同一个元素；② 播放前当场重设 .src（直接喂 data URI）；
-     ③ currentTime = 0；④ play()。**它不清源**——不做 removeAttribute("src")+load()。
-   1.9.65/1.9.66 都多了「清源」这一步，嫌疑正是它把元素推进无源态、反倒弄死。
-   这一版就照抄那四步，把变量收紧到跟它一样少，再看结果。 */
+   两条对法：
+   ① 源改 blob URL。同一 bug 里被点名的 TikTok 主屏版视频正是靠 blob 源（JS 注入）
+      绕开的——data URI 让元素停在无源态，blob 更像真正的流。转换必须同步做，不能
+      await，否则用户手势过期。转不出来就退回 data URI。
+   ② 元素仍不出声就换一个全新的再试一次（旧元素可能已被扣死）。正常路径照旧
+      「常驻元素 + 播前重设 src + currentTime=0 + play()、不清源」——那是 1.9.67 被
+      实测确认能出声的最小写法，别动它。 */
 
-let voiceEl: HTMLAudioElement | null = null; /* 常驻元素：整场就这一个 */
-
-/** 拿常驻元素，没有就造一个。挂进正文（藏起来）——个别 WebKit 版本对游离元素
-    不太给面子，挂上更稳；又不能用 display:none（有的版本会拒播），用零尺寸代替。 */
-function getVoiceEl(): HTMLAudioElement {
-  if (!voiceEl) {
-    voiceEl = new Audio();
-    voiceEl.preload = "auto";
-    voiceEl.setAttribute("aria-hidden", "true");
-    voiceEl.style.position = "fixed";
-    voiceEl.style.left = "-9999px";
-    voiceEl.style.width = "1px";
-    voiceEl.style.height = "1px";
-    voiceEl.style.opacity = "0";
-    voiceEl.style.pointerEvents = "none";
-    try {
-      document.body.appendChild(voiceEl);
-    } catch {
-      /* 极端情况下挂不上就算了，游离元素也能放 */
-    }
+/** 造一个藏起来、挂在 DOM 上的 <audio>。（藏起来，又不能 display:none——有的版本会拒播。） */
+function makeHiddenAudio(): HTMLAudioElement {
+  const el = new Audio();
+  el.preload = "auto";
+  el.setAttribute("aria-hidden", "true");
+  el.style.position = "fixed";
+  el.style.left = "-9999px";
+  el.style.width = "1px";
+  el.style.height = "1px";
+  el.style.opacity = "0";
+  el.style.pointerEvents = "none";
+  try {
+    document.body.appendChild(el);
+  } catch {
+    /* 极端情况下挂不上就算了，游离元素也能放 */
   }
+  return el;
+}
+
+let voiceEl: HTMLAudioElement | null = null; /* 常驻元素：正常路径就这一个 */
+let voiceAltEl: HTMLAudioElement | null = null; /* 备用元素：常驻那个被扣住时才出场 */
+let voiceActive: HTMLAudioElement | null = null; /* 此刻负责发声的那个（常驻或备用） */
+let voiceResidentStuck = false; /* 常驻元素这一场已被扣死，后面直接走备用 */
+
+/** 拿常驻元素，没有就造一个。 */
+function getVoiceEl(): HTMLAudioElement {
+  if (!voiceEl) voiceEl = makeHiddenAudio();
   return voiceEl;
+}
+
+/** 拿备用元素，没有就造一个。 */
+function getVoiceAltEl(): HTMLAudioElement {
+  if (!voiceAltEl) voiceAltEl = makeHiddenAudio();
+  return voiceAltEl;
+}
+
+/* blob 源得自己回收：上一个就算还在响也算过气，revoke 掉。 */
+let voiceBlobUrl: string | null = null;
+
+/** 把 data URI 同步转成 blob URL（TikTok 主屏版就靠 blob 源绕开元素被扣住）。
+    必须在用户的点击手势里同步跑完，一 await 手势就过期。转不出来返回 null。 */
+function voiceBlobSrc(dataUrl: string): string | null {
+  try {
+    const comma = dataUrl.indexOf(",");
+    if (comma < 0) return null;
+    const head = dataUrl.slice(0, comma);
+    if (!/^data:/i.test(head) || !/;base64/i.test(head)) return null;
+    const mime = head.slice(5).replace(/;base64/i, "") || "audio/mpeg";
+    const bin = atob(dataUrl.slice(comma + 1));
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
+    if (voiceBlobUrl) {
+      try {
+        URL.revokeObjectURL(voiceBlobUrl);
+      } catch {
+        /* 已经没了 */
+      }
+    }
+    voiceBlobUrl = url;
+    return url;
+  } catch {
+    return null; /* 解析失败就退回 data URI，照样能放 */
+  }
 }
 
 /** 停掉正在响的语音（没在响就什么都不做）。元素留着，只是暂停。 */
 function stopVoiceEl(): void {
-  if (!voiceEl) return;
+  if (!voiceActive) return;
   try {
-    voiceEl.pause();
+    voiceActive.pause();
   } catch {
     /* 已经没了 */
   }
@@ -7949,7 +7991,7 @@ function stopVoiceEl(): void {
 
 /** 语音此刻在响吗——不看界面上的标记，那玩意会卡住骗人。 */
 function isVoiceElPlaying(): boolean {
-  return !!voiceEl && !voiceEl.paused && !voiceEl.ended;
+  return !!voiceActive && !voiceActive.paused && !voiceActive.ended;
 }
 
 /** 朗读前洗掉「演给人看、不该念出来」的部分：（）／() 里的动作、心理、场景描写。
@@ -7974,7 +8016,9 @@ function iosVersion(): string {
 
 /**
  * play() 回来 ≠ 真出声。iOS 26 PWA 扣住元素时它静默 resolve，时间轴却纹丝不动。
- * 盯时间轴挪没挪（或是否已播完）来判断；一直没动就当这条路没走通。只用于诊断。
+ * 盯时间轴挪没挪（或是否已播完）来判断；没动就当这条路没走通，好换元素再试。
+ * 源是本地 blob／data，加载是瞬时的，0.8s 判定窗口足够——别给太长，
+ * 等久了用户手势过期，换元素那次 play() 反而会被拒。
  */
 function probeVoiceAudible(audio: HTMLAudioElement): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
@@ -7989,24 +8033,19 @@ function probeVoiceAudible(audio: HTMLAudioElement): Promise<boolean> {
     const poll = setInterval(() => {
       if (audio.ended || audio.currentTime > 0.03) finish(true);
     }, 60);
-    const timer = setTimeout(() => finish(audio.ended || audio.currentTime > 0.03), 1500);
+    const timer = setTimeout(() => finish(audio.ended || audio.currentTime > 0.03), 800);
   });
 }
 
-/**
- * 播一条语音。ok:false ＝ 这条路没走通（play() 被拒，或 play() 回来却没声）。
- *
- * 照 Alex Suzuki 那个仍能出声的复现器：常驻元素 + 播前重设 src（data URI）+
- * currentTime=0 + play()。**不清源、不换元素、不重试**——把变量压到跟它一样少。
- */
-async function playVoiceViaElement(
-  dataUrl: string,
+/** 在一个指定元素上放：播前重设 src + currentTime=0 + play()，再盯是否真出声。 */
+async function playOnVoiceEl(
+  audio: HTMLAudioElement,
+  src: string,
   onEnded: () => void,
 ): Promise<{ ok: true } | { ok: false; why: string }> {
-  const audio = getVoiceEl();
   audio.onended = () => onEnded();
   audio.onerror = () => onEnded();
-  audio.src = dataUrl; /* 播前当场重设——不清源，直接喂 data URI */
+  audio.src = src; /* 播前当场重设——不清源 */
   try {
     audio.currentTime = 0;
   } catch {
@@ -8020,10 +8059,39 @@ async function playVoiceViaElement(
     audio.onerror = null;
     return { ok: false, why: `play() 被拒绝（${e?.name ?? "?"} ${e?.message ?? ""}）` };
   }
-  if (await probeVoiceAudible(audio)) return { ok: true };
+  if (await probeVoiceAudible(audio)) {
+    voiceActive = audio;
+    return { ok: true };
+  }
   audio.onended = null;
   audio.onerror = null;
   return { ok: false, why: "play() 回来却没出声（元素被系统扣住）" };
+}
+
+/**
+ * 播一条语音。ok:false ＝ 两条路都没走通。
+ * 第一路照旧走常驻元素（blob 源）——1.9.67 实测能出声的最小写法；
+ * 常驻元素被系统扣住时，换备用元素再试一次。
+ */
+async function playVoiceViaElement(
+  dataUrl: string,
+  onEnded: () => void,
+): Promise<{ ok: true } | { ok: false; why: string }> {
+  stopVoiceEl(); /* 先停掉上一条（可能来自上一次的备用元素） */
+  const src = voiceBlobSrc(dataUrl) ?? dataUrl; /* 同步转 blob，转不出就退回 data URI */
+
+  if (!voiceResidentStuck) {
+    const resident = await playOnVoiceEl(getVoiceEl(), src, onEnded);
+    if (resident.ok) return resident;
+    voiceResidentStuck = true; /* 常驻元素这一场废了，后面直接走备用 */
+    const alt = await playOnVoiceEl(getVoiceAltEl(), src, onEnded);
+    if (alt.ok) return alt;
+    return { ok: false, why: `${resident.why}；换元素后：${alt.why}` };
+  }
+
+  const alt = await playOnVoiceEl(getVoiceAltEl(), src, onEnded);
+  if (alt.ok) return alt;
+  return { ok: false, why: alt.why };
 }
 
 /* 复制兜底：不安全的 http 页面（局域网 IP）里 navigator.clipboard 是 undefined，
