@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronLeft } from "lucide-react";
 import type { ChatMessage, InnerSnapshot } from "@/types/chat";
 
@@ -146,9 +146,10 @@ export default function InnerVoicePage({
   charName: string;
   charAvatar: string;
   messages: ChatMessage[];
-  /** 外语聊天（1.9.50）：他写下的字用的那门语言；没开外语就是 undefined，页里照旧纯中文。 */
+  /** 心声页双语（1.9.83）：外语聊天**且**心声那一格也开着时，才是他写下的字所用的那门语言，
+     页里各栏显「原文＋中文」两行；没开（含心声那格关着）就是 undefined，页里照旧纯中文。 */
   transLang?: string;
-  /** 会话上的译文缓存（源文→中文）：翻过的那些字都在里头，点一下就瞬间切。 */
+  /** 会话上的译文缓存（源文→中文）：<think> 里写下的中文、别处翻过的都在里头，命中就瞬间显。 */
   transCache?: Record<string, string>;
   /** 没命中缓存时才走它翻一次（ChatWindow 的 translateCached，翻完写回缓存）。 */
   onTranslate?: (src: string) => Promise<string | undefined>;
@@ -364,7 +365,7 @@ export default function InnerVoicePage({
     </div>
   );
 
-  /* 外语聊天（1.9.50）：把「默认中文、点一下切原文」的入口铺给页里每一块字（见 useTrans）。 */
+  /* 心声页双语（1.9.83）：把语言与译文缓存铺给页里每一块字（见 useTrans／Tr）。 */
   const trans = useMemo<TransApi>(
     () => ({ lang: transLang, cache: transCache, onTranslate }),
     [transLang, transCache, onTranslate],
@@ -453,12 +454,10 @@ export default function InnerVoicePage({
         .iv2-chev { flex:none; margin-top:3px; transition:transform .24s cubic-bezier(.16,1,.3,1); }
         .iv2-chev.on { transform:rotate(180deg); }
 
-        /* 外语聊天（1.9.50）：可点译的那段字——虚线示可点，末尾一枚小标（译／原／…）。 */
-        .iv2-tr { text-decoration:underline dashed rgba(252,247,240,.26); text-underline-offset:3px; }
-        .iv2-tr:active { opacity:.7; }
-        .iv2-trmark { display:inline-block; margin-left:6px; padding:0 4px; vertical-align:1px;
-          border:1px solid ${IV.line2}; font-family:${FP}; font-size:9px; font-style:normal;
-          letter-spacing:.1em; line-height:1.5; color:${IV.ink3}; text-decoration:none; }
+        /* 心声页双语（1.9.83）：一栏两行——原文在上，中文一行小字垫在下面（跟气泡一个口径）。
+           中文那行收小一档、压淡一档，别抢原文；没取到中文时这一行不出现。 */
+        .iv2-dual-orig { display:block; }
+        .iv2-dual-zh { display:block; margin-top:3px; font-size:12px; line-height:1.7; color:${IV.ink3}; }
 
         .iv2-hrow { background:transparent; }
         .iv2-hrow:active { background:rgba(224,65,122,.08); }
@@ -485,7 +484,7 @@ export default function InnerVoicePage({
 
         /* 键盘焦点：只在用键盘时描一圈粉边，点按不出现。 */
         .iv2-back:focus-visible, .iv2-tab:focus-visible, .iv2-hist:focus-visible,
-        .iv2-hrow:focus-visible, .iv2-tr:focus-visible, .iv2-slotchev:focus-visible,
+        .iv2-hrow:focus-visible, .iv2-slotchev:focus-visible,
         .iv2-wax:focus-visible { outline:2px solid ${IV.pink}; outline-offset:2px; }
         @media (prefers-reduced-motion: reduce) { .iv2-rise, .iv2-slip, .iv2-page { animation:none; } .iv2-chev, .iv2-wax { transition:none; } }
       `}</style>
@@ -654,7 +653,7 @@ export default function InnerVoicePage({
  * 局部零件
  * ===================================================================== */
 
-/** 外语聊天（1.9.50）：页里每一块字共用的「默认中文、点一下切原文」入口（由 ChatWindow 铺进来）。 */
+/** 心声页双语（1.9.83）：页里每一块字共用的「取中文译文」入口（由 ChatWindow 铺进来）。 */
 type TransApi = {
   lang?: string;
   cache?: Record<string, string>;
@@ -662,66 +661,39 @@ type TransApi = {
 };
 const TransCtx = createContext<TransApi>({});
 
-/** 一块字此刻显原文还是显中文。
- *  外语聊天开着时**默认就显中文**（1.9.59，跟气泡下方那行中文译文一个口径）——
- *  点一下切回原文、再点又切回中文。
- *  优先吃会话上的译文缓存（transCache——签名／别的栏翻过的都在里头），没有才走一次接口；
- *  翻到的先攥在手里（got），等父层缓存回填之前也不至于白等（恩熙：「会不会有延迟」）。
- *  「这一句属于哪个源文」一并记在 state 上：换了轮次／条目就对不上、当新的算——
- *  新条目按默认（中文）算，不必另起 effect 去清（effect 里 setState 会连环重渲染，lint 也不放行）。
- *  `orig`＝她明确要过原文这一档；没点过就一直在中文那档。 */
+/** 一栏字要用的中文译文（心声页双语，1.9.83）。
+ *  外语聊天开着、且【心声页也直接显示中文】那格也开着时，页里各栏显「原文＋中文」两行
+ *  （见 Tr）——这里只负责把中文取回来：先吃会话上的译文缓存（transCache——<think> 里
+ *  写下的「原文|中文」右半边、别处翻过的都在里头），命中就零等待；没命中的当场补翻一次。
+ *  「这一句属于哪个源文」一并记在 state 上：换了轮次／条目就对不上、当新的算，
+ *  不必另起 effect 去清（effect 里 setState 会连环重渲染，lint 也不放行）。
+ *  翻过（成或不成）都记在 tried 上，不在这儿重试成死循环。 */
 function useTrans(src: string | undefined) {
   const { lang, cache, onTranslate } = useContext(TransCtx);
   const raw = (src ?? "").trim();
   const can = !!lang && !!onTranslate && !!raw;
-  const [st, setSt] = useState<{ src: string; orig: boolean; busy: boolean; got?: string }>({
-    src: raw,
-    orig: false,
-    busy: false,
-  });
-  const mine = st.src === raw;
-  const orig = mine && st.orig;
-  const busy = mine && st.busy;
-  const got = mine ? st.got : undefined;
-  const trans = got ?? (raw ? cache?.[raw] : undefined) ?? "";
-  /* 此刻显的是不是中文（译文到手、且她没要过原文）。 */
-  const show = can && !orig && !!trans;
+  const [got, setGot] = useState<{ src: string; zh?: string } | null>(null);
+  const mine = got?.src === raw;
+  const zh = ((mine ? got?.zh : undefined) ?? (raw ? cache?.[raw] : undefined) ?? "").trim();
 
-  /* 默认要显中文，所以不等她点，进页就替她翻一次。翻过（成或不成）都记在 tried 上，
-     不在这儿重试成死循环；没翻成先退回显原文，等她换条目再试。 */
+  /* 进页就把没缓存的那几句补翻一次（缓存里有的在上一行已经命中、不走这儿）。 */
   const tried = useRef<string | null>(null);
   useEffect(() => {
-    if (!can || orig || trans || tried.current === raw) return;
+    if (!can || zh || tried.current === raw) return;
     tried.current = raw;
     void onTranslate!(raw).then(
-      (t) => setSt({ src: raw, orig: false, busy: false, got: t }),
-      () => setSt({ src: raw, orig: false, busy: false }),
+      (t) => setGot({ src: raw, zh: t }),
+      () => setGot({ src: raw }),
     );
-  }, [can, orig, trans, raw, onTranslate]);
+  }, [can, zh, raw, onTranslate]);
 
-  /* 点一下：中文 ⇄ 原文。要切回中文而手里还没有译文时，当场补翻一次。 */
-  const toggle = useCallback(() => {
-    if (!can || busy) return;
-    if (show) {
-      setSt({ src: raw, orig: true, busy: false, got });
-      return;
-    }
-    if (trans) {
-      setSt({ src: raw, orig: false, busy: false, got });
-      return;
-    }
-    setSt({ src: raw, orig: false, busy: true, got });
-    void onTranslate!(raw).then(
-      (t) => setSt({ src: raw, orig: false, busy: false, got: t }),
-      () => setSt({ src: raw, orig: false, busy: false, got }),
-    );
-  }, [can, busy, show, trans, got, onTranslate, raw]);
-
-  return { can, show, busy, display: show ? trans : raw, toggle };
+  return { can, zh };
 }
 
-/** 一段可点译的字：外层样式原样传进来，只加「可点」与末尾一枚小标（译／原／…）。
- *  没开外语、或这段还没有字时，就当一个普通文本节点，页里跟从前一模一样。 */
+/** 一栏两种语言（1.9.83）：原文一行在上（照旧那支正文样式）、中文一行小字垫在下面
+ *  ——跟聊天气泡一个口径（原文为主、中文随行），一眼能读也不丢外语。
+ *  只在外语聊天与【心声页也直接显示中文】都开着时这么显；关着、或这段还没有字时，
+ *  就当一个普通文本节点，页里跟从前一模一样（纯中文、也没有那枚「译／原」小键）。 */
 function Tr({
   text,
   className,
@@ -731,7 +703,7 @@ function Tr({
   className?: string;
   style?: React.CSSProperties;
 }) {
-  const { can, show, busy, display, toggle } = useTrans(text);
+  const { can, zh } = useTrans(text);
   if (!can) {
     return (
       <span className={className} style={style}>
@@ -740,26 +712,9 @@ function Tr({
     );
   }
   return (
-    <span
-      className={className ? `${className} iv2-tr` : "iv2-tr"}
-      style={{ ...style, cursor: busy ? "progress" : "pointer" }}
-      role="button"
-      tabIndex={0}
-      title={show ? "点一下看原文" : "点一下看中文"}
-      onClick={() => {
-        void toggle();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          void toggle();
-        }
-      }}
-    >
-      {display}
-      <span className="iv2-trmark" aria-hidden>
-        {busy ? "…" : show ? "原" : "译"}
-      </span>
+    <span className={className} style={style}>
+      <span className="iv2-dual-orig">{text}</span>
+      {zh ? <span className="iv2-dual-zh">{zh}</span> : null}
     </span>
   );
 }

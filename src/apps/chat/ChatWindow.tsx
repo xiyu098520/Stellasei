@@ -1652,12 +1652,20 @@ export default function ChatWindow({
            每条消息写成「外文原文|简体中文」，解析层按竖线劈开（见 splitBilingual）。
            1.9.81：语音那半的固定格式移到 buildStylePrompt 的【发语音】一节（用户提示词
            压不掉），这里只管正文与 <think>。 */
+        /* 1.9.83：心声那一格的口径按恩熙定的来——开＝心声页两种语言，<think> 各行照旧写
+           「原文|中文」两半；关＝心声页只中文，<think> 各行**直接写简体中文**。
+           关着时若还写外语，页里就得靠现翻才看得懂、还得挂枚「译／原」小键——
+           恩熙不想看到那小键，所以让 TA 一开始就把心声写成中文，页里天然中文。 */
         const langRule = trOut?.on
           ? `\n\n【说话的语言】你用${trOut.lang}说话。**你发出的每一条消息都写成两半：外文原文「|」简体中文**——先写这句话的${trOut.lang}原文，紧跟一根竖线「|」，再写这句话的简体中文；一条消息一行、成对出现，例如：こんにちは|你好。竖线两边都要写全，**缺了中文她会看不懂意思**。气泡正文照这个格式；〔语音〕里的话按【发语音】那节的固定格式写（一样是「原文|中文」，用户自定义的语音规矩也改不掉）。` +
             (trInnerOn
               ? `回复最前面那段 <think>…</think> 里也一样：**每一行都写成「原文|简体中文」两半**——心声、环境、心情、欲望、怯念、细处、日记，一行一对。`
-              : `回复最前面那段 <think>…</think> 里的每一行（心声、环境、心情、欲望、怯念、细处、日记）仍只用${trOut.lang}写，不必附中文。`) +
-            `\n但**中文标签**一律保持中文、一个字都不许翻：方括号里的标记（〔签名〕〔动态〕〔语音〕〔图片〕〔红包〕〔转账〕〔引用〕），以及 <think> 里那几行的冒号前缀（「环境：」「心情：」「欲望：」「怯念：」「细处：」「日记：」「角色心声：」）——它们是机器的锚，翻了整块就解析不出来；标签后面的**内容**照旧写成「${trOut.lang}|中文」两半。引用的原话是她说的中文，原样照抄、不要翻、也不要加竖线。动态（朋友圈）这一版仍写中文。`
+              : `回复最前面那段 <think>…</think> 里的每一行（心声、环境、心情、欲望、怯念、细处、日记）**改用简体中文写**——心声页里那几栏就该是中文，别再写${trOut.lang}原文、也不要加竖线。`) +
+            `\n但**中文标签**一律保持中文、一个字都不许翻：方括号里的标记（〔签名〕〔动态〕〔语音〕〔图片〕〔红包〕〔转账〕〔引用〕），以及 <think> 里那几行的冒号前缀（「环境：」「心情：」「欲望：」「怯念：」「细处：」「日记：」「角色心声：」）——它们是机器的锚，翻了整块就解析不出来；` +
+            (trInnerOn
+              ? `标签后面的**内容**照旧写成「${trOut.lang}|中文」两半。`
+              : `〔签名〕〔动态〕这些气泡标签后面的内容照旧写成「${trOut.lang}|中文」两半，<think> 各行标签后的内容则写简体中文。`) +
+            `引用的原话是她说的中文，原样照抄、不要翻、也不要加竖线。动态（朋友圈）这一版仍写中文。`
           : "";
         const systemStable = stylePrompt + "\n\n" + built.stable + "\n\n" + styleRules + langRule;
         /* 拉黑状态是「会变的状态」（拉／解除各换一份），所以不占稳定段——走 system 的
@@ -2013,7 +2021,7 @@ export default function ChatWindow({
           }
         }
         /* 心声页双语（1.9.80）：这一轮模型把 <think> 各行也写成了「原文|中文」，右半边
-           收进会话的译文缓存——心声页里 useTrans(源文) 直接命中，**点开即显中文、零等待**。
+           收进会话的译文缓存——心声页里 useTrans(源文) 直接命中，**进页即显中文那行、零等待**。
            键＝解析时洗净的源文（与 InnerVoicePage 取键同一份写法），保证对得上。
            这里用 conv.transCache 作底、不用 transCacheRef：后者定义在本函数之后（TDZ）。 */
         if (innerBilingual && !stopped && Object.keys(voice.pairs).length > 0) {
@@ -7289,9 +7297,14 @@ export default function ChatWindow({
           charName={charName}
           charAvatar={actualCharAvatar}
           messages={messages}
-          /* 外语聊天（1.9.50）：他心里那些字也用外语写——各栏**点一下**看中文、再点切回。
-             没开外语就传空，页里照旧纯中文，什么都不多。 */
-          transLang={conv?.translate?.out.on ? conv.translate.out.lang : undefined}
+          /* 心声页双语（1.9.83）：跟着【心声页也直接显示中文】那格走——开着才把目标语言
+             铺进页里（各栏显「原文＋中文」两行，中文从 <think> 里写下的那半取，零等待）；
+             关着传空，页里就是纯中文、也不挂那枚「译／原」小键。 */
+          transLang={
+            conv?.translate?.out.on && conv.translate.inner === true
+              ? conv.translate.out.lang
+              : undefined
+          }
           transCache={conv?.transCache}
           onTranslate={translateCached}
           onBack={() => setShowInnerPage(false)}
