@@ -118,7 +118,17 @@ export default function MessageList({
     );
   }, [rows, query]);
 
-  const pinned = useMemo(() => searched.filter((r) => r.conv?.isPinned === true), [searched]);
+  /* 置顶的也要按最近排（2026-09-24 恩熙：「有新消息的应该会被弹到最上面」）：
+     置顶只是「钉在最上面那一摞」，摞里头谁最近说话谁在前——跟微信一个样。
+     ⚠️ 原来这里只 filter 不 sort，置顶的几条按底册入库顺序摆死，
+     新消息来了也不挪窝，看着就是「有新消息没被顶上去」。 */
+  const pinned = useMemo(
+    () =>
+      searched
+        .filter((r) => r.conv?.isPinned === true)
+        .sort((a, b) => b.timeIso.localeCompare(a.timeIso)),
+    [searched],
+  );
   const normal = useMemo(
     () =>
       searched

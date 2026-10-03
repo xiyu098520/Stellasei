@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>聊天页 · 引用的半透明底</title>
+<style>
+:root{
+  --ink:#141318; --ink2:#1B161B; --pink:#E0417A; --paper:#FFFDF8;
+  --r:8px;
+  --serif:"Songti SC","SimSun","Noto Serif SC",Georgia,serif;
+  --sans:system-ui,-apple-system,"Microsoft YaHei",sans-serif;
+  --lat:ui-monospace,"SFMono-Regular",Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:#141318;color:#EDE7E0;font-family:var(--sans);padding:46px 0 90px;-webkit-font-smoothing:antialiased;
+  background-image:radial-gradient(90% 50% at 12% 0%, rgba(224,65,122,.10), transparent 58%);}
+.top{max-width:1440px;margin:0 auto;padding:0 26px 34px;}
+.kick{font-family:var(--lat);font-size:10px;letter-spacing:.34em;color:var(--pink);text-transform:uppercase;}
+h1{font-family:var(--serif);font-size:30px;font-weight:600;letter-spacing:.06em;margin:12px 0 14px;color:#FFFFFF;}
+.top>p{font-size:13.5px;line-height:1.95;color:rgba(255,255,255,.62);max-width:1040px;}
+.top>p b{color:#FFFFFF;font-weight:600;}
+.warn{margin-top:18px;font-size:12px;line-height:1.85;color:rgba(255,255,255,.42);border-left:2px solid rgba(224,65,122,.5);padding-left:13px;max-width:1040px;}
+.rack{max-width:1440px;margin:0 auto;padding:0 26px;display:flex;gap:36px;flex-wrap:wrap;justify-content:center;align-items:flex-start;}
+.unit{width:390px;}
+.cap{margin-top:24px;font-size:12.5px;line-height:1.9;color:rgba(255,255,255,.55);}
+.cap b{display:block;font-family:var(--serif);font-size:15px;font-weight:600;letter-spacing:.1em;color:#FFFFFF;margin-bottom:7px;}
+.cap s{display:block;font-family:var(--lat);font-size:10px;letter-spacing:.14em;color:rgba(255,255,255,.34);margin-top:8px;text-decoration:none;}
+.phone{width:390px;height:844px;border-radius:16px;overflow:hidden;box-shadow:0 34px 80px rgba(0,0,0,.6);position:relative;}
+.scr{width:100%;height:100%;position:relative;overflow:hidden;display:flex;flex-direction:column;}
+.status{position:absolute;top:0;left:0;right:0;height:46px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;font-family:var(--lat);font-size:11px;letter-spacing:.06em;z-index:60;color:rgba(255,253,248,.62);}
+
+.mid{flex:1;min-height:0;overflow:hidden;padding:14px 16px 0;}
+.row{display:flex;align-items:flex-start;gap:10px;margin-top:13px;}
+.row.hi{justify-content:flex-start;}
+.row.me{flex-direction:row-reverse;justify-content:flex-start;}
+.av{flex:none;width:38px;height:38px;display:flex;align-items:center;justify-content:center;border-radius:var(--r);
+  font-family:var(--serif);font-size:15px;font-weight:700;background:#DEDADF;color:#8B8189;
+  border:1.5px solid #141318;box-shadow:0 1px 2px rgba(20,19,24,.10), 0 4px 10px rgba(20,19,24,.10);}
+.row.me .av{border-color:var(--pink);box-shadow:0 1px 2px rgba(224,65,122,.14), 0 4px 10px rgba(224,65,122,.16);}
+.bub{max-width:236px;padding:5px 8px;font-family:var(--serif);font-size:13.5px;line-height:1.75;word-break:break-word;
+  overflow:hidden;border-radius:var(--r);}
+/* 引用块与气泡各自紧贴自己的文字：列里不再互相拉伸 */
+.col{display:flex;flex-direction:column;max-width:236px;min-width:0;align-items:flex-start;}
+.row.me .col{align-items:flex-end;}
+.col .bub{max-width:100%;}
+.row.hi .bub{background:#FFFFFF;color:var(--ink2);box-shadow:2px 2px 0 rgba(20,19,24,.10);}
+.row.me .bub{background:var(--ink2);color:var(--paper);box-shadow:-2px 2px 0 rgba(224,65,122,.40);}
+
+/* 引用：弧线不再另画，而是引用块自己的一条边 —— 圆角完全吻合，角不会露在外面 */
+.qt{display:block;margin:0 0 7px;padding:6px 13px;border-radius:16px;
+  background:rgba(255,253,248,.44);}
+/* 弧线只留靠头像那一侧，不做整圈 */
+.row.hi .qt{border-left:3px solid rgba(20,19,24,.44);}
+.row.me .qt{border-right:3px solid rgba(224,65,122,.74);}
+.qt-n{display:block;font-size:10px;color:rgba(20,19,24,.46);line-height:1.45;}
+.qt-c{display:block;font-size:11.5px;color:rgba(20,19,24,.62);line-height:1.5;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.row.me .qt-n{color:rgba(224,65,122,.66);}
+.row.me .qt-c{color:rgba(160,52,98,.85);}
+
+/* 组尾小字：发送时间（墨灰）＋「已读」（压深粉）。已读只出现在我这一侧 */
+.meta{display:flex;align-items:center;gap:5px;align-self:flex-end;margin-top:3px;
+  font-size:9.5px;color:#B4A9B0;letter-spacing:.06em;font-variant-numeric:tabular-nums;}
+.meta .rd{color:var(--pink);letter-spacing:.14em;}
+
+/* 输入区：一行四样 —— ＋、书写框、爱心（强制回复）、小飞机（发送）。
+   爱心只在「连续发送 + 攒着话没回」时才亮；平时是一颗空心的粉线心，淡着待命 */
+.inn{display:flex;align-items:center;gap:9px;padding:9px 14px 22px;background:rgba(255,255,255,.88);
+  border-top:1px solid rgba(20,19,24,.06);}
+.inn .plus{flex:none;width:32px;height:32px;border-radius:var(--r);border:1px solid rgba(232,106,155,.28);
+  color:var(--pink);background:#FFFFFF;display:flex;align-items:center;justify-content:center;font-size:17px;}
+.inn .box{flex:1;min-width:0;height:38px;border-radius:var(--r);border:1px solid rgba(232,106,155,.16);
+  background:#FFFFFF;display:flex;align-items:center;padding:0 13px;color:rgba(27,22,27,.3);
+  font-family:var(--serif);font-size:12.5px;}
+.inn .like{flex:none;width:36px;height:36px;border-radius:var(--r);border:1px solid rgba(224,65,122,.42);
+  background:#FFFFFF;color:var(--pink);display:flex;align-items:center;justify-content:center;font-size:15px;}
+.inn .send{flex:none;width:36px;height:36px;border-radius:var(--r);color:#FFFFFF;
+  background:linear-gradient(180deg,#E8709C 0%,#C9346A 100%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.26);
+  display:flex;align-items:center;justify-content:center;font-size:14px;}
+
+/* 墨底那版：上下两头深、中间浅 */
+.inn.dark{background:var(--ink);border-top:none;}
+/* ＋ 与 爱心：黑底、白边，底下垫一层灰白的影——所以它是一块「有厚度的黑签」，
+   压在墨条上轮廓清清楚楚，颜色仍然是黑的 */
+.inn.dark .plus,.inn.dark .like{
+  background:#0F0D13;
+  border:1.5px solid #FFFDF8;
+  color:#FFFDF8;
+  box-shadow:0 3px 0 rgba(255,253,248,.30);}
+.inn.dark .box{background:rgba(255,253,248,.10);border-color:transparent;color:rgba(255,253,248,.42);}
+
+/* —— 细节零件（都装在墨底这一版上）—— */
+/* 书写框压凹进墨里：内阴影 ＋ 一圈极淡的纸白内描边 */
+.inn .box.slot{box-shadow:inset 0 3px 8px rgba(0,0,0,.42), inset 0 0 0 1px rgba(255,253,248,.09);}
+/* 框里铺一层极淡斜纹：像压在墨底上的一张纸笺 */
+.inn .box.lined{background-image:repeating-linear-gradient(-45deg,
+  rgba(255,253,248,.055) 0 4px, transparent 4px 11px);}
+/* 发送键底下也垫一层硬影（粉的），跟 ＋ 与爱心那层影子同一个做法 */
+.inn .send.sh{box-shadow:inset 0 1px 0 rgba(255,255,255,.26), 0 3px 0 rgba(224,65,122,.45);}
+/* 光标：一根会闪的粉竖条 */
+.inn .caret{display:inline-block;width:1.5px;height:13px;background:var(--pink);vertical-align:-2px;
+  margin-right:4px;animation:cb 1s steps(1) infinite;}
+@keyframes cb{0%,45%{opacity:1;}50%,100%{opacity:0;}}
+
+/* ── 转钱页（输入金额、转给他）——从底下升起来的一张弹窗纸。
+   元素照真机一件不缺：标题 ／ 收件人 ／ 金额 ／ 说明（小字＋表情）／ 红包封面那一行 ／ 按钮。── */
+
+/* 遮罩：把背后的聊天页压暗 */
+.scrim{position:absolute;left:0;right:0;top:0;bottom:0;background:rgba(20,19,24,.44);z-index:50;}
+/* 弹窗纸：顶上两角圆、贴屏底；墨底 ＋ 极淡网点 ＋ 顶上压一道柔光 */
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:51;padding:0 20px 20px;
+  border-radius:18px 18px 0 0;box-shadow:0 -18px 44px rgba(0,0,0,.5);
+  background-color:#1B161B;
+  background-image:
+    radial-gradient(circle, rgba(255,253,248,.05) 1px, transparent 1.2px),
+    radial-gradient(130% 90% at 50% 0%, rgba(255,253,248,.07) 0%, transparent 62%);
+  background-size:10px 10px, 100% 100%;background-position:50% 50%, 0 0;}
+/* 顶上一行：抓手 ＋ 左「红包」右「×」 */
+.sh-grip{width:34px;height:3px;border-radius:999px;background:rgba(255,253,248,.20);margin:8px auto 0;}
+.sh-head{display:flex;align-items:center;justify-content:space-between;margin-top:14px;}
+.sh-t{font-family:var(--serif);font-size:18px;font-weight:500;letter-spacing:.08em;color:rgba(255,253,248,.88);}
+.sh-x{width:28px;height:28px;display:flex;align-items:center;justify-content:center;
+  border:1.5px solid rgba(255,253,248,.5);color:#FFFDF8;font-size:14px;line-height:1;}
+
+/* 公共零件 */
+.rp-lb{font-family:var(--serif);font-size:11px;letter-spacing:.14em;color:rgba(255,253,248,.42);}
+.rp-foot{padding:20px 0 0;}
+.rp-btn{width:100%;padding:15px 0;border-radius:999px;border:none;color:#FFFDF8;
+  font-family:var(--serif);font-size:14.5px;font-weight:600;letter-spacing:.1em;text-indent:.1em;
+  background:linear-gradient(180deg,#EE7BA6 0%,#D22F6E 100%);box-shadow:0 6px 0 rgba(224,65,122,.30);}
+/* 收件人：一张淡粉小签——左两行字、右一枚圆头像 */
+.rp-to{display:flex;align-items:center;gap:12px;margin-top:18px;padding:12px 14px;
+  border-radius:14px;background:rgba(232,106,155,.13);border:1px solid rgba(232,106,155,.26);}
+.rp-to .tx{flex:1;min-width:0;}
+.rp-to .nm{display:block;margin-top:4px;font-family:var(--serif);font-size:20px;font-weight:500;
+  letter-spacing:.02em;color:#FFFDF8;}
+.rp-to .rk{flex:none;width:44px;height:44px;border-radius:8px;display:flex;align-items:center;
+  justify-content:center;font-family:var(--serif);font-size:15px;font-weight:600;color:#FFFDF8;
+  background:linear-gradient(140deg,#F0A6C4,#E86A9B);
+  box-shadow:0 0 0 1.5px rgba(255,253,248,.45), 0 2px 6px rgba(0,0,0,.35);}
+/* 金额：粉 ¥ ＋ 大号等宽数字当主角，底下一条由实到透明的粉线 */
+.rp-amt{margin-top:30px;display:flex;align-items:baseline;gap:6px;}
+.rp-amt i{font-style:normal;font-size:20px;font-weight:600;line-height:1;color:var(--pink);}
+.rp-amt b{font-family:var(--lat);font-size:46px;font-weight:700;letter-spacing:.01em;line-height:1;color:#FFFDF8;}
+.amtline{height:2px;margin-top:3px;
+  background:linear-gradient(90deg, rgba(232,106,155,.7) 0%, rgba(232,106,155,.20) 60%, rgba(232,106,155,0) 100%);}
+/* 说明：小字 ＋ 表情，下面一只陷进去的墨槽 */
+.rp-note{margin-top:30px;}
+.rp-nh{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;}
+.rp-smile{font-size:15px;line-height:1;color:var(--pink);}
+.rp-nbox{border-radius:12px;padding:13px 14px;display:flex;align-items:center;
+  font-family:var(--serif);font-size:14.5px;color:#FFFDF8;
+  background:rgba(255,253,248,.06);border:1px solid rgba(255,253,248,.13);
+  box-shadow:inset 0 2px 6px rgba(0,0,0,.42);}
+.rp-nbox .ph{color:rgba(255,253,248,.40);}
+/* 红包封面那一行 */
+.rp-cov{margin-top:20px;}
+.rp-crow{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:14px;margin-top:8px;
+  background:rgba(255,253,248,.05);border:1px solid rgba(255,253,248,.14);}
+.rp-th{flex:none;width:56px;height:38px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,#EE8AB4 0%,#C9346A 100%);}
+.rp-ct{flex:1;min-width:0;text-align:left;}
+.rp-ct b{display:block;font-family:var(--serif);font-size:15px;font-weight:500;letter-spacing:.02em;color:#FFFDF8;}
+.rp-ct s{display:block;margin-top:3px;font-size:11px;text-decoration:none;color:rgba(255,253,248,.42);}
+.rp-ch{flex:none;display:flex;align-items:center;gap:3px;font-size:12px;letter-spacing:.04em;color:var(--pink);}
+/* 槽里的光标：跟输入条那根同一套闪法 */
+.sheet .caret{display:inline-block;width:2px;height:18px;background:var(--pink);
+  vertical-align:-3px;margin-left:5px;animation:cb 1s steps(1) infinite;}
+.rp-amt .caret{height:34px;vertical-align:-6px;}
+/* 译文：贴着气泡下方的一行小字，靠哪一侧跟那条气泡一致 */
+.tr{display:block;margin-top:5px;padding-left:9px;max-width:236px;
+  font-family:var(--serif);font-size:11px;line-height:1.65;color:rgba(20,19,24,.44);
+  border-left:2px solid rgba(20,19,24,.14);}
+.row.me .tr{padding-left:0;padding-right:9px;text-align:right;
+  border-left:none;border-right:2px solid rgba(232,106,155,.55);color:rgba(20,19,24,.5);}
+
+/* ── 聊天设置里那一栏「翻译」（预览用的小壳） ── */
+.sett{background:#FFF7F9;color:var(--ink2);}
+.st-top{display:flex;align-items:center;gap:10px;padding:calc(46px + 10px) 16px 10px;}
+.st-back{font-size:24px;line-height:1;color:var(--ink);}
+.st-t{font-family:var(--serif);font-size:17px;font-weight:600;letter-spacing:.04em;color:var(--ink);}
+.st-body{flex:1;min-height:0;overflow-y:auto;padding:4px 16px 22px;display:flex;flex-direction:column;gap:14px;}
+.st-card{background:#FFF;border:1.5px solid var(--ink);border-radius:12px;
+  box-shadow:3px 3px 0 rgba(20,19,24,.88);padding:14px;}
+.st-row{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+.st-ct{font-family:var(--serif);font-size:14px;font-weight:600;color:var(--ink);}
+.st-cs{margin-top:4px;font-size:11px;line-height:1.5;color:rgba(20,19,24,.45);}
+.st-sw{flex:none;position:relative;width:42px;height:24px;border:1.5px solid var(--ink);
+  border-radius:999px;background:#E9E4E6;transition:background .15s;}
+.st-sw::after{content:"";position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;
+  background:#FFF;border:1.5px solid var(--ink);}
+.st-sw.on{background:var(--pink);}
+.st-sw.on::after{left:auto;right:2px;}
+.st-sw.sm{width:36px;height:20px;}
+.st-sw.sm::after{width:12px;height:12px;top:2px;}
+.st-sub{margin-top:12px;padding-top:12px;border-top:1px dashed rgba(20,19,24,.16);
+  display:flex;align-items:center;justify-content:space-between;gap:12px;}
+.st-lb{font-family:var(--serif);font-size:12px;color:rgba(20,19,24,.58);}
+.st-pick{font-family:var(--serif);font-size:12.5px;color:var(--pink);letter-spacing:.02em;}
+
+.day{display:flex;justify-content:center;padding:14px 0 2px;}
+.dc span{padding:3px 18px;color:#B33E70;font-size:10.5px;letter-spacing:.16em;text-indent:.16em;
+  background:linear-gradient(90deg, rgba(249,223,233,0) 0%, rgba(249,223,233,.92) 20%, rgba(249,223,233,.92) 80%, rgba(249,223,233,0) 100%);}
+
+.g{background:linear-gradient(160deg,#FFFFFF,#FFF0F5);color:var(--ink2);}
+.g .hd{position:relative;flex:none;padding:calc(46px + 8px) 14px 12px;background:var(--ink);}
+.g .bar{display:flex;align-items:center;justify-content:space-between;height:26px;}
+.g .back{font-size:26px;line-height:1;color:#FFFDF8;}
+.g .more{display:flex;gap:5px;align-items:center;}
+.g .more i{width:5px;height:5px;border-radius:50%;background:#FFFDF8;display:block;}
+.g .mini{flex:none;width:44px;height:44px;display:flex;align-items:center;justify-content:center;
+  font-family:var(--serif);font-size:19px;font-weight:700;background:transparent;border:3px solid rgba(255,253,248,.85);
+  color:#FFFDF8;box-shadow:4px 4px 0 rgba(255,253,248,.20);}
+.g .mini.m{border-color:var(--pink);color:var(--pink);box-shadow:-4px 4px 0 rgba(224,65,122,.55);}
+.g .nm{font-family:var(--serif);font-size:26px;font-weight:700;letter-spacing:.03em;color:#FFFDF8;line-height:1.05;
+  text-shadow:2px 2px 0 rgba(224,65,122,.55);}
+.g .ps{font-size:10px;color:rgba(255,253,248,.55);margin-top:5px;letter-spacing:.05em;}
+.g .pair{display:flex;align-items:center;margin-top:8px;}
+
+/* 居中版（ctrv 与 g 同元素，平写） */
+.ctrv .hd{padding-top:calc(46px + 6px);padding-bottom:19px;}
+.ctrv .pair{margin-top:0;}
+.ctrv .side{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;}
+.ctrv .side.l{align-items:flex-end;text-align:right;padding-right:13px;}
+.ctrv .side.r{align-items:flex-start;text-align:left;padding-left:13px;}
+.ctrv .stk{flex:none;display:flex;align-items:center;gap:6px;}
+.ctrv .stk .mini:first-child{box-shadow:-4px 4px 0 rgba(255,253,248,.20);}
+.ctrv .stk .mini:last-child{box-shadow:4px 4px 0 rgba(224,65,122,.55);}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="kick">Stellasei · Chat Study 110</div>
+  <h1>对话页 ＋ 转钱页 ＋ 翻译</h1>
+  <p>四台：① 定稿的对话页；② 转钱页（从底下升起的墨底弹窗）；③ <b>带翻译的对话页</b>——他说日文、气泡<b>正下方挂一行中文小字</b>，我打中文、发出去变成日文，我的气泡下面也照样挂一行中文；④ <b>翻译设置</b>（每个角色一套）——先挑<b>用哪套接口来翻</b>（副接口最省），再两个开关，各自配语言、各带一个「显示翻译」。</p>
+  <div class="warn">仅预览。时间线在真机上本来就有（今天／昨天／X月X日），这套写法是照它搬过来的；头像里是灰色占位图色，将来放真实头像。</div>
+</div>
+
+<div class="rack">
+
+  <!-- 乙 · 居中（定稿） -->
+  <div class="unit">
+    <div class="phone"><div class="scr g ctrv">
+      <div class="status"><span>9:41</span><span>●●● 100%</span></div>
+      <header class="hd"><div class="bar"><span class="back">‹</span><span class="more"><i></i><i></i><i></i></span></div>
+        <div class="pair"><div class="side l"><div class="nm">沈叙</div><div class="ps">在线 · 逮住小骗子</div></div><div class="stk"><span class="mini">叙</span><span class="mini m">我</span></div><div class="side r"><div class="nm">恩熙</div><div class="ps">正在发呆ing</div></div></div>
+      </header>
+      <div class="mid">
+        <div class="day dc"><span>昨天</span></div>
+        <div class="row hi"><span class="av">叙</span><div class="col"><div class="bub">今天回来得有点晚，路上买了点糖炒栗子。</div><div class="meta"><span>22:07</span></div></div></div>
+        <div class="row me"><span class="av">我</span><div class="col"><div class="bub">你还记得我喜欢吃这个呀。</div><div class="meta"><span>22:09</span><span class="rd">已读</span></div></div></div>
+        <div class="day dc"><span>今天</span></div>
+        <div class="row hi"><span class="av">叙</span><div class="col"><div class="qt"><div class="qt-n">恩熙</div><div class="qt-c">你还记得我喜欢吃这个呀。</div></div><div class="bub">记得。袋子还是烫的，先搁你桌上了。</div><div class="meta"><span>14:03</span></div></div></div>
+        <div class="row me"><span class="av">我</span><div class="col"><div class="bub">那你呢，你吃了吗？</div><div class="meta"><span>14:05</span><span class="rd">已读</span></div></div></div>
+        <div class="row hi"><span class="av">叙</span><div class="col"><div class="bub">吃了两颗。剩下的都归你。</div><div class="meta"><span>14:06</span></div></div></div>
+        <div class="row me"><span class="av">我</span><div class="col"><div class="qt"><div class="qt-n">沈叙</div><div class="qt-c">吃了两颗。剩下的都归你。</div></div><div class="bub">那就当真。</div><div class="meta"><span>14:12</span><span class="rd">已读</span></div></div></div>
+      </div>
+      <div class="inn dark"><span class="plus">＋</span><span class="box slot lined"><span class="caret"></span>说点什么…</span><span class="like">♥</span><span class="send sh">➤</span></div>
+    </div></div>
+    <div class="cap"><b>乙 · 定稿</b><s>头像居中 · 粉墨带时间线 · 组尾时间与已读 · 墨底输入条</s>两枚章并排居中、名字签名朝中间贴；引用块与气泡各按自己的文字长短收，弧线只走靠头像那一条边；一天的开头一段粉墨带，每组尾巴一行小字：钟点 ＋「已读」（只在我这侧）；底下一行四样：＋ / 书写框 / 爱心（强制回复）/ 小飞机（发送）。</div>
+  </div>
+
+  <!-- 转钱页 · 弹窗（从底下升起来，上面露出聊天页） -->
+  <div class="unit">
+    <div class="cap" style="margin-top:0;"><b>转钱页 · 弹窗</b><s>纸从底下升起来 · 上面露出聊天页 · 不再露大片空白</s></div>
+    <div class="phone"><div class="scr g ctrv">
+      <div class="status"><span>9:41</span><span>●●● 100%</span></div>
+      <header class="hd"><div class="bar"><span class="back">‹</span><span class="more"><i></i><i></i><i></i></span></div>
+        <div class="pair"><div class="side l"><div class="nm">沈叙</div><div class="ps">在线 · 逮住小骗子</div></div><div class="stk"><span class="mini">叙</span><span class="mini m">我</span></div><div class="side r"><div class="nm">恩熙</div><div class="ps">正在发呆ing</div></div></div>
+      </header>
+      <div class="mid">
+        <div class="day dc"><span>今天</span></div>
+        <div class="row hi"><span class="av">叙</span><div class="col"><div class="bub">记得。袋子还是烫的，先搁你桌上了。</div><div class="meta"><span>14:03</span></div></div></div>
+        <div class="row me"><span class="av">我</span><div class="col"><div class="bub">那你呢，你吃了吗？</div><div class="meta"><span>14:05</span><span class="rd">已读</span></div></div></div>
+        <div class="row hi"><span class="av">叙</span><div class="col"><div class="bub">吃了两颗。剩下的都归你。</div><div class="meta"><span>14:06</span></div></div></div>
+      </div>
+      <div class="inn dark"><span class="plus">＋</span><span class="box slot lined"><span class="caret"></span>说点什么…</span><span class="like">♥</span><span class="send sh">➤</span></div>
+      <div class="scrim"></div>
+      <div class="sheet">
+        <div class="sh-grip"></div>
+        <div class="sh-head"><span class="sh-t">红包</span><span class="sh-x">×</span></div>
+        <div class="rp-to">
+          <span class="tx"><span class="rp-lb">你正在发给</span><span class="nm">沈叙</span></span>
+          <span class="rk">沈</span>
+        </div>
+        <div class="rp-amt"><i>¥</i><b>52.00</b><span class="caret"></span></div>
+        <div class="amtline"></div>
+        <div class="rp-note">
+          <div class="rp-nh"><span class="rp-lb">添加红包留言</span><span class="rp-smile">☺</span></div>
+          <div class="rp-nbox"><span class="ph">选填</span><span class="caret"></span></div>
+        </div>
+        <div class="rp-cov">
+          <div class="rp-lb">红包封面</div>
+          <div class="rp-crow">
+            <span class="rp-th"></span>
+            <span class="rp-ct"><b>默认封面</b><s>点进去挑一张，看它在各处长什么样</s></span>
+            <span class="rp-ch">制作封面 ›</span>
+          </div>
+        </div>
+        <div class="rp-foot"><button class="rp-btn">塞进红包</button></div>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- 对话页 · 带翻译 -->
+  <div class="unit">
+    <div class="cap" style="margin-top:0;"><b>对话页 · 带翻译</b><s>他说日文、气泡下一行中文；我打中文，发出去是日文，下面也照样挂中文</s></div>
+    <div class="phone"><div class="scr g ctrv">
+      <div class="status"><span>9:41</span><span>●●● 100%</span></div>
+      <header class="hd"><div class="bar"><span class="back">‹</span><span class="more"><i></i><i></i><i></i></span></div>
+        <div class="pair"><div class="side l"><div class="nm">沈叙</div><div class="ps">在线 · 逮住小骗子</div></div><div class="stk"><span class="mini">叙</span><span class="mini m">我</span></div><div class="side r"><div class="nm">恩熙</div><div class="ps">正在发呆ing</div></div></div>
+      </header>
+      <div class="mid">
+        <div class="day dc"><span>今天</span></div>
+        <div class="row hi"><span class="av">叙</span><div class="col">
+          <div class="bub">今日はちょっと遅くなるかも。先に寝てていいよ。</div>
+          <div class="tr">今天可能会晚一点回来。你先睡吧。</div>
+          <div class="meta"><span>14:03</span></div>
+        </div></div>
+        <div class="row me"><span class="av">我</span><div class="col">
+          <div class="bub">それじゃ待ってるね。気をつけて。</div>
+          <div class="tr">那我等你，路上小心。</div>
+          <div class="meta"><span>14:05</span><span class="rd">已读</span></div>
+        </div></div>
+        <div class="row hi"><span class="av">叙</span><div class="col">
+          <div class="bub">うん。着いたら連絡する。</div>
+          <div class="tr">嗯。到了跟你说一声。</div>
+          <div class="meta"><span>14:06</span></div>
+        </div></div>
+      </div>
+      <div class="inn dark"><span class="plus">＋</span><span class="box slot lined"><span class="caret"></span>说点什么…</span><span class="like">♥</span><span class="send sh">➤</span></div>
+    </div></div>
+  </div>
+
+  <!-- 翻译设置：每个角色一套 -->
+  <div class="unit">
+    <div class="cap" style="margin-top:0;"><b>翻译设置 · 每个角色一套</b><s>聊天设置里多这一栏：先挑接口，再两个开关，各配语言、各带一个「显示翻译」</s></div>
+    <div class="phone"><div class="scr sett">
+      <div class="status" style="color:rgba(20,19,24,.42);"><span>9:41</span><span>●●● 100%</span></div>
+      <div class="st-top"><span class="st-back">‹</span><span class="st-t">聊天设置 · 沈叙</span></div>
+      <div class="st-body">
+        <div class="st-card">
+          <div class="st-row">
+            <div><div class="st-ct">用哪套接口来翻</div><div class="st-cs">挑便宜的就行，翻差一点不影响原文</div></div>
+            <span class="st-pick">副接口 ›</span>
+          </div>
+        </div>
+        <div class="st-card">
+          <div class="st-row">
+            <div><div class="st-ct">他说外语，我用中文看</div><div class="st-cs">他的气泡下面挂一行中文</div></div>
+            <span class="st-sw on"></span>
+          </div>
+          <div class="st-sub"><span class="st-lb">他说的语言</span><span class="st-pick">日本語 ›</span></div>
+          <div class="st-sub"><span class="st-lb">显示翻译</span><span class="st-sw sm on"></span></div>
+        </div>
+        <div class="st-card">
+          <div class="st-row">
+            <div><div class="st-ct">我说中文，发出去翻成他的语言</div><div class="st-cs">输入框里照打中文，发出去自动翻</div></div>
+            <span class="st-sw on"></span>
+          </div>
+          <div class="st-sub"><span class="st-lb">翻成</span><span class="st-pick">日本語 ›</span></div>
+          <div class="st-sub"><span class="st-lb">显示翻译</span><span class="st-sw sm on"></span></div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+
+</div>
+
+</body>
+</html>

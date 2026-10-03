@@ -51,6 +51,11 @@ export const SANS =
 
 /** 中文宋体（旧板 C 那一套还在用，留住）。 */
 export const SERIF = "var(--font-serif-sc), 'Songti SC', Georgia, serif";
+/** 中文楷体（霞鹜文楷 GB，站内自托管）。自带笔锋，用在红封套这种中式卡面上。
+ *  该字库只带 300／400／500 三档——写 600 会被浏览器合成描边、把笔锋糊平，字重别往上加。 */
+export const KAI =
+  "'LXGW WenKai GB', 'Kaiti SC', 'STKaiti', 'KaiTi', 'Songti SC', Georgia, serif";
+
 /** 英文装饰衬线（斜体小字：messages / pinned / lucky money…）。 */
 export const EN = "var(--font-playfair), Georgia, serif";
 
@@ -67,12 +72,20 @@ export const AVATAR_GRADIENT = "linear-gradient(135deg,#E5769F,#B93F72)";
     底色将来归全局样式统管，这里就只留这一个值。 */
 export const CHAT_BG_DEFAULT = "linear-gradient(160deg,#FFFFFF,#FFF0F5)";
 
+/** 历史分页（1.7.36）：消息流／线下记录**默认只上屏最近这么多条**，
+    往上翻靠最顶上那颗「加载更早的」一次再推这么多——线上线下一枚数、一套做法。
+    **只管屏幕**：喂模型的历史一直是全量，与这个数一点关系都没有。 */
+export const CHAT_PAGE_SIZE = 50;
+
 /** 消息类型中文标签（列表预览与复制用）。 */
 export const TYPE_CN: Record<string, string> = {
   image: "图片",
   voice: "语音",
   redpacket: "红包",
   transfer: "转账",
+  /* 收款回执（1.4.40）：钱到账后收款方发出的那张卡。列表最后一条是它时，
+     预览就显示「[收款回执]」——比裸一句「已收款」说得清是什么。 */
+  receipt: "收款回执",
   file: "文件",
   location: "位置",
   system: "系统",
@@ -137,16 +150,37 @@ export function sameDay(a: string, b: string): boolean {
   return isSameDay(new Date(a), new Date(b));
 }
 
-/** 动态时间轴显示：同一天显示时:分，否则 月/日 时:分。 */
+/**
+ * 动态时间戳（微信那一套，2026-09-22 恩熙定的）：
+ * 「刚刚」→「N分钟前」→「N小时前」→「昨天」→「前天」→ 再往前直接给「日期＋时间」。
+ *
+ * 为什么不是「几点几分」：动态一眼要知道的是**多久以前**，不是钟点。
+ * 确切时间不用丢——点一下这枚时间戳就换过来（见 `momentFullTime` 与 `MomentStamp`）。
+ * 只有「今天／昨天／前天」这三档才说相对话；更早（哪怕只是上周）就说死日期，
+ * 因为「11 天前」这种话反而要人自己换算。
+ */
 export function momentTime(iso: string): string {
   const d = new Date(iso);
   const now = new Date();
-  if (
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate()
-  ) {
-    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  }
-  return `${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const diff = now.getTime() - d.getTime();
+  if (diff < 60_000) return "刚刚";
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}分钟前`;
+  if (isSameDay(d, now)) return `${Math.floor(diff / 3_600_000)}小时前`;
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (isSameDay(d, yesterday)) return "昨天";
+  const before = new Date(now);
+  before.setDate(now.getDate() - 2);
+  if (isSameDay(d, before)) return "前天";
+  return momentFullTime(iso);
+}
+
+/** 动态时间的「确切版」：`M月D日 时:分`（跨年再加上年份）。点一下那枚时间戳就换它。 */
+export function momentFullTime(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const md = `${d.getMonth() + 1}月${d.getDate()}日`;
+  return d.getFullYear() === now.getFullYear()
+    ? `${md} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+    : `${d.getFullYear()}年${md} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }

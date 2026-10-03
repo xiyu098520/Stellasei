@@ -15,6 +15,7 @@ import {
   ChatIcon,
   ContactsIcon,
   MemoryIcon,
+  PeekIcon,
   SettingsIcon,
   WorldBookIcon,
 } from "@/apps/icons";
@@ -40,9 +41,10 @@ export const APPS: readonly RegisteredApp[] = [
     dock: true,
     magazine: true,
     comingSoon: false,
-    shellBg: "#FFFFFF", // 纯白＝聊天窗口最底端输入区（T.card）同色，别用 T.bg 的粉白
-    // #FFF7F9：点输入框、键盘把整页顶上来时，透过半透明磨砂键盘看到的那一条是
-    // #FFF7F9，而它上面紧挨着的输入区是纯白，两种白之间会露出一道横带。
+    /* 墨色＝聊天窗口最底端输入条（T.ink）同色（1.9.36 随输入条改墨底一起改）。
+       点输入框、键盘把整页顶上来时，透过半透明磨砂键盘看到的那一条就是它——
+       输入条已经是墨的，底下再留白就会在深色条下边露出一道亮横带。 */
+    shellBg: "#141318",
     Icon: ChatIcon,
   },
   {
@@ -59,6 +61,19 @@ export const APPS: readonly RegisteredApp[] = [
     shellBg: "#FFFFFF", // 纯白＝档案页 A.bg 同色。若留深色（保密风时代的 #0a0a0a），
     // 点输入框、键盘把页面顶上去时，底下露出来的那条全是黑的，跟白纸对不上。
     Icon: ContactsIcon,
+  },
+  {
+    id: "peek",
+    name: "查手机",
+    nameEn: "PHONE PEEK",
+    tagline: "翻一翻 TA 的手机",
+    accent: "#7f8fa6",
+    order: 25,
+    page: "page-1",
+    magazine: false,
+    comingSoon: false,
+    shellBg: "#FFF7F9", // 同星绥通讯那套透粉白底（T.bg），真机边缘区需同色
+    Icon: PeekIcon,
   },
   {
     id: "worldbook",

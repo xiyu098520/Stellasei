@@ -22,12 +22,14 @@ import { appendMessage, updateCharChatSettings, updateConversation } from "@/lib
 import {
   acceptFriendRequest,
   blockFriend,
+  blockedFirstReaction,
   hardDeleteFriend,
   rejectFriendRequest,
   removeFriend,
   restoreFriend,
   sendFriendRequest,
   unblockFriend,
+  unblockedFirstReaction,
 } from "@/lib/chat/social";
 import { formatUid } from "@/lib/settings/contact";
 import { copyText } from "@/lib/clipboard";
@@ -263,34 +265,36 @@ export default function ContactList({
     showToast("已彻底删除，聊天记录与记忆都清掉了");
   };
 
-  /** 拉黑：TA 还在列表，消息照常送达，但 TA 那边显示发送失败。 */
+  /** 拉黑：开关点了立刻生效（状态＋系统提示先落库）；TA 的第一反应在后台慢慢写，落库完再刷一次列表。 */
   const doBlock = useCallback(
-    async (archive: ArchiveEntry) => {
+    async (archive: ArchiveEntry, conv: Conversation | undefined) => {
+      if (!conv) return;
       setSocialBusy(true);
       try {
-        const name = archive.data.name || archive.data.nickname || "TA";
-        await blockFriend(archive.id, maskId, name);
-        onDataChange();
         showToast("已加入黑名单");
+        await blockFriend(archive, conv);
+        onDataChange();
       } finally {
         setSocialBusy(false);
       }
+      void blockedFirstReaction(archive, conv, maskName).finally(() => onDataChange());
     },
-    [maskId, onDataChange, showToast],
+    [maskName, onDataChange, showToast],
   );
 
-  /** 解除拉黑：TA 会记得这段经历，并立刻说点什么（走文本 API）。 */
+  /** 解除拉黑：同上——开关立刻生效，TA 的那句回应后台慢慢来。 */
   const doUnblock = useCallback(
     async (archive: ArchiveEntry, conv: Conversation | undefined) => {
       if (!conv) return;
       setSocialBusy(true);
       try {
-        await unblockFriend(archive, conv, maskName);
+        await unblockFriend(archive, conv);
         onDataChange();
         showToast("已解除拉黑");
       } finally {
         setSocialBusy(false);
       }
+      void unblockedFirstReaction(archive, conv, maskName).finally(() => onDataChange());
     },
     [maskName, onDataChange, showToast],
   );
@@ -1552,7 +1556,7 @@ export default function ContactList({
             onToggleStar={() => toggleConv({ isPinned: !(selectedConv?.isPinned ?? false) })}
             onToggleMute={() => toggleConv({ isMuted: !(selectedConv?.isMuted ?? false) })}
             onOpenCharSettings={() => setCharSettingsOpen(true)}
-            onBlock={() => void doBlock(selected)}
+            onBlock={() => void doBlock(selected, selectedConv)}
             onUnblock={() => void doUnblock(selected, selectedConv)}
             onDeleteFriend={() => void deleteFriend()}
             onHardDeleteFriend={() => void hardDeleteFriendNow()}
@@ -2792,9 +2796,9 @@ function ContactProfile({
                 letterSpacing: ".04em",
               }}
             >
-              「{name}」还在好友列表里。TA 给你发的消息
+              「{name}」还在好友列表里。你给 TA 发的消息
               <br />
-              你都能收到，但 TA 那边会显示发送失败。
+              TA 都看得到；TA 发的消息 TA 那边一直显示发送失败，你照样看得见。
             </div>
             <div style={{ height: 1, background: T.lineSoft, margin: "16px 0 12px" }} />
             <button

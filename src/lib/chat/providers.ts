@@ -131,6 +131,22 @@ export const VOICE_API_PROVIDERS: ApiProviderPreset[] = [
     ],
   },
   {
+    id: "elevenlabs-voice",
+    name: "ElevenLabs",
+    hint: "官方 TTS · 音色自然、可克隆",
+    baseUrl: "https://api.elevenlabs.io",
+    /* 新到旧排：v4 最动情、v4_turbo 是它的实时版；multilingual_v2 老而稳，
+       flash_v2_5 最快最省。哪个能用看账号档位，报错就往下换一档。 */
+    defaultModel: "eleven_v4",
+    models: [
+      "eleven_v4",
+      "eleven_v4_turbo",
+      "eleven_multilingual_v2",
+      "eleven_flash_v2_5",
+      "eleven_turbo_v2_5",
+    ],
+  },
+  {
     id: "openai-voice",
     name: "OpenAI",
     hint: "官方 TTS 接口",
@@ -169,6 +185,7 @@ export const DEFAULT_PRESET_ID: Record<ApiCategory, string> = {
   text: "openai",
   image: "openai-image",
   voice: "minimax-voice",
+  sub: "openai", /* 副 API＝文本类接口，预设目录与默认项都跟着文本走 */
 };
 
 /** 按分类与当前 baseUrl 反查预设（前缀匹配；空 / 不匹配一律视为自定义）。 */

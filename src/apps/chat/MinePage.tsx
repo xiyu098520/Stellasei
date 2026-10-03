@@ -540,12 +540,14 @@ export default function MinePage({
               像微信号一样的外部 ID；角色添加你时会看到。
             </p>
 
+            {/* 人设／补充都不设字数上限（1.4.37 恩熙：「把我的人设文字开放一下，不要设上限」）：
+                人设本来就没法用字数框死，写长了只是多占一点存储，不值得为它挡人。
+                存储与提示词两侧都没有截断，放开这里就是全放开。 */}
             <label style={{ ...fieldLabelStyle, marginTop: 16 }}>人设</label>
             <textarea
               value={mPersona}
               onChange={(e) => setMPersona(e.target.value)}
               placeholder="你的性格、身份、说话方式……"
-              maxLength={500}
               className="mp-field"
               style={textareaStyle}
             />
@@ -610,7 +612,6 @@ export default function MinePage({
               value={mExtra}
               onChange={(e) => setMExtra(e.target.value)}
               placeholder="其他想让 TA 知道的事……"
-              maxLength={300}
               className="mp-field"
               style={{ ...textareaStyle, minHeight: 72 }}
             />

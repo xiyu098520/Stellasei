@@ -8,6 +8,7 @@ import {
   User,
   BookOpen,
   Archive,
+  Eye,
   Palette,
   Settings,
   type LucideProps,
@@ -26,6 +27,9 @@ export const WorldBookIcon = BookOpen;
 
 /** 记忆：长方形存档盒＋标签。 */
 export const MemoryIcon = Archive;
+
+/** 查手机：一只眼睛（看进 TA 的手机里）。 */
+export const PeekIcon = Eye;
 
 /** 美化：调色盘。 */
 export const BeautifyIcon = Palette;

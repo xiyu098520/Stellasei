@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   Archive,
   ChevronRight,
@@ -18,6 +18,7 @@ import {
 import { usePhone } from "@/context/PhoneContext";
 import {
   CATEGORY_LABEL,
+  MEMORY_SCALE_DEFAULTS,
   MOMENT_INJECT_MAX,
   deleteMemory,
   deleteMemoryItem,
@@ -25,6 +26,9 @@ import {
   forceCondense,
   getAllMemories,
   getMemory,
+  localDayOf,
+  localStampOf,
+  runCascadeCatchup,
   updateMemoryItem,
   updateMemorySettings,
 } from "@/lib/chat/memory";
@@ -37,6 +41,10 @@ import {
   getConversations,
 } from "@/lib/settings/chat";
 import { releaseImageAsset } from "@/lib/chat/media-asset";
+/* 收尾：把断链的图（这会儿清掉的、以及历年攒下的）一并从仓库收走。 */
+import { sweepOrphanMedia } from "@/lib/chat/media-sweep";
+/* 重置记忆要连他那本账一起清（1.4.37 恩熙：「我重置记忆应该也会把这个钱包重置的哦」）。 */
+import { clearContactAccount } from "@/lib/settings/wallet";
 import { AVATAR_GRADIENT } from "@/apps/chat/shared";
 import type { ArchiveEntry } from "@/types/contact";
 import type { Mask } from "@/lib/settings/mask";
@@ -100,11 +108,22 @@ const EN = "var(--font-playfair), Georgia, serif";
 /** 编目数字（日期戳、编号、计数）一律等宽，像打上去的。 */
 const MONO = "var(--font-mono), ui-monospace, Menlo, monospace";
 
-const shortTime = (iso: string) => iso.slice(5, 16).replace("T", " ");
+/**
+ * 记忆卡上的时间戳：**本地** MM-DD HH:mm。
+ *
+ * 别再直接切 ISO 字符串（`iso.slice(5, 16)`）——库里存的是 UTC，在咱们这边会整整差
+ * 8 小时：凌晨 0 点半的条目会显示成前一天 16:30（恩熙 2026-09-29 凌晨发现的）。
+ */
+const shortTime = (iso: string) => {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso.slice(5, 16).replace("T", " ");
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
 
-/** 动态的日期戳：MM/DD。跟注入给 TA 的记忆块里那枚一模一样（memory.ts 的
- *  `momentDate`），页面跟 TA 记的要对得上。 */
-const momentStamp = (iso: string) => iso.slice(5, 10).replace("-", "/");
+/** 动态的日期戳：MM/DD（本地）。跟注入给 TA 的记忆块里那枚一模一样（memory.ts 的
+ *  `momentDate`／`localStampOf`），页面跟 TA 记的要对得上。 */
+const momentStamp = (iso: string) => localStampOf(iso);
 
 /** 层元信息（分组标题＋说明）。层号＝编目分区号，越往下越模糊。 */
 const TIER_META: Record<string, { title: string; en: string; desc: string; no: string }> = {
@@ -113,6 +132,9 @@ const TIER_META: Record<string, { title: string; en: string; desc: string; no: s
   mid: { title: "中期记忆", en: "compressed", desc: "事件清楚，细节已模糊 · 只读", no: "III" },
   long: { title: "长期记忆", en: "impressions", desc: "只剩模糊印象 · 只读", no: "IV" },
 };
+
+/** 筛选条上「线下」那一栏的键（1.7.46）：与六个分类键并排，取一个不会撞上的名字。 */
+const OFFLINE_FILTER_KEY = "offline";
 
 /** 重要记忆默认竖向只露这么多条，多的折起来（下面还有短期记忆，不能让它们被挤出屏幕）。 */
 const CORE_PREVIEW = 3;
@@ -130,6 +152,42 @@ const MOMENT_META = {
 /** 朋友圈动态默认只露最近这么多条：动态会越攒越多，全摊开在页面上太长；
  *  要全看再自己点开（跟上面「重要记忆」一个做法）。 */
 const MOMENT_PREVIEW = 3;
+
+/** 分层刻度的上下限与步进（1.7.66）：全摆在记忆 App 设置区里拧，不用回来改代码。
+ *  天数那几个都是「越小压得越勤」——左减右加，减号那侧＝更勤快。 */
+const SCALE_STEPS = {
+  shortFreshDays: { min: 1, max: 30, step: 1, unit: "天" },
+  shortSameDayMax: { min: 5, max: 50, step: 5, unit: "条" },
+  midRefineDays: { min: 3, max: 60, step: 1, unit: "天" },
+  midFreshDays: { min: 7, max: 90, step: 1, unit: "天" },
+  midMaxItems: { min: 10, max: 200, step: 10, unit: "条" },
+  catchupBudget: { min: 40, max: 400, step: 20, unit: "条" },
+  shortInjectLimit: { min: 0, max: 300, step: 20, unit: "条" },
+} as const;
+type ScaleKey = keyof typeof SCALE_STEPS;
+
+/** 刻度没存过时的兜底值：跟 memory.ts 的默认一致（短期注入上限的 0＝关闭，
+ *  不在 MEMORY_SCALE_DEFAULTS 里，单独写）。 */
+const SCALE_DEFAULTS: Record<ScaleKey, number> = {
+  shortFreshDays: MEMORY_SCALE_DEFAULTS.shortFreshDays,
+  shortSameDayMax: MEMORY_SCALE_DEFAULTS.shortSameDayMax,
+  midRefineDays: MEMORY_SCALE_DEFAULTS.midRefineDays,
+  midFreshDays: MEMORY_SCALE_DEFAULTS.midFreshDays,
+  midMaxItems: MEMORY_SCALE_DEFAULTS.midMaxItems,
+  catchupBudget: MEMORY_SCALE_DEFAULTS.catchupBudget,
+  shortInjectLimit: 0,
+};
+
+/** 设置区那几行刻度的抬头（顺序＝页面顺序）。 */
+const SCALE_ROWS: { key: ScaleKey; label: string }[] = [
+  { key: "shortFreshDays", label: "短期保鲜（超过几天并入中期）" },
+  { key: "shortSameDayMax", label: "短期当天上限（某类堆满当天收口）" },
+  { key: "midRefineDays", label: "中期熔合门槛（老于几天熔成骨架）" },
+  { key: "midFreshDays", label: "中期保鲜（超过几天进长期）" },
+  { key: "midMaxItems", label: "中期条数上限（防爆发式堆积）" },
+  { key: "catchupBudget", label: "单次补压上限（一次最多压多少）" },
+  { key: "shortInjectLimit", label: "短期注入上限（0＝关闭）" },
+];
 
 /** 编目条：封底那排粗细不一的竖条，纯装饰。 */
 function Barcode() {
@@ -186,6 +244,11 @@ function MemoryCard({
       <div style={{ padding: "11px 12px 9px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
           <span style={catChipStyle}>{CATEGORY_LABEL[item.category]}</span>
+          {/* 线下 · 见面（1.7.46）：这一条是两人在同一处见面的经过归总出来的（不是手机上的聊天）。
+              一个记号而已，卡片其余部分与线上那几层一模一样。 */}
+          {item.offline ? (
+            <span style={{ ...statusChipStyle, color: M.ink2 }}>线下 · 见面</span>
+          ) : null}
           {item.secret ? (
             <span style={{ ...statusChipStyle, color: M.ink2 }}>
               <EyeOff size={9} strokeWidth={2} /> 秘密
@@ -267,6 +330,332 @@ function MemoryCard({
   );
 }
 
+/** 编辑草稿（1.7.68）：从一条记忆抠出弹层要用的那一份。
+ *  标记走**副本**——弹层里点的是待保存的意图，点了「取消」原条目一个字都不变。
+ *  三处进弹层的口（卡片、日历行、日历当天行）共用它一份，免得三处各写一遍字段漏掉标记。 */
+function editDraft(it: MemoryItem) {
+  return {
+    id: it.id,
+    content: it.content,
+    category: it.category,
+    tier: it.tier,
+    important: !!it.important,
+    secret: !!it.secret,
+    grudge: !!it.grudge,
+  };
+}
+
+/* =======================================================================
+ * 记忆日历（1.7.66）
+ * 恩熙 2026-09-29 提的：「哪天聊了什么」现在看不出——卡片是按层级排的，没有时间轴。
+ * 于是给详情页加一条时间轴：
+ *   ① 顶部月历：有记忆的日子打一个点（点越大＝那天条目越多），左右翻月；
+ *   ② 点某天 → 一屏看完那天，分四组（重要／短期／中期／长期，空的不显示）；
+ *   ③ 「全部」入口：按日期倒排的长列表，**也是被压缩掉那部分的入口**——
+ *      凡是被压下去的，都在这条线上，翻得到、看得见，只是不再每轮注入给 TA。
+ * ===================================================================== */
+
+/** 「这条记忆覆盖了哪几天」：跨天的条目在区间内每天各算一次（恩熙定的口径）。
+ *  日子一律走 `localDayOf`（本地日）——库里存的是 UTC，直接切字符串会让凌晨那段落到前一天。 */
+function itemRange(it: MemoryItem): { from: string; to: string } {
+  const from = localDayOf(it.fromIso || it.createdAt);
+  const to = localDayOf(it.toIso || it.createdAt);
+  return from && to ? { from, to } : { from: to, to: from };
+}
+
+/** 本地日期 → YYYY-MM-DD（不走 toISOString，免得时区把日子挪一天）。 */
+function localDayKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+const WEEK_LABELS = ["日", "一", "二", "三", "四", "五", "六"];
+
+/** 日历里列表区的固定高度（约六行条目）：条目再多也在这块里自己滑，
+ *  不把整张日历卡跟着撑长、整页跟着变长（恩熙 2026-09-29：「条数太多的话页面就会变得太长，
+ *  我觉得那一区域改成固定的吧，可能显示 5~7 格，然后上下去滑动。」）。
+ *  用 maxHeight 不用 height：只有超了才封顶，条目少的那天照旧贴着内容的高度、不留空。
+ *  overscroll 用 contain：滑到底／滑到顶时不带着整页一起动。 */
+const listBoxStyle: CSSProperties = {
+  maxHeight: 210,
+  overflowY: "auto",
+  overscrollBehavior: "contain",
+};
+
+/** 日历里一行记忆：比 MemoryCard 轻——日历是回看，不做标重要/秘密那些动作，只留一个编辑口。 */
+function CalendarRow({ item, onEdit }: { item: MemoryItem; onEdit: () => void }) {
+  const status = item.fulfilledIso
+    ? "已兑现"
+    : item.category === "promise"
+      ? "还没兑现"
+      : item.resolvedIso
+        ? "已解开"
+        : item.grudge && !item.resolvedIso
+          ? "还有疙瘩"
+          : "";
+  return (
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "7px 0", borderBottom: `1px solid ${M.lineSoft}` }}>
+      <span style={{ flex: "none", marginTop: 2, fontSize: 10, color: M.pinkDeep, letterSpacing: ".08em" }}>
+        {CATEGORY_LABEL[item.category]}
+      </span>
+      <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, lineHeight: 1.65, color: M.ink }}>
+        {item.content}
+        {status ? <span style={{ color: M.ink3, fontSize: 11 }}>　（{status}）</span> : null}
+        {item.secret ? <span style={{ color: M.ink3, fontSize: 11 }}>　（秘密）</span> : null}
+      </span>
+      <button type="button" onClick={onEdit} style={{ ...actBtnStyle, flex: "none" }} aria-label="编辑">
+        <Pencil size={11} strokeWidth={1.8} />
+      </button>
+    </div>
+  );
+}
+
+function MemoryCalendar({
+  items,
+  failedDays,
+  onEdit,
+}: {
+  items: MemoryItem[];
+  failedDays?: string[];
+  onEdit: (it: MemoryItem) => void;
+}) {
+  const today = new Date();
+  const todayKey = localDayKey(today);
+  const failed = new Set(failedDays ?? []);
+  const [cursor, setCursor] = useState({ y: today.getFullYear(), m: today.getMonth() });
+  const [day, setDay] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
+
+  /** 每天有几条记忆（跨天的条目在区间内每天各计一次）。
+   *  区间上限兜到 400 天：万一有条坏数据写着跨度几年，也不至于把整页算爆。 */
+  const dayCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const it of items) {
+      const { from, to } = itemRange(it);
+      if (!from || !to) continue;
+      let d = new Date(`${from}T00:00:00`);
+      const end = new Date(`${to}T00:00:00`);
+      let guard = 0;
+      while (d <= end && guard < 400) {
+        const k = localDayKey(d);
+        m.set(k, (m.get(k) ?? 0) + 1);
+        d = new Date(d.getTime() + 86_400_000);
+        guard += 1;
+      }
+    }
+    return m;
+  }, [items]);
+
+  const maxCount = useMemo(() => Math.max(1, ...dayCounts.values()), [dayCounts]);
+
+  /* 当月格子：月初前的空格补上，末尾补到整周。 */
+  const cells: (string | null)[] = [];
+  const firstWeekday = new Date(cursor.y, cursor.m, 1).getDay();
+  const daysInMonth = new Date(cursor.y, cursor.m + 1, 0).getDate();
+  for (let i = 0; i < firstWeekday; i += 1) cells.push(null);
+  for (let i = 1; i <= daysInMonth; i += 1) cells.push(localDayKey(new Date(cursor.y, cursor.m, i)));
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const stepMonth = (delta: number) => {
+    setDay(null);
+    setCursor((c) => {
+      const d = new Date(c.y, c.m + delta, 1);
+      return { y: d.getFullYear(), m: d.getMonth() };
+    });
+  };
+
+  const dayItems = day
+    ? items.filter((it) => {
+        const { from, to } = itemRange(it);
+        return from <= day && day <= to;
+      })
+    : [];
+  const dayGroups = (["core", "short", "mid", "long"] as const).map((tier) => ({
+    tier,
+    list: dayItems.filter((it) => it.tier === tier),
+  }));
+
+  /* 「全部」：按事情发生的时间新→旧（同一天归一组）。 */
+  const allSorted = useMemo(
+    () =>
+      items
+        .slice()
+        .sort((a, b) => (b.toIso || b.createdAt || "").localeCompare(a.toIso || a.createdAt || "")),
+    [items],
+  );
+
+  const navBtn: CSSProperties = {
+    width: 26,
+    height: 26,
+    display: "grid",
+    placeItems: "center",
+    border: `1px solid ${M.line}`,
+    background: M.paper,
+    color: M.ink2,
+    borderRadius: 3,
+    fontSize: 13,
+    lineHeight: 1,
+  };
+
+  return (
+    <div style={{ ...cardStyle, position: "relative", marginTop: 14 }}>
+      <div style={{ padding: "12px 14px" }}>
+        {/* 抬头：这一编是「按天回看」 */}
+        <div style={{ display: "flex", alignItems: "baseline", gap: 7 }}>
+          <span style={{ fontSize: 14, fontWeight: 500, letterSpacing: ".16em", fontFamily: TITLE }}>记忆日历</span>
+          <em style={enLabelStyle}>timeline</em>
+          <span style={{ flex: 1 }} />
+          <button
+            type="button"
+            className="pressable"
+            onClick={() => setShowAll((v) => !v)}
+            style={{ ...foldToggleStyle, color: showAll ? M.pinkDeep : M.ink2 }}
+          >
+            {showAll ? "看日历 ▴" : `全部 ${allSorted.length} 条 ▾`}
+          </button>
+        </div>
+
+        {showAll ? (
+          /* ---- 全部：日期倒排的长列表（也是被压缩掉那部分的入口） ---- */
+          <div style={{ marginTop: 10, ...listBoxStyle }}>
+            {allSorted.length === 0 ? (
+              <div style={{ fontSize: 11.5, color: M.ink3, padding: "8px 0" }}>还没有记忆</div>
+            ) : (
+              (() => {
+                const rows: ReactNode[] = [];
+                let lastDay = "";
+                for (const it of allSorted) {
+                  const k = itemRange(it).to;
+                  if (k !== lastDay) {
+                    lastDay = k;
+                    rows.push(
+                      <div
+                        key={`d-${k}`}
+                        style={{ marginTop: 12, fontFamily: MONO, fontSize: 10, color: M.ink2, letterSpacing: ".08em" }}
+                      >
+                        {k}
+                      </div>,
+                    );
+                  }
+                  rows.push(<CalendarRow key={it.id} item={it} onEdit={() => onEdit(it)} />);
+                }
+                return rows;
+              })()
+            )}
+          </div>
+        ) : (
+          <>
+            {/* ---- 月历 ---- */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12 }}>
+              <button type="button" onClick={() => stepMonth(-1)} style={navBtn} aria-label="上个月">
+                ‹
+              </button>
+              <span style={{ flex: 1, textAlign: "center", fontFamily: MONO, fontSize: 12, letterSpacing: ".08em" }}>
+                {cursor.y} 年 {cursor.m + 1} 月
+              </span>
+              <button type="button" onClick={() => stepMonth(1)} style={navBtn} aria-label="下个月">
+                ›
+              </button>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2, marginTop: 10 }}>
+              {WEEK_LABELS.map((w) => (
+                <div key={w} style={{ textAlign: "center", fontSize: 9.5, color: M.ink3, paddingBottom: 4 }}>
+                  {w}
+                </div>
+              ))}
+              {cells.map((k, i) => {
+                if (!k) return <div key={`e${i}`} />;
+                const count = dayCounts.get(k) ?? 0;
+                const on = day === k;
+                const isToday = k === todayKey;
+                return (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => setDay(on ? null : k)}
+                    style={{
+                      position: "relative",
+                      aspectRatio: "1 / 1",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 3,
+                      border: `1px solid ${on ? M.pinkDeep : isToday ? M.line : "transparent"}`,
+                      background: on ? M.pinkWash : "transparent",
+                      borderRadius: 3,
+                      fontSize: 11,
+                      fontFamily: MONO,
+                      color: count > 0 ? M.ink : M.ink3,
+                    }}
+                  >
+                    {Number(k.slice(8, 10))}
+                    {/* 这天有批素材连着三趟没压出来（失败跳闸）：角上点一个叉，只作提示。 */}
+                    {failed.has(k) ? (
+                      <span
+                        aria-hidden
+                        style={{ position: "absolute", top: 2, right: 3, fontSize: 8, color: M.red, lineHeight: 1 }}
+                      >
+                        ✕
+                      </span>
+                    ) : null}
+                    <span
+                      aria-hidden
+                      style={{
+                        width: count > 0 ? 3 + Math.round((count / maxCount) * 3) : 0,
+                        height: count > 0 ? 3 + Math.round((count / maxCount) * 3) : 0,
+                        borderRadius: "50%",
+                        background: count > 0 ? M.pinkDeep : "transparent",
+                      }}
+                    />
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* ---- 点某天 → 当天四组 ---- */}
+            {day ? (
+              <div style={{ marginTop: 12, borderTop: `1px dashed ${M.dash}`, paddingTop: 10 }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 7 }}>
+                  <span style={{ fontFamily: MONO, fontSize: 12, letterSpacing: ".06em" }}>
+                    {Number(day.slice(5, 7))} 月 {Number(day.slice(8, 10))} 日
+                  </span>
+                  <span style={{ fontSize: 10.5, color: M.ink3 }}>
+                    {dayItems.length > 0 ? `${dayItems.length} 条` : "这天没有留下记忆"}
+                  </span>
+                  {failed.has(day) ? (
+                    <span style={{ fontSize: 10.5, color: M.red }}>· 这天的记忆没能整理</span>
+                  ) : null}
+                </div>
+                {/* 那天的条目也封在固定高度里自己滑（同 listBoxStyle）——
+                    一屏能看上六七条，剩下的往下滑，整页不会跟着变长。
+                    日期那一行和「这天没有留下记忆」留在框外，滑的时候一直看得见。 */}
+                <div style={{ marginTop: 8, ...listBoxStyle }}>
+                  {dayGroups.map(({ tier, list }) =>
+                    list.length === 0 ? null : (
+                      <div key={tier} style={{ marginTop: 8 }}>
+                        <div style={{ fontSize: 11, color: tier === "core" ? M.pinkDeep : M.ink2, letterSpacing: ".1em" }}>
+                          {TIER_META[tier].title}
+                        </div>
+                        {list.map((it) => (
+                          <CalendarRow key={it.id} item={it} onEdit={() => onEdit(it)} />
+                        ))}
+                      </div>
+                    ),
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div style={{ marginTop: 10, fontSize: 9.5, color: M.ink3, letterSpacing: ".04em" }}>
+                点一个有圆点的日子，看那天留下了什么
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function MemoryApp() {
   const { closeApp } = usePhone();
   /* 列表数据。 */
@@ -281,8 +670,21 @@ export default function MemoryApp() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   /* 分类筛选：「all」＝不过滤；六个分类各看各的（短期中期长期一起过滤）。 */
   const [catFilter, setCatFilter] = useState<string>("all");
-  /* 编辑弹层：item id＋草稿。 */
-  const [editing, setEditing] = useState<{ id: string; content: string; category: string } | null>(null);
+  /* 编辑弹层：item id＋草稿（内容、分类，以及三个标记）。
+     标记也进弹层（1.7.68，恩熙：「我希望直接，就是在那个编辑框，它里面是可以标记星级、
+     重要这些东西的」）——从前标重要／秘密／心结只能退回卡片底部那一排小按钮上点，
+     改字与标记要分两次进；现在改字时顺手就能标。
+     草稿制：弹层里点的是**待保存的意图**，点「保存」才落库，点「取消」什么都不变。 */
+  const [editing, setEditing] = useState<{
+    id: string;
+    content: string;
+    category: string;
+    /** 原层级：标记「重要」会升进 core，取消时要知道往哪儿退（原来是 core 就退回短期）。 */
+    tier: MemoryItem["tier"];
+    important: boolean;
+    secret: boolean;
+    grudge: boolean;
+  } | null>(null);
   /* 确认弹窗。 */
   const [confirmDel, setConfirmDel] = useState<string | null>(null);
   const [confirmWipe, setConfirmWipe] = useState(false);
@@ -291,6 +693,8 @@ export default function MemoryApp() {
   const [coreOpen, setCoreOpen] = useState(false);
   /** 第五编朋友圈动态是否展开全部（默认只露最近 MOMENT_PREVIEW 条）。 */
   const [momentOpen, setMomentOpen] = useState(false);
+  /** 补压进度提示（1.7.66）：打开记忆 App 时若在整理，页顶显示一句，不偷偷跑。 */
+  const [catchup, setCatchup] = useState("");
 
   /* 排查用的报错文案比较长，多留一会儿才念得完。 */
   const showToast = (msg: string, ms = 2200) => {
@@ -322,6 +726,56 @@ export default function MemoryApp() {
     void getMemory(openId.characterId, openId.maskId).then((m) => {
       if (alive) setDetail(m);
     });
+    return () => {
+      alive = false;
+    };
+  }, [openId]);
+
+  /* 打开记忆 App 时的补压（1.7.66 的第二个触发点，跟归总后那次是同一次检查）。
+     小手机是网页（PWA），关着的时候什么都不会跑——不存在「到第 7/15/30 天半夜自动压」，
+     所以补压只能等下次打开时补；单次预算封顶（见 runCascadeCatchup / catchupBudget），
+     压不完的下次接着压。进度挂在页顶（catchup），不偷偷跑，也不挡着聊天。
+     不放进 deps：charName／api 都在跑的时候现取，免得被状态变化反复触发。 */
+  const catchupRef = useRef("");
+  useEffect(() => {
+    if (!openId) return;
+    const key = `${openId.characterId}::${openId.maskId}`;
+    if (catchupRef.current === key) return; // 同一次打开只补一趟（严格模式下也不重复跑）
+    catchupRef.current = key;
+    let alive = true;
+    void (async () => {
+      const [arcs, cs, bundle] = await Promise.all([getArchives(), getConversations(), getApiBundle()]);
+      const conv = cs.find(
+        (c) => c.characterId === openId.characterId && (c.maskId ?? DEFAULT_MASK_ID) === openId.maskId,
+      );
+      const api =
+        conv?.apiOverrides?.text &&
+        conv.apiOverrides.text.enabled &&
+        conv.apiOverrides.text.baseUrl.trim() &&
+        conv.apiOverrides.text.model.trim()
+          ? conv.apiOverrides.text
+          : bundle.text;
+      if (!api.baseUrl.trim() || !api.model.trim()) return;
+      const arc = arcs.find((a) => a.id === openId.characterId);
+      const name = arc?.data.name || arc?.data.nickname || "TA";
+      if (alive) setCatchup("正在整理记忆…");
+      const r = await runCascadeCatchup(
+        { characterId: openId.characterId, maskId: openId.maskId },
+        name,
+        "我",
+        api,
+        (day) => {
+          /* 「正在整理 9 月 27 日的记忆…」——她说要看着它在动，不要偷偷跑。 */
+          if (alive) setCatchup(`正在整理 ${Number(day.slice(5, 7))} 月 ${Number(day.slice(8, 10))} 日的记忆…`);
+        },
+      );
+      if (!alive) return;
+      setCatchup("");
+      if (r.ran) {
+        setDetail(await getMemory(openId.characterId, openId.maskId));
+        setMemories(await getAllMemories());
+      }
+    })();
     return () => {
       alive = false;
     };
@@ -397,22 +851,30 @@ export default function MemoryApp() {
     return list;
   }, [openId, convs, masks, memories]);
 
-  /** 分组条目（按分类筛选后，层内过滤；空层由渲染处隐藏）。 */
+  /** 分组条目（按分类筛选后，层内过滤；空层由渲染处隐藏）。
+   *  「线下」那一栏（1.7.46）筛的是**来源**不是分类：条目上带 offline 标的那些（见面归总出来的）。 */
   const groups = useMemo(() => {
     if (!detail) return [];
     const order: MemoryItem["tier"][] = ["core", "short", "mid", "long"];
     return order.map((tier) => ({
       tier,
-      items: detail.items.filter(
-        (it) => it.tier === tier && (catFilter === "all" || it.category === catFilter),
-      ),
+      items: detail.items.filter((it) => {
+        if (it.tier !== tier) return false;
+        if (catFilter === "all") return true;
+        if (catFilter === OFFLINE_FILTER_KEY) return !!it.offline;
+        return it.category === catFilter;
+      }),
     }));
   }, [detail, catFilter]);
 
-  /** 各分类的条数（筛选条上显示；含所有层，让用户一眼看出「哪类记得多」）。 */
+  /** 各分类的条数（筛选条上显示；含所有层，让用户一眼看出「哪类记得多」）。
+   *  另数一份「线下」（1.7.46）——那是来源，跟分类并行的一栏。 */
   const catCounts = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const it of detail?.items ?? []) counts.set(it.category, (counts.get(it.category) ?? 0) + 1);
+    for (const it of detail?.items ?? []) {
+      counts.set(it.category, (counts.get(it.category) ?? 0) + 1);
+      if (it.offline) counts.set(OFFLINE_FILTER_KEY, (counts.get(OFFLINE_FILTER_KEY) ?? 0) + 1);
+    }
     return counts;
   }, [detail]);
 
@@ -480,6 +942,15 @@ export default function MemoryApp() {
     if (!openId || !detail) return;
     const next = Math.min(300, Math.max(20, detail.contextLimit + delta));
     setDetail(await updateMemorySettings(openId.characterId, openId.maskId, { contextLimit: next }));
+  };
+
+  /** 拧一格分层刻度（1.7.66）。老记忆里没这格时以默认为底，掐进上下限再存。 */
+  const stepScale = async (key: ScaleKey, dir: number) => {
+    if (!openId || !detail) return;
+    const { min, max, step } = SCALE_STEPS[key];
+    const cur = detail[key] ?? SCALE_DEFAULTS[key];
+    const next = Math.min(max, Math.max(min, cur + dir * step));
+    setDetail(await updateMemorySettings(openId.characterId, openId.maskId, { [key]: next }));
   };
 
   const runCondense = async () => {
@@ -575,6 +1046,14 @@ export default function MemoryApp() {
     const next = await updateMemoryItem(openId.characterId, openId.maskId, editing.id, {
       content: content.slice(0, 200),
       category: editing.category as MemoryItem["category"],
+      /* 三个标记跟着一起落。口径与卡片底部那排按钮一字不差（见 onTogglePin 那几处）：
+         标重要＝important＋pinnedByUser 一起立、升进 core；取消重要＝两个一起撤、
+         从 core 退回短期（原来就在别的层、又没标重要的，层级原样不动）。 */
+      important: editing.important,
+      pinnedByUser: editing.important ? true : undefined,
+      secret: editing.secret,
+      grudge: editing.grudge,
+      tier: editing.important ? "core" : editing.tier === "core" ? "short" : editing.tier,
     });
     setDetail(next);
     setEditing(null);
@@ -599,12 +1078,25 @@ export default function MemoryApp() {
        等于钱照花、TA 照记——所以这里把消息一并清掉，跟设置里的「清空聊天记录」等价。
        消息一删引用链就断，图要顺手回收（否则仓库只进不出）。
        朋友圈也要一起清：动态是 TA 随着聊天攒下的，记忆都重置了，这些留着就说不通；图同样要回收。
-       TA 自己改过的签名一并清掉，清完回落到档案自带的默认签名。 */
+       TA 自己改过的签名一并清掉，清完回落到档案自带的默认签名。
+       「曾被拉黑过几次」（`blockCount`）也一并清——它在 `clearConversation` 里顺手做了，
+       见那里的注释（2026-09-22 恩熙：「重置记忆，它不会重置我拉黑过他的记忆」）。
+       **他那本钱包账也要清**（1.4.37 恩熙：「我重置记忆应该也会把这个钱包重置的哦」）：
+       记忆都回到零了，他账上却还留着按人设编出来的历史和余额，就说不通；
+       清完回白纸，下次翻他手机再按人设重新开户。**我自己的零钱与银行卡不动**。
+       **线下见过面的那一场记录也要清**（1.7.39 恩熙：「在记忆里面清除了角色的记忆，
+       那应该是包含线上线下的一块清」）——在 `clearConversation` 里顺手做的，
+       见那里的注释；清完「见着面」那道总闸也一并放平，线上输入解锁。 */
     for (const m of conv?.messages ?? []) releaseImageAsset(m.imageUrl);
     for (const mo of conv?.moments ?? []) releaseImageAsset(mo.imageRef);
     await clearConversation(openId.characterId, openId.maskId);
     await clearMomentsAndSignature(openId.characterId, openId.maskId);
+    await clearContactAccount(openId.characterId);
     await deleteMemory(openId.characterId, openId.maskId);
+    /* 上面几笔回收的是「这一趟清掉的」那些引用；这里再兜一遍全体：历年断链的孤儿图
+       （真删好友、换掉的参考图与卡面、老版本漏收的）一并从仓库收走，那个数字才真会掉下来。
+       扫不全时它一张都不动，不必担心误删。 */
+    const swept = await sweepOrphanMedia();
     /* 让聊天那边重新读一遍（ChatApp 监听 moments-updated 刷新会话）：不然动态页
        拿的还是刷记忆之前那份数据，朋友圈看着照旧还在。 */
     window.dispatchEvent(new CustomEvent("moments-updated"));
@@ -612,7 +1104,11 @@ export default function MemoryApp() {
     setDetail(null);
     setOpenId(null);
     await refresh();
-    showToast("记忆与聊天记录已清空");
+    showToast(
+      swept.removed > 0
+        ? `记忆、聊天记录和他的钱包已清空，另收走 ${swept.removed} 张没人用的图`
+        : "记忆、聊天记录和他的钱包已清空",
+    );
   };
 
   const back = () => {
@@ -860,6 +1356,27 @@ export default function MemoryApp() {
                 </div>
               ) : null}
 
+              {/* 补压提醒（1.7.66）：正在整理时才出现，整理完自己消失。 */}
+              {catchup ? (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 7,
+                    marginBottom: 12,
+                    padding: "7px 10px",
+                    border: `1px dashed ${M.dash}`,
+                    background: M.pinkWash,
+                    fontSize: 11,
+                    color: M.ink2,
+                    letterSpacing: ".04em",
+                  }}
+                >
+                  <Sparkles size={12} strokeWidth={1.6} />
+                  {catchup}
+                </div>
+              ) : null}
+
               {/* 状态卡：四角压上裁切角线，像印厂的开纸标记。 */}
               <div style={{ ...cardStyle, position: "relative" }}>
                 <span style={cropStyle("tl")} aria-hidden />
@@ -970,8 +1487,42 @@ export default function MemoryApp() {
                             </div>
                           </div>
                           <div style={{ height: 1, background: M.lineSoft, margin: "9px 0" }} />
+                          {/* 分层刻度（1.7.66）：三档遗忘的闸门全在这儿，恩熙自己拧。 */}
+                          {SCALE_ROWS.map((row) => {
+                            const { unit } = SCALE_STEPS[row.key];
+                            const val = detail[row.key] ?? SCALE_DEFAULTS[row.key];
+                            return (
+                              <div key={row.key}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                  <span style={{ flex: 1, fontSize: 11.5, letterSpacing: ".04em" }}>{row.label}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => void stepScale(row.key, -1)}
+                                    style={stepBtnStyle}
+                                    aria-label="减少"
+                                  >
+                                    <Minus size={13} strokeWidth={2} />
+                                  </button>
+                                  <span style={{ fontFamily: MONO, fontSize: 14, minWidth: 46, textAlign: "center", letterSpacing: ".04em" }}>
+                                    {val === 0 && row.key === "shortInjectLimit" ? "关闭" : `${val} ${unit}`}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => void stepScale(row.key, 1)}
+                                    style={stepBtnStyle}
+                                    aria-label="增加"
+                                  >
+                                    <Plus size={13} strokeWidth={2} />
+                                  </button>
+                                </div>
+                                <div style={{ height: 1, background: M.lineSoft, margin: "9px 0" }} />
+                              </div>
+                            );
+                          })}
                           <div style={{ fontSize: 9, color: M.ink3, marginTop: 8, lineHeight: 1.7, letterSpacing: ".04em" }}>
-                            每 10 条一步（20–300）。短期攒满 20 条自动压入中期；中期满 10 条压入长期。
+                            归总每 10 条一步（20–300）。三档遗忘按天走：短期超过「短期保鲜」并入中期、
+                            中期老于「中期熔合门槛」熔成骨架、再超过「中期保鲜」进长期；条数那两条是防
+                            某天爆发式聊天的兜底。改完下次打开记忆页自动补压（一次最多压「单次补压上限」条）。
                           </div>
                         </div>
                       ) : null}
@@ -979,6 +1530,14 @@ export default function MemoryApp() {
                   ) : null}
                 </div>
               </div>
+
+              {/* 记忆日历（1.7.66）：按天回看。摆在下沉四层之前——
+                  想找「哪天聊了什么」不必先翻完整个编目；下面那几编照旧按层排。 */}
+              <MemoryCalendar
+                items={detail.items}
+                failedDays={detail.failedDays}
+                onEdit={(it) => setEditing(editDraft(it))}
+              />
 
               {/* 分类筛选：单行横滑条（不换行不堆高），分类多时左右滑动查看；
                   六个分类各看各的，短期中期长期一起过滤。
@@ -993,7 +1552,10 @@ export default function MemoryApp() {
                   >
                     {[["all", "全部", detail?.items.length ?? 0] as [string, string, number], ...Object.entries(
                       CATEGORY_LABEL,
-                    ).map(([key, label]) => [key, label, catCounts.get(key) ?? 0] as [string, string, number])].map(
+                    ).map(([key, label]) => [key, label, catCounts.get(key) ?? 0] as [string, string, number]),
+                    /* 「线下」那一栏（1.7.46）：只看在见面里归总出来的那些（卡片上带「线下 · 见面」小标）。
+                       与六个分类并排，点它就只看见面的部分。 */
+                    [OFFLINE_FILTER_KEY, "线下", catCounts.get(OFFLINE_FILTER_KEY) ?? 0] as [string, string, number]].map(
                       ([key, label, count]) => {
                         const on = catFilter === key;
                         return (
@@ -1117,7 +1679,7 @@ export default function MemoryApp() {
                       <MemoryCard
                         key={it.id}
                         item={it}
-                        onEdit={() => setEditing({ id: it.id, content: it.content, category: it.category })}
+                        onEdit={() => setEditing(editDraft(it))}
                         onTogglePin={() =>
                           void (async () => {
                             if (!openId) return;
@@ -1332,7 +1894,7 @@ export default function MemoryApp() {
               maxLength={200}
               autoFocus
             />
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "10px 0 14px" }}>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "10px 0 8px" }}>
               {Object.entries(CATEGORY_LABEL).map(([key, label]) => (
                 <button
                   key={key}
@@ -1348,6 +1910,34 @@ export default function MemoryApp() {
                   {label}
                 </button>
               ))}
+            </div>
+            {/* 标记（1.7.68）：改字时顺手就能标，不用退出去点卡片底下那排小按钮。
+                星标「重要」＝把这条保下来（升进重要层，永不压缩、每轮都注入）；
+                它跟卡片上那颗星是同一个动作，只是搬进了弹层。点的是草稿，按「保存」才落库。 */}
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "0 0 14px" }}>
+              {(
+                [
+                  ["important", "★ 重要", M.gold],
+                  ["secret", "秘密", M.ink2],
+                  ["grudge", "心结", M.red],
+                ] as const
+              ).map(([key, label, on]) => {
+                const active = editing[key];
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setEditing({ ...editing, [key]: !active })}
+                    style={{
+                      ...catChipStyle,
+                      color: active ? on : M.ink3,
+                      border: `1px solid ${active ? on : M.line}`,
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
             </div>
             <div style={modalBtnRowStyle}>
               <button type="button" onClick={() => setEditing(null)} style={modalCancelStyle}>
@@ -1387,7 +1977,7 @@ export default function MemoryApp() {
           <div style={modalCardStyle} onClick={(e) => e.stopPropagation()}>
             <div style={modalTitleStyle}>清空全部记忆</div>
             <div style={modalDescStyle}>
-              {charName} 的全部记忆和聊天记录都会被清掉，无法恢复。
+              {charName} 的全部记忆、聊天记录、见面记录、朋友圈和他的钱包都会被清掉，无法恢复。
             </div>
             <div style={modalBtnRowStyle}>
               <button type="button" onClick={() => setConfirmWipe(false)} style={modalCancelStyle}>

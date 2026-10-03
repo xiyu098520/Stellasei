@@ -82,6 +82,7 @@ import {
   moneyNoteOf,
   moneyStateNoteOf,
   outgoingContents,
+  readVoiceContent,
   splitBilingual,
   splitReply,
   splitReplyStream,
@@ -1063,9 +1064,12 @@ export default function ChatWindow({
     [],
   );
 
-  /* 卸载时把正在响的语音掐掉，不然离开聊天还在说话。 */
-  useEffect(() => () => {
-    stopVoiceEl();
+  /* 卸载时把正在响的那条语音掐掉，不然离开聊天还在说话。1.10.1 起播放只剩
+     playVoiceViaElement 一条路（媒体元素），所以只停它。 */
+  useEffect(() => {
+    return () => {
+      stopVoiceEl();
+    };
   }, []);
 
   /* 待确认那张图的临时地址，随它来去：换一张、取消、发出去、连组件卸载都收掉，
@@ -1318,7 +1322,11 @@ export default function ChatWindow({
         }
         setMessages((prev) => prev.map((x) => (x.id === m.id ? working : x)));
         try {
-          const res = await synthesizeSpeech(effVoiceApi, voiceSpokenText(m.content), effVoiceExtras);
+          const res = await synthesizeSpeech(
+            effVoiceApi,
+            voiceSpokenText(readVoiceContent(m.content).tts),
+            effVoiceExtras,
+          );
           const done: ChatMessage = { ...working, pending: false, audioUrl: res.audio };
           await updateMessage(character.id, maskId, done);
           setMessages((prev) => prev.map((x) => (x.id === m.id ? done : x)));
@@ -1610,7 +1618,11 @@ export default function ChatWindow({
         const vpText =
           conv?.voicePromptOverride?.text ??
           (prefs.voicePromptOn ? prefs.voicePromptText : "");
-        const voicePromptRule = vpText.trim() ? vpText : null;
+        /* 正文非空就注入（1.9.89）。从前那份出厂规矩是「往台词前插英文方括号标签」，
+           只有 ElevenLabs 认，所以特意加了道「不是 ElevenLabs 就不注入」的分支；现在
+           出厂规矩改成「把语气写进文字本身」，对所有音色都成立，这道分支也就去掉了。
+           角色自己改过的规矩同样照注入——那是她要的说话方式。 */
+        const voicePromptRule = vpText.trim() !== "" ? vpText : null;
         /* 外语聊天（1.9.81）：语音的双语格式要「用户提示词压不掉」，所以在 buildStylePrompt
            里就带上目标语言（见那边的 voiceLang 参数）。取在调用之前，下面两处都要用。 */
         const trOut = conv?.translate?.out;
@@ -2162,19 +2174,23 @@ export default function ChatWindow({
               ? await Promise.all(
                   voices.map(
                     async (v, i) =>
-                      voicePairs[i]?.zh ?? (await translateWithRetry(translateApi, v, "中文")),
+                      voicePairs[i]?.zh ??
+                      (await translateWithRetry(translateApi, readVoiceContent(v).display, "中文")),
                   ),
                 )
               : [];
           for (let vi = 0; vi < voices.length; vi++) {
+            /* 落库**原样存**（JSON 也照存）——合成那一步要的 tts_text 就在里头，不能丢。
+               只把「给人看的那份」取出来估时长（见 readVoiceContent）。 */
             const text = voicePairs[vi]?.src || voices[vi];
+            const shown = readVoiceContent(text).display;
             const placeholder: ChatMessage = {
               id: uuid(),
               role: "assistant",
               type: "voice",
               content: text,
               pending: true,
-              duration: Math.max(1, Math.round(text.length / 3.5)),
+              duration: Math.max(1, Math.round(shown.length / 3.5)),
               ...(voiceTrans[vi] ? { translated: voiceTrans[vi] } : {}),
               createdAt: new Date().toISOString(),
               isRead: true,
@@ -4172,7 +4188,11 @@ export default function ChatWindow({
         });
         const voiceWidth = Math.min(230, 90 + Math.min(60, durSec) * 2.5);
         const isPlaying = playingVoice === m.id;
-        /* 真语音（语音 API 合成）：点播放键放真音频，播完自动回弹。 */
+        /* 真语音（语音 API 合成）：点播放键放真音频，播完自动回弹。
+           1.10.5：**只走媒体元素这一条**——一点就 `new Audio(dataUrl)` 新建、播完丢掉，
+           跟参考项目 message-bubble.tsx 的 playSrc 一致；播放路径里绝不建 AudioContext，
+           也不做会话声明／手势解锁（1.10.3／1.10.4 那两套已被证伪，整块撤掉）。
+           来因与修法见文件下方「语音播放」那段大注释、施工日志第 33 条。 */
         const togglePlay = () => {
           if (!m.audioUrl) return;
           const audioUrl = m.audioUrl;
@@ -4185,10 +4205,9 @@ export default function ChatWindow({
           setPlayingVoice(m.id);
           setVoiceDiag(null);
           const end = () => setPlayingVoice(null);
-          /* 只有媒体元素这一条路：用常驻复用的宿主 <audio> 直接放。 */
-          void playVoiceViaElement(audioUrl, end).then((why) => {
-            if (why) setVoiceDiag({ id: m.id, text: `${why} · v${APP_VERSION} · iOS ${iosVersion()}` });
-          });
+          const diag = (why: string) =>
+            setVoiceDiag({ id: m.id, text: `${why} · v${APP_VERSION} · iOS ${iosVersion()}` });
+          void playVoiceViaElement(audioUrl, end, diag);
         };
         return (
           <div>
@@ -4266,6 +4285,17 @@ export default function ChatWindow({
                 {voiceDiag.text}
               </div>
             ) : null}
+            {/* 1.10.2 保底：程序播放失败（诊断灰字出来了）就露一个原生 <audio controls>
+                ——跟设置页那条唯一能出声的播放器同一种存在方式（挂在页面 + controls）。
+                恩熙只要点它自带的播放键，iOS 自己就能放。 */}
+            {voiceDiag && voiceDiag.id === m.id && m.audioUrl ? (
+              <audio
+                src={m.audioUrl}
+                controls
+                preload="auto"
+                style={{ marginTop: 6, width: "100%", height: 32 }}
+              />
+            ) : null}
             {showTrans === m.id ? (
               <div
                 style={{
@@ -4289,7 +4319,7 @@ export default function ChatWindow({
                     <div style={{ fontSize: 10, letterSpacing: ".14em", color: T.ink3, marginBottom: 3 }}>
                       原文
                     </div>
-                    <div>{stripVoiceTags(m.content)}</div>
+                    <div>{stripVoiceTags(readVoiceContent(m.content).display)}</div>
                   </>
                 ) : (
                   "转文字内容将在生成后显示。"
@@ -7232,6 +7262,7 @@ export default function ChatWindow({
         <PayPasswordSheet
           ownerId={maskId}
           mode="verify"
+          variant="chat"
           current={payPwdCurrent}
           amount={payPwdAmount}
           method={payPwdMethod}
@@ -7984,40 +8015,46 @@ function ImageBubble({
   );
 }
 
-/* ── 语音播放：常驻复用、挂进 DOM 的宿主 <audio> ───────────────────────────────
-   参考项目 ai-virtual-phone 的语音条（components/chat/message-bubble.tsx 的
-   VoiceMessageBubble.playSrc）只用媒体元素播、不碰 Web Audio——其注释原话：iOS 静音
-   拨键会掐掉 Web Audio 的输出（表现为全线无声），媒体元素不受影响。
-   我们和它的差别在前端框架：React 一重渲染，临时 new 出来的元素就没人管了。所以这里
-   用一个模块级、挂进 DOM、全程复用的元素，播前重设 src、回零再 play。
-   1.9.67 正是这套写法，当时实测能出声；1.9.69～1.9.71 换成「每次 new + 手势解锁」，
-   反倒变成时响时哑——故退回这套。 */
+/* ── 语音播放：一点就新建、用完即弃（1.10.5 定案）────────────────────────────
+   参考项目 ai-virtual-phone 的聊天语音气泡（components/chat/message-bubble.tsx 的
+   VoiceMessageBubble.playSrc）只用媒体元素播、不碰 Web Audio，同一台手机上一直能响。
+   它的写法是 `new Audio(src)`（src 就是 data URL）→ 挂 onended/onerror → `play()` →
+   播完 `pause() + removeAttribute("src") + load()` **把元素整个丢掉**。
+   **不共用、不保活、不设 audioSession、不转 blob。**
 
-/* 真正播语音的元素：常驻、复用，全程只此一个。 */
+   历史（1.10.1～1.10.4 是一段弯路，本版撤销）：
+   · 1.10.1：把 1.9.98～1.10.0 那一整套 Web Audio 全拆掉——方向对。恩熙 2026-10-04：
+     「刚刚前面我们在测试的时候可以的呀，然后突然就不行了……变更的只有我的提示词」
+     ——能响的早期版本（1.9.67 那会儿）根本没碰 AudioContext；是我们后来往播放路径里
+     塞了它才坏。**结论：播放路径里一个 AudioContext 都不许再有。**
+   · 1.10.2：1.10.1 逐字照参考项目用**脱离 DOM** 的 `new Audio(dataUrl)`，实测仍
+     「假播放」（play() 被接受、paused=false、时长也解出来了，可 currentTime 永远钉在
+     0，一点声都没有）。于是改「元素挂进页面 + 源转 blob: + 假播放硬复位重试」——
+     抄错了对象：那是参考项目**通话/自动播报**用的策略（tts-service.ts 的
+     unlockAudioPlayback），不是聊天气泡用的。
+   · 1.10.3：加 ensureAudioSession()（`navigator.audioSession.type = "playback"`）。
+   · 1.10.4：加 unlockVoiceAudio()（首次手势喂 2ms 静音 WAV 解锁）。
+   1.10.2～1.10.4 三版实测**全是同一个「媒体元素假播放（t 恒 0，paused=false）」**，
+   连露出来的原生 <audio controls> 也不响——恰恰说明「挂页面／保活／audioSession／
+   手势解锁」都不是症结。
+   2026-09-16（施工日志第 33 条）已经就这同一处 bug 定过案：改回参考项目 playSrc 的
+   「一点就新建、用完即弃」后，恩熙实测可以播放。本版（1.10.5）**原样恢复第 33 条**，
+   把 1.10.2～1.10.4 加回来的共用元素／保活／audioSession／手势解锁全部撤掉。
+   恩熙 2026-10-04：「别的地方就是都可以正常播放，唯独这个语音条……不是我手机的
+   问题，也不是 API 的问题」——正解就在这，别再往环境上推。 */
+
+/* 此刻在响的那一条语音用的元素。1.10.5 起**一点就新建、用完即弃**——不共用、不保活，
+   与参考项目 message-bubble.tsx 的 playSrc 一字不差（见上方大注释、施工日志第 33 条）。 */
 let voiceEl: HTMLAudioElement | null = null;
 
-/** 建宿主 <audio>：挂进 DOM、隐藏。游离（不在 DOM 里）的元素在 iOS 上不可靠。 */
-function mountHiddenAudio(el: HTMLAudioElement): void {
-  el.setAttribute("playsinline", "");
-  el.preload = "auto";
-  el.style.display = "none";
-  if (typeof document !== "undefined") document.body.appendChild(el);
-}
-
-/** 播语音就用它：常驻复用，不每次新建。 */
-function getVoiceEl(): HTMLAudioElement {
-  if (!voiceEl) {
-    voiceEl = new Audio();
-    mountHiddenAudio(voiceEl);
-  }
-  return voiceEl;
-}
-
-/** 停掉正在响的语音（不清 src：元素常驻复用，留着下次直接换源）。 */
+/** 丢掉正在响的语音元素：暂停 → 清源 → load 复位，**整个不再复用**（1.10.5）。
+    参考项目 playSrc 的 finalize 就是这三下，只是它把元素丢进闭包、我们顺手清掉引用。 */
 function stopVoiceEl(): void {
   const el = voiceEl;
+  voiceEl = null;
   if (!el) return;
-  try { el.pause(); } catch { /* 已经没了 */ }
+  try { el.onended = null; el.onerror = null; } catch { /* ignore */ }
+  try { el.pause(); el.removeAttribute("src"); el.load(); } catch { /* 已经没了 */ }
 }
 
 /** 语音此刻在响吗——不看界面上的标记，那玩意会卡住骗人。 */
@@ -8061,31 +8098,79 @@ function iosVersion(): string {
   return m ? `${m[1]}.${m[2]}` : "?";
 }
 
-/** 播一条语音（dataUrl）。用常驻复用的宿主 <audio>，播前重设源、回零再 play。
-    返回 play() 被拒的原因（好让界面给一行诊断）；成功（含静默失败）返回 null。 */
-function playVoiceViaElement(dataUrl: string, onEnded: () => void): Promise<string | null> {
-  stopVoiceEl(); /* 先停掉上一条 */
-  const el = getVoiceEl();
+/* ── 1.10.5：1.10.3／1.10.4 的「会话声明＋手势解锁」整块撤掉 ───────────────────
+   1.10.3 加的 ensureAudioSession()（`navigator.audioSession.type = "playback"`）、
+   1.10.4 加的 unlockVoiceAudio()／voiceSilentWavUrl()／首次手势监听，实测都没能让语音
+   出声——它们抄的是参考项目**通话/自动播报**那套（tts-service.ts 的
+   unlockAudioPlayback），不是聊天气泡用的。聊天气泡用的 playSrc 压根不碰这些。
+   本版按施工日志第 33 条原样恢复 playSrc，故整块删除，一行不留。
+   ───────────────────────────────────────────────────────────────────── */
+
+/* ── 播放唯一的一条路（1.10.1 起播放路径里不许出现 AudioContext；1.10.5 起只此一版）── */
+
+/** 播一条语音（dataUrl）——**唯一的一条路**（1.10.1 起，播放路径里不许再出现
+    AudioContext）。1.10.5 起**原样对照参考项目 message-bubble.tsx 的 playSrc**：
+      · `new Audio(dataUrl)` —— 就地新建，src 直接喂 data URL，**不转 blob**；
+      · 挂 onended／onerror → `play()`；
+      · 播完（或出错）`pause() + removeAttribute("src") + load()`，元素**整个丢掉**。
+    **不共用、不保活、不设 audioSession、不挂 DOM、不设循环。** 这就是施工日志第 33 条
+    记的那套——2026-09-16 用它改完恩熙实测能放；1.10.2～1.10.4 把「共用/挂页面/blob/
+    audioSession/手势解锁」加回来的那段弯路，本版全部撤销。
+    另留一条**只读探针**：起播 1.5 秒后若元素自称在播（paused=false）却 currentTime 仍
+    钉在 0，就是「假播放」，报给诊断灰字并把元素丢掉（**不再硬复位重试**——那条弯路已
+    证伪）。返回 null（兼容旧签名）。恩熙 2026-10-04：「现在播放不了了／旧也放不了」，
+    必须先让这类失败看得见。 */
+function playVoiceViaElement(
+  dataUrl: string,
+  onEnded: () => void,
+  onDiag?: (why: string) => void,
+): Promise<string | null> {
+  stopVoiceEl(); /* 上一条先丢掉 */
+  const el = new Audio(dataUrl); /* 就地新建；src 直接喂 data URL，不转 blob */
+  el.setAttribute("playsinline", "");
+  el.preload = "auto";
+  voiceEl = el;
   let settled = false;
   const finalize = () => {
     if (settled) return;
     settled = true;
+    if (voiceEl === el) voiceEl = null;
+    try { el.onended = null; el.onerror = null; } catch { /* ignore */ }
+    try { el.pause(); el.removeAttribute("src"); el.load(); } catch { /* 已经没了 */ }
     onEnded();
   };
   el.onended = finalize;
-  el.onerror = finalize;
-  el.muted = false;
-  el.volume = 1;
-  el.src = dataUrl;
-  try { el.currentTime = 0; } catch { /* 还没加载完就设不了，无所谓 */ }
-  return el.play().then(
-    () => null,
-    (err) => {
-      const e = err as { name?: string; message?: string } | null;
-      finalize();
-      return `play() 被拒绝（${e?.name ?? "?"} ${e?.message ?? ""}）`;
-    },
-  );
+  el.onerror = () => {
+    if (settled) return; /* 已经收尾（播完／已报错）就不再重复报 */
+    const me = el.error;
+    const why = me ? `音频播不出（MediaError ${me.code}）` : "音频播不出（元素报错，无 code）";
+    console.warn("[语音] 元素报错", why, { srcLen: dataUrl.length, rs: el.readyState, ns: el.networkState });
+    if (onDiag) onDiag(why);
+    finalize();
+  };
+  /* 只读探针：起播 1.5 秒后若元素自称在播（paused=false）却进度仍钉在 0，就是「假播放」，
+     报给诊断灰字并把元素丢掉。**不重试**——硬复位重来那条弯路已被证伪。 */
+  window.setTimeout(() => {
+    if (settled) return;
+    if (el.ended) return;
+    if (el.readyState < 2) return; /* 元数据还没解出来，再等等 */
+    if (el.currentTime >= 0.05) return; /* 进度动了＝真在放 */
+    console.warn("[语音] 媒体元素没出声", "媒体元素假播放", {
+      srcLen: dataUrl.length, rs: el.readyState, ns: el.networkState,
+      dur: el.duration, paused: el.paused, t: Number(el.currentTime.toFixed(3)),
+    });
+    if (onDiag) onDiag(`媒体元素假播放（t 恒 0，paused=${el.paused}）`);
+    finalize();
+  }, 1500);
+  /* play() 不 await（参考项目也不 await）：被拒时 catch 里记一行，别让它变成未处理的
+     rejection。手势里同步调 play，才最有机会真的出声。 */
+  el.play().catch((err) => {
+    const e = err as { name?: string; message?: string } | null;
+    console.warn("[语音] play 被拒", e?.name, e?.message);
+    if (onDiag) onDiag(`媒体元素 play 被拒（${e?.name ?? "?"}）`);
+    finalize();
+  });
+  return Promise.resolve(null);
 }
 
 /* 复制兜底：不安全的 http 页面（局域网 IP）里 navigator.clipboard 是 undefined，

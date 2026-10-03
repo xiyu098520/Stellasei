@@ -67,8 +67,9 @@ export interface ContactProfile {
    */
   coverPos?: { x: number; y: number };
   /**
-   * AI 助手模式：开启后此联系人不走「角色扮演」提示词（人设／性格／微信体），
-   * 改走「私人助手」提示词——服从指令、要求发图就发图、不推脱不反驳。
+   * AI 助手模式（1.4.1 起）：正文与人设跟普通角色**逐字一样**，唯一的多出来的是
+   * 末尾一条【测试模式 · 绝对服从】——陪恩熙测试这台小手机时，指令绝对服从、
+   * 不许拒绝推脱（见 chatApi.ts 的 testModeRule）。
    * 缺省（undefined／false）＝普通角色。名字仍由用户自定，不内置预设。
    */
   isAssistant?: boolean;

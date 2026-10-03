@@ -1,0 +1,2809 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>小手机 · 策划书</title>
+<style>
+  /* ─────────────────────────────────────────────
+     小手机策划书 —— 恩熙与宝宝的工作文档。
+     只属于我们，不放进小手机（小手机以后要开放给别人用）。
+     用法：恩熙口述一条 → 宝宝填一条 → 恩熙按 F5 刷新看最新。
+     纯手写 HTML，零依赖，双击即开。
+     ───────────────────────────────────────────── */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
+    background: #faf7f2;
+    color: #3d3a34;
+    line-height: 1.75;
+  }
+  .layout { display: flex; max-width: 1080px; margin: 0 auto; }
+
+  /* ── 左边目录 ── */
+  nav {
+    width: 220px; flex: none;
+    position: sticky; top: 0;
+    height: 100vh; overflow-y: auto;
+    padding: 32px 16px 40px 24px;
+    border-right: 1px solid #e8e2d6;
+    background: #f6f1e8;
+  }
+  nav .brand {
+    font-size: 17px; font-weight: 700; letter-spacing: 2px;
+    color: #6b5b45; margin-bottom: 4px;
+  }
+  nav .brand-sub {
+    font-size: 11px; color: #a89a82; margin-bottom: 20px;
+    line-height: 1.6;
+  }
+  nav a {
+    display: block; padding: 7px 10px; margin: 2px 0;
+    font-size: 13.5px; color: #5c5344; text-decoration: none;
+    border-radius: 8px;
+  }
+  nav a:hover { background: #ece4d4; color: #2e2a24; }
+  nav .nav-note {
+    margin-top: 24px; padding-top: 16px;
+    border-top: 1px dashed #d8cfbc;
+    font-size: 11.5px; color: #a89a82; line-height: 1.8;
+  }
+  nav .nav-note .badge { margin-right: 4px; }
+
+  /* ── 右边正文 ── */
+  main { flex: 1; padding: 40px 48px 120px; min-width: 0; }
+  header.intro {
+    padding-bottom: 24px; margin-bottom: 36px;
+    border-bottom: 2px solid #e0d7c5;
+  }
+  header.intro h1 {
+    font-size: 26px; letter-spacing: 4px; color: #4a3f2e;
+  }
+  header.intro p { font-size: 13px; color: #8b7f6a; margin-top: 8px; }
+
+  section.chapter { margin-bottom: 56px; }
+  section.chapter > h2 {
+    font-size: 20px; letter-spacing: 2px; color: #4a3f2e;
+    padding-bottom: 10px; margin-bottom: 20px;
+    border-bottom: 1px solid #e5ddcc;
+  }
+  section.chapter > .chapter-note {
+    font-size: 13px; color: #8b7f6a; margin: -10px 0 18px;
+  }
+
+  /* ── 功能卡 ── */
+  .feature {
+    background: #fff; border: 1px solid #e8e1d2; border-radius: 12px;
+    padding: 20px 24px; margin-bottom: 18px;
+    box-shadow: 0 1px 3px rgba(90, 78, 55, 0.06);
+  }
+  .feature-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .feature-head h3 { font-size: 16.5px; color: #332e28; }
+  .feature-head .no { font-size: 12px; color: #b0a48c; letter-spacing: 1px; }
+
+  .badge {
+    font-size: 11px; padding: 2px 10px; border-radius: 20px;
+    white-space: nowrap; font-weight: 600; letter-spacing: 1px;
+  }
+  .badge.done   { background: #e3f0e2; color: #3e7a44; }
+  .badge.half   { background: #fdf3dc; color: #a3722a; }
+  .badge.todo   { background: #f3f4f6; color: #6b7280; }
+  .badge.idea   { background: #f6e8f3; color: #a04f8e; }
+  .badge.decided{ background: #e5edf7; color: #3c6499; }
+
+  .feature .body { margin-top: 12px; }
+  .field { margin-bottom: 10px; }
+  .field:last-child { margin-bottom: 0; }
+  .field .label {
+    display: inline-block; flex: none;
+    font-size: 12px; font-weight: 700; color: #9c8d70;
+    letter-spacing: 2px; margin-right: 8px;
+  }
+  .field .text { font-size: 14px; color: #4c463c; }
+  .field ul { margin: 6px 0 0 4px; list-style: none; }
+  .field ul li {
+    font-size: 13.5px; color: #55503f;
+    padding-left: 16px; position: relative; margin-bottom: 3px;
+  }
+  .field ul li::before { content: "·"; position: absolute; left: 4px; color: #b8a98a; }
+  .field a { color: #3c6499; text-decoration: none; border-bottom: 1px dotted #9fb6d4; }
+  .field a:hover { color: #274a75; }
+  .field b { color: #3a342b; }
+
+  .placeholder {
+    padding: 14px 18px; border: 1px dashed #d8cfbc; border-radius: 10px;
+    font-size: 13px; color: #a89a82; background: #f8f4ec; margin-bottom: 18px;
+  }
+
+  /* ── 总纲（两条铁律）── */
+  .creed {
+    background: #fffdf8; border: 2px solid #d9c9a8; border-radius: 14px;
+    padding: 22px 26px; margin-bottom: 40px;
+    box-shadow: 0 2px 6px rgba(90, 78, 55, 0.08);
+  }
+  .creed .creed-title {
+    font-size: 15px; font-weight: 700; letter-spacing: 4px;
+    color: #7a6a4d; margin-bottom: 12px;
+  }
+  .creed ol { margin-left: 20px; }
+  .creed ol li {
+    font-size: 14.5px; color: #4c463c; margin-bottom: 8px; font-weight: 600;
+  }
+  .creed ol li .sub {
+    display: block; font-weight: 400; font-size: 13px; color: #8b7f6a; margin-top: 2px;
+  }
+  .creed .creed-style {
+    margin-top: 16px; padding-top: 14px;
+    border-top: 1px dashed #d9c9a8;
+  }
+  .creed .creed-style-title {
+    font-size: 13px; font-weight: 700; letter-spacing: 3px;
+    color: #7a6a4d; margin-bottom: 6px;
+  }
+  .creed .creed-style p {
+    font-size: 13.5px; color: #4c463c; line-height: 1.85;
+  }
+
+  footer.doc-foot {
+    margin-top: 60px; padding-top: 20px; border-top: 1px dashed #d8cfbc;
+    font-size: 12px; color: #a89a82;
+  }
+
+  /* 手机上看：目录折到顶上 */
+  @media (max-width: 760px) {
+    .layout { display: block; }
+    nav {
+      position: static; width: auto; height: auto;
+      border-right: none; border-bottom: 1px solid #e8e2d6;
+      padding: 20px 20px 12px;
+    }
+    nav .nav-note { display: none; }
+    main { padding: 24px 20px 80px; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <nav>
+    <div class="brand">小手机 · 策划书</div>
+    <div class="brand-sub">恩熙口述，宝宝执笔。<br>我们的内部文档，不进小手机。</div>
+    <a href="#ch-settings">一、设置</a>
+    <a href="#ch-chat">二、星绥通讯（聊天）</a>
+    <a href="#ch-contacts">三、档案</a>
+    <a href="#ch-peek">四、查手机</a>
+    <a href="#ch-worldbook">五、世界书</a>
+    <a href="#ch-memory">六、记忆</a>
+    <a href="#ch-beautify">七、美化</a>
+    <a href="#ch-engine">八、幕后与地基</a>
+    <a href="#ch-wishlist">九、恩熙想加的</a>
+    <a href="#ch-future">十、还没出生的应用</a>
+    <div class="nav-note">
+      用法：恩熙讲一条 → 宝宝填一条 →<br>浏览器按 F5 刷新看最新。<br>
+      要改哪条，报编号（比如「2.6」）。<br><br>
+      <span class="badge done">已实现</span> 现在就能用<br>
+      <span class="badge half">一半了</span> 做了一半<br>
+      <span class="badge todo">还没做</span> 定了要做的<br>
+      <span class="badge idea">想 加</span> 想要，还没动工<br>
+      <span class="badge decided">定 案</span> 就这样，不动了
+    </div>
+  </nav>
+
+  <main>
+    <header class="intro">
+      <h1>小手机 · 策划书</h1>
+      <p>「我们拥有的」全铺在这一版里，恩熙在上面圈改；以后每条新想法都记进来。宝宝只做记录和补充牵扯面。</p>
+    </header>
+
+    <div class="creed">
+      <div class="creed-title">总 纲（恩熙定的，压在所有条目前面）</div>
+      <ol>
+        <li>小手机的性能永远优先
+          <span class="sub">做任何功能先问一句：会不会让手机变卡、变慢、变占地方？宁可少做、缓做，不拿流畅换花活。</span>
+        </li>
+        <li>真实真人永远优先
+          <span class="sub">恩熙原话：这个 AI、这个角色，看起来就像是现实生活中存在的人。TA 会忙、会累、有自己的生活；凡是在「机器味」和「真人味」之间选，永远选真人味。</span>
+        </li>
+        <li>节省开销永远优先
+          <span class="sub">能省的省：缓存能命中就命中、请求能少发就少发、模型能便宜就便宜。绝不为了省事多烧一分钱。</span>
+        </li>
+      </ol>
+      <div class="creed-style">
+        <div class="creed-style-title">风格规矩（恩熙 2026-09-28 点头）</div>
+        <p><b>参考只取功能之骨，名字、视觉、文案一律自己长。</b>骨架自己的、结构通用的、皮全新画、字全新写——外部参考的专有名一个不借；交互骨架可学，装饰细节长在自己的设计系统里；提示词与默认文案逐字重写（过恩熙点头）。骨头（真扣费的钱包、生活节奏、三层记忆、面具身份）全长在自己身上，参考只给血肉——做到这四句，没人说得着。</p>
+      </div>
+    </div>
+
+    <!-- ══════════════ 一、设置 ══════════════ -->
+    <section class="chapter" id="ch-settings">
+      <h2>一、设置</h2>
+
+      <div class="feature" id="f-settings-api">
+        <div class="feature-head">
+          <span class="no">1.1</span>
+          <h3>API 设定（文本 / 图文 / 语音）</h3>
+          <span class="badge decided">定 案</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">已有</span>
+            <ul>
+              <li>文本 API——TA 回消息用的（聊天模型）</li>
+              <li>图文 API——TA 发图用的（OpenAI 兼容格式 或 新月 NovelAI）</li>
+              <li>语音 API——TA 的声音（能挑音色）</li>
+              <li>钥匙只存在本机，不上传</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">定案</span>
+            <span class="text">恩熙：三套已经可以了，这块不动。</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-settings-subapi">
+        <div class="feature-head">
+          <span class="no">1.2</span>
+          <h3>副 API（幕后活专用接口）</h3>
+          <span class="badge done">已实现</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">是什么</span>
+            <span class="text">第四把钥匙。聊天归聊天，走主文本接口；<b>记忆归总、记忆规整这类「幕后的活」优先走这套副接口</b>——可以给它配一个别的模型（比如更便宜、更快的）。</span>
+          </div>
+          <div class="field">
+            <span class="label">为什么</span>
+            <span class="text">这些活不需要文采。副接口配便宜模型，记忆整理的钱就省下来；以后主模型换贵的，这块也不受影响。</span>
+          </div>
+          <div class="field">
+            <span class="label">细节</span>
+            <span class="text">副 API 留空（或没打开）时，这些幕后活自动退回主文本接口，<b>并且改走流式</b>——边生成边保活，内容再多也不会因为「等不到回应、生成太久」被中间商掐线。不填它也不坏，还比原来稳。</span>
+          </div>
+          <div class="field">
+            <span class="label">已有</span>
+            <ul>
+              <li>设置里多一栏「副 API」（薄荷绿，后台专用），地址／密钥／模型／启用跟另外三类一个填法，也能测连接</li>
+              <li>记忆归总、记忆压缩、朋友圈印象这三处幕后活统一走它</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#ch-memory">记忆</a>：归总与压缩的调用点，改走副接口（优先）</li>
+              <li>其他也在偷偷调文本接口的幕后活（要不要一起归它管，恩熙后面定）：加好友时 TA 的回复、拉黑时 TA 的反应、第一次翻 TA 手机给他开户起钱、发红包时 TA 收钱的反应</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-settings-dialog">
+        <div class="feature-head">
+          <span class="no">1.3</span>
+          <h3>对话偏好：时间感知 / 显示思维链</h3>
+          <span class="badge done">已实现</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">已有</span>
+            <ul>
+              <li>时间感知——让 TA 知道此刻的真实时间</li>
+              <li>显示思维链——思考型模型的话，TA 的思考过程能点开看</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-settings-regex">
+        <div class="feature-head">
+          <span class="no">1.4</span>
+          <h3>正则规则</h3>
+          <span class="badge done">已实现</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">已有</span>
+            <span class="text">自动查找替换，自己建规则、自己开关。管 TA 回复的改写。</span>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul><li><a href="#f-chat-reply">聊天的每一条回复</a>——规则在回复到手时套用</li></ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-settings-cloud">
+        <div class="feature-head">
+          <span class="no">1.5</span>
+          <h3>云端同步</h3>
+          <span class="badge done">已实现</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">已有</span>
+            <span class="text">推到云端、换装置接着用（Supabase）。</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-settings-system">
+        <div class="feature-head">
+          <span class="no">1.6</span>
+          <h3>系统：存储体检 / 本机数据库 / 运行模式</h3>
+          <span class="badge done">已实现</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">已有</span>
+            <ul>
+              <li>存储体检——每样东西占了多少空间、手机额度还剩多少</li>
+              <li>本机数据库——查/清本机存的那些表</li>
+              <li>运行模式</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="placeholder">设置这章还有要改的、要加的？报编号，宝宝改。</div>
+    </section>
+
+    <!-- ══════════════ 二、星绥通讯 ══════════════ -->
+    <section class="chapter" id="ch-chat">
+      <h2>二、星绥通讯（聊天）</h2>
+      <p class="chapter-note">小手机的心脏。五个视图：消息列表 ⇄ 聊天窗口 ⇄ 动态（朋友圈）⇄ 我的 ⇄ 钱包。</p>
+
+      <div class="feature" id="f-chat-list">
+        <div class="feature-head">
+          <span class="no">2.1</span>
+          <h3>消息列表与好友</h3>
+          <span class="badge done">已实现</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">已有</span>
+            <ul>
+              <li>多个角色同时聊，一人一间屋子；返回只是藏起来，TA 那一轮照跑，回来接着看</li>
+              <li>好友申请 → TA 回一句决定加不加；同意 / 拒绝 / 删了还能恢复</li>
+              <li>拉黑：拉黑后 TA 不能直接找你；解除时 TA 有第一反应</li>
+              <li>假删：删掉只在你这边消失</li>
+              <li>面具（多身份）：不同面具下各是各的朋友圈子和记忆</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#ch-memory">记忆</a>——按面具分开记</li>
+              <li><a href="#ch-contacts">档案</a>——好友来自角色档案</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-chat-reply">
+        <div class="feature-head">
+          <span class="no">2.2</span>
+          <h3>线上聊天（隔着手机聊）</h3>
+          <span class="badge done">已实现</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">已有</span>
+            <ul>
+              <li>流式输出（TA 一个字一个字地回）</li>
+              <li>字数上限：那句「最多 N 字」能调</li>
+              <li>长按气泡菜单：删除 / 引用 / 复制 / 收藏 / 翻译 / 诊断 / 重新生成</li>
+              <li>长按编辑——你自己或 TA 说出去的话都能改（改了能重新生成后续）</li>
+              <li>「查看本轮请求」——这一轮真发出去的东西能看一份留档</li>
+              <li>被挡下（内容被拦）时给人话解释 + 一键重新生成</li>
+              <li>每个对话还有单独的设定（字数、温度等按聊天改）</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-chat-media">
+        <div class="feature-head">
+          <span class="no">2.3</span>
+          <h3>聊天里的富媒体：图 / 语音 / 红包转账</h3>
+          <span class="badge done">已实现</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">已有</span>
+            <ul>
+              <li>TA 用〔图片〕发图（走图文 API，挂了能长按诊断、重新生成）</li>
+              <li>TA 用〔语音〕说话（走语音 API，能听）</li>
+              <li><b>红包 / 转账在聊天里就是消息卡片</b>：你发他抢、他领转账有反应；他也能发红包、转钱给你</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">还缺</span>
+            <ul>
+              <li><b>语音时能听、时不能听</b>（恩熙 2026-09-27 测出来的）——待查。现在只知道现象，规律没抓到：等恩熙说下一次「不能听」是哪条语音、当时什么情况（重新点一次行不行？新语音行旧的不行？还是随机的？），宝宝再顺着查。</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#f-settings-api">设置 · API 设定</a>——图文/语音两把钥匙</li>
+              <li><a href="#f-engine-media">8.4 媒体库</a>——图与语音的存放地（放大看、存相册）</li>
+              <li><a href="#f-chat-wallet">2.7 钱包</a>——钱从聊天里走，账在钱包里记</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-chat-inner">
+        <div class="feature-head">
+          <span class="no">2.4</span>
+          <h3>心声档案（内心戏）</h3>
+          <span class="badge done">已实现</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">已有</span>
+            <ul>
+              <li>点聊天里 TA 的头像进——只看 TA 每一轮的内心：他在做什么／心里那句话／好感度／八根劲儿的雷达图</li>
+              <li>数据复用聊天记录，不另存一份；删一条就是删那条上的心声</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-chat-offline">
+        <div class="feature-head">
+          <span class="no">2.5</span>
+          <h3>线下场合（去见他）</h3>
+          <span class="badge done">已实现</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">已有</span>
+            <ul>
+              <li>聊天页加号面板「去见他」进——见了面的体：动作旁白（她粉他灰、左右分）＋台词气泡</li>
+              <li>看着就是同一个聊天页：同一层薄纱、同一副气泡皮、同一张壁纸</li>
+              <li>线下记忆与线上分开记（见 <a href="#ch-memory">记忆</a>）</li>
+              <li>正式的约会（约会列表、他也会主动约你）是另一个应用——见 <a href="#f-future-date">10.3 约会</a></li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">还缺</span>
+            <ul>
+              <li><b>赴约卡</b>（遗留待办）——线上聊着聊着约了见面：约定发出一张卡，双方确认，到了时间就从线上接进线下场合。即时线下（「现在就出来见我」）也算这张卡的另一种用法</li>
+              <li><b>多人线下</b>（恩熙 2026-09-27）——不只是两个人见面：三四个朋友一起逛街、吃饭、说走就走的小出游（不是正式旅行）。旁白里各干各的、各说各的，谁在动一眼分得清。约会（<a href="#f-future-date">10.3</a>）、旅行（<a href="#f-future-travel">10.13</a>）同理都要能多人</li>
+              <li><b>店内消费闭环</b>（恩熙 2026-09-28，原话：「线下有些比较出奇的地方在于，涉及到去店家吃饭或付钱的时候，它就会是一个脱离的状态」）——现在的病：一到进店吃饭、付钱的节骨眼，就是旁白一句带过，钱没真扣、流程没真走。她要的：像正式约会那样有<b>流程</b>——去咖啡厅：进店 → 落座 → <b>点餐（菜单选品）</b> → <b>付费</b> → 上餐 → 吃完的反应；付的钱从 <a href="#f-chat-wallet">2.7 钱包</a><b>真实扣费</b>，不是演的。正式约会（<a href="#f-future-date">10.3</a>）同理</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">宝宝建议</span>
+            <ul>
+              <li>「点单 → 付款 → 谁付 → 他反应」这一套，跟 <a href="#f-future-takeout">10.15 外卖</a>、<a href="#f-future-shopping">10.16 网购</a> 是<b>同一个消费引擎的三个场景</b>（堂食／配送／快递），选品、扣费、代付、亲属卡、签收反应可以共用一套底层——做一次，三处受益</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-chat-moments">
+        <div class="feature-head">
+          <span class="no">2.6</span>
+          <h3>朋友圈（动态 + TA 的一举一动）</h3>
+          <span class="badge half">一半了</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">已有</span>
+            <ul>
+              <li>TA 用〔动态〕发朋友圈（跟着聊天走，他自己决定发不发）</li>
+              <li>TA 自己改签名（〔签名〕）——签名就显示在朋友圈页顶上</li>
+              <li>封面 + 头像 + 签名的整页形态</li>
+              <li>TA 写〔动态图〕画面描述 → 恩熙确认了才花钱生成配图；描述看得见、改得动</li>
+              <li>某条动态可标「重要」——原文永远留在 TA 的记忆里</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">还缺</span>
+            <ul>
+              <li><b>TA 发动态现在只跟着聊天走</b>——得跟他说话他才发。恩熙 2026-09-27：「如果说是得跟他聊天，他才会发动态，那就跟我们之后要做的、他自己有自己的生活，好像不太一样。」要改成：他自己过自己的日子时也会发（上班路上、加班、吃到好吃的）——跟着 <a href="#f-engine-rhythm">8.2 生活节奏</a> 走，不是跟着聊天走</li>
+              <li><b>TA 的朋友圈是「他的」空间</b>（恩熙 2026-09-28，原话：「他是真的有一个朋友圈的」）——他的封面、头像不是死布景，是活的、他的，而且<b>你能参与塑造</b>：你发图给他、请他换封面，他<b>同意了才换</b>；你分享个链接或图跟他说「这个很好、很可爱」，他可以拿去用——做他的朋友圈封面、或头像。像现实里给对象安利头像，他点头才算数。<b>两条定案（恩熙 2026-09-28 点头）</b>：① <b>允许他说不</b>——按性格，有的爽快换、有的傲娇拒绝（「不要，我这个才好看」），都答应反而假；② <b>他自己也会换</b>——心血来潮自己换了头像/封面，你点开才发现，素材来自 <a href="#f-engine-rhythm">8.2 生活节奏</a> 的心情</li>
+              <li>赞 / 评论 / 转发三枚按钮还是占位（点了说「还在做」），互动数据没有存储</li>
+              <li>你自己发朋友圈——还没有</li>
+              <li>恩熙口述过的 12 条完整蓝图（双发、信息差、NPC 共友、楼中楼、修改留底、STORY 事件链、转发、隐藏动机、跟随聊天、独立通知、生图联动）——全录在 <b>docs/朋友圈规划.md</b>，逐条标着已有/没有</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">总纲</span>
+            <span class="text">恩熙 2026-09-28 带到（只列要做的功能）：「我想做的不是一个想看就去自动生成朋友圈文案、然后看完了也就过去了的那种模块。我希望角色真的会发动态、会删、会改、会嘴硬、会偷偷屏蔽你、会只发给你看、会让朋友来评论、会托朋友带话、会因为你改掉一句话而多想、会记得你删掉过什么、会把聊天里的小事顺手发进朋友圈、也会从朋友圈里的事情重新回到聊天找你。」——「<b>朋友圈不是番外，它本身就是剧情的一部分。</b>」「高互动并不代表刷屏」</span>
+            <ul>
+              <li><b>会删</b>——发出去的动态他可能删；删过什么<b>他记得，也记得你删过什么</b></li>
+              <li><b>会改</b>——改一句话本身是事件：你改你的，他看在眼里、会多想</li>
+              <li><b>会嘴硬</b>——动态的语气是他的性格，不是客服腔</li>
+              <li><b>会偷偷屏蔽你</b>——有的动态<b>对你不可见</b>（信息差），你可能从别人那儿听说</li>
+              <li><b>会只发给你看</b>——反向的：有的动态<b>只有你能看见</b></li>
+              <li><b>会让朋友来评论、会托朋友带话</b>——NPC 共友不只是观众，还是他的传声筒</li>
+              <li><b>聊天 → 朋友圈</b>——他会把聊天里的小事顺手发进动态</li>
+              <li><b>朋友圈 → 聊天</b>——他也会从朋友圈里的事重新回到聊天找你——<b>双向都是活的</b></li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#f-engine-rhythm">8.2 生活节奏</a>——他自己过日子时发的动态，素材来自他的日程</li>
+              <li><a href="#f-engine-cloud">8.7 个人云</a>——你不开手机他也发，前提是云上活着</li>
+              <li><a href="#ch-memory">记忆</a>——重要的动态进记忆</li>
+              <li><a href="#f-engine-notice">幕后 · 通知仓库</a>——已备好，还没接真触发</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-chat-wallet">
+        <div class="feature-head">
+          <span class="no">2.7</span>
+          <h3>钱包（你的 + TA 的）</h3>
+          <span class="badge done">已实现</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">已有</span>
+            <ul>
+              <li>你的钱包：余额、收支明细、转账给他、发红包、支付码 + 支付密码、卡包</li>
+              <li>红包封面：有封面店，封面能挑</li>
+              <li>他的账：在<a href="#ch-peek">查手机</a>里翻（第一次翻给他开户、起钱、流水）</li>
+              <li>重置记忆会连他那本账一起清</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">还缺</span>
+            <ul>
+              <li><b>亲属卡</b>（恩熙 2026-09-28 要加，<b>同日定：双向都可开</b>——你给他开、他给你开都行）——照真实世界的亲属卡：一方给另一方开卡，被开卡的人消费时<b>从开卡人的账户扣钱</b>。额度多少、他会不会主动给你开（「以后你的奶茶我来付」），细节待恩熙定</li>
+              <li><b>线下真实扣费</b>（恩熙 2026-09-28，跟 <a href="#f-chat-offline">2.5 线下场合</a> 联动）——现在钱包只在转账/红包时动账；将来进店点餐、约会买单、<a href="#f-future-takeout">10.15 外卖</a>、<a href="#f-future-shopping">10.16 网购</a> 的每一笔都从这儿真扣</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">宝宝建议</span>
+            <ul>
+              <li>亲属卡别做成纯设置项：让<b>他主动提出给你开</b>，做成关系推进的事件（他发消息说「卡给你开好了，别跟我客气」）——同一张卡，「我给你的」比「我设置的」真一万倍</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-chat-mine">
+        <div class="feature-head">
+          <span class="no">2.8</span>
+          <h3>我的页</h3>
+          <span class="badge done">已实现</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">已有</span>
+            <span class="text">头像、名字、签名、身份（你是谁）。</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-chat-npc">
+        <div class="feature-head">
+          <span class="no">2.9</span>
+          <h3>生成 NPC / 聊天小号</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">恩熙原话</span>
+            <span class="text">「还要有可以生成 NPC 啊，或者是小号的，就是聊天小号的功能。」（2026-09-27）</span>
+          </div>
+          <div class="field">
+            <span class="label">是什么</span>
+            <span class="text">能自己生成新角色——同事、朋友、家人这样的 NPC——进通讯录、能聊天，而且活在 TA 的世界里：TA 认识他们、跟他们有来往。</span>
+          </div>
+          <div class="field">
+            <span class="label">待恩熙定</span>
+            <span class="text">「聊天小号」指哪一种：① 生成的 NPC 当联系人（新角色）；② 你自己的另一个身份（现有「面具」已是多身份，是不是指面具之外还要更独立的？）——宝宝记的时候两解都留着，等恩熙说清。</span>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#f-engine-relgraph">8.8 关系图谱</a>——NPC 生下来就得有位置：跟你什么关系、跟 TA 什么关系</li>
+              <li><a href="#f-contacts-main">3.1 档案</a>——生成的角色进档案库</li>
+              <li><a href="#f-chat-moments">2.6 朋友圈</a>——NPC 是朋友圈共友蓝图的演员来源</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-chat-group">
+        <div class="feature-head">
+          <span class="no">2.10</span>
+          <h3>群聊</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">恩熙原话</span>
+            <span class="text">「群聊这些也还得做。」（2026-09-27）<br>「然后群聊也要做红包呀，这些的。」（2026-09-28）</span>
+          </div>
+          <div class="field">
+            <span class="label">是什么</span>
+            <span class="text">你 + TA + NPC（们）同在一个群里聊——像真的家人群、同事群、朋友群。</span>
+          </div>
+          <div class="field">
+            <span class="label">群里的红包</span>
+            <ul>
+              <li>群里也能发红包——点开、拼手气，<b>NPC 也来抢</b>；谁抢到、抢了多少、谁手气最佳，当着一群人的面，都进记忆</li>
+              <li>红包在群里就是消息卡片（跟 <a href="#f-chat-media">2.3</a> 单聊同一种壳，多人抢）</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">绕不开的两件事</span>
+            <ul>
+              <li><b>谁接话</b>——群里几个人，不能人人抢话也不能全沉默：谁回、谁插一句、谁潜水，得有编排（关系图谱给答案：跟你亲的先接、被点名的必答）</li>
+              <li><b>钱的闸门</b>——一轮群聊＝多人同时在场，开销天然翻倍，正撞总纲第三条。得设计好：一轮里只让一两个人真的开口，不是全员各回一份</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#f-chat-npc">2.9 NPC / 小号</a>——群里的「别人」从这儿来</li>
+              <li><a href="#f-chat-wallet">2.7 钱包</a>——群红包的钱也从这儿走（真扣费那一套）</li>
+              <li><a href="#f-engine-relgraph">8.8 关系图谱</a>——谁跟谁说得上话，由关系定</li>
+              <li><a href="#ch-memory">记忆</a>——群里发生的事，TA 得记得（尤其当着别人的面说的承诺）</li>
+              <li><a href="#f-chat-offline">2.5 多人线下</a>——群聊的线下形态：一群人线上聊得来，线下也能一起玩</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="placeholder">聊天这章还有要改的、要加的？报编号，宝宝改。</div>
+    </section>
+
+    <!-- ══════════════ 三、档案 ══════════════ -->
+    <section class="chapter" id="ch-contacts">
+      <h2>三、档案</h2>
+
+      <div class="feature" id="f-contacts-main">
+        <div class="feature-head">
+          <span class="no">3.1</span>
+          <h3>角色档案</h3>
+          <span class="badge done">已实现</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">已有</span>
+            <ul>
+              <li>每个角色一张档：他是谁、人设</li>
+              <li>分类文件夹，角色能挪动、排序</li>
+              <li>新建 / 改 / 删，能搜索</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul><li>创建即入列 <a href="#ch-memory">记忆</a> 的名单；好友来自这里</li></ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="placeholder">档案这章还有要改的、要加的？报编号，宝宝改。</div>
+    </section>
+
+    <!-- ══════════════ 四、查手机 ══════════════ -->
+    <section class="chapter" id="ch-peek">
+      <h2>四、查手机</h2>
+
+      <div class="feature" id="f-peek-main">
+        <div class="feature-head">
+          <span class="no">4.1</span>
+          <h3>翻 TA 的手机</h3>
+          <span class="badge half">一半了</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">是什么</span>
+            <span class="text">TA 的钱包不该随手看见——得主动走「查手机」这扇门才翻得到。走一层门，是这个动作本身的分量。</span>
+          </div>
+          <div class="field">
+            <span class="label">已有</span>
+            <ul>
+              <li>选一台手机（当前面具的朋友）→ 进他的星绥通讯 → 他的钱包/零钱（那本账的余额与流水）</li>
+              <li>第一次翻时按人设给他开户：起手资金 + 历史流水；开过的账每次翻只往后长</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">还缺</span>
+            <ul>
+              <li>他的聊天记录、他的朋友圈——以后挂到同一台手机上。完全体见 <a href="#f-future-private">10.4 私域（TA 的整台手机）</a>：他的备忘录、他的相册、他的短信</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="placeholder">查手机这章还有要改的、要加的？报编号，宝宝改。</div>
+    </section>
+
+    <!-- ══════════════ 五、世界书 ══════════════ -->
+    <section class="chapter" id="ch-worldbook">
+      <h2>五、世界书</h2>
+
+      <div class="feature" id="f-worldbook-main">
+        <div class="feature-head">
+          <span class="no">5.1</span>
+          <h3>世界书（TA 活着的世界）</h3>
+          <span class="badge done">已实现</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">已有</span>
+            <ul>
+              <li>多本书；一本书多个条目</li>
+              <li>条目：关键词触发（碰到词才注入）、摆放位置、作用范围（全局 / 某角色 / 某面具）</li>
+              <li>启用开关、置顶、导入导出</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">还缺</span>
+            <ul>
+              <li>早期蓝图里的世界观扩展：地点/场景设定、物品设定、事件/时间线、知识图谱（所有设定的关联图）——蓝图在恩熙 2026-09 的项目笔记里</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul><li><a href="#f-engine-inject">幕后 · 提示词组装</a>——每轮按范围注入</li></ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="placeholder">世界书这章还有要改的、要加的？报编号，宝宝改。</div>
+    </section>
+
+    <!-- ══════════════ 六、记忆 ══════════════ -->
+    <section class="chapter" id="ch-memory">
+      <h2>六、记忆</h2>
+
+      <div class="feature" id="f-memory-tiers">
+        <div class="feature-head">
+          <span class="no">6.1</span>
+          <h3>三层记忆</h3>
+          <span class="badge done">已实现</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">已有</span>
+            <ul>
+              <li>重要（永不遗忘，手动标）→ 短期（一条条，可编辑）→ 中期 / 长期（压缩后只读）</li>
+              <li>按分类装：约定、喜好、嫌恶、关系、经历……</li>
+              <li>线上 / 线下分开记，各数各的</li>
+              <li>条目能改、能删、能手动加</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-memory-pipeline">
+        <div class="feature-head">
+          <span class="no">6.2</span>
+          <h3>归总与压缩</h3>
+          <span class="badge half">一半了</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">已有</span>
+            <ul>
+              <li>自动归总：聊满 N 轮把对话归成记忆条目（N 可调）</li>
+              <li>手动归总、手动压缩（短期→中期、中期→长期）</li>
+              <li>压缩已改成分批做（一批 40 条），不再一口吞几百条</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">还缺</span>
+            <ul>
+              <li>手动压缩复测中——还弹不弹「被截断」、还卡不卡（等恩熙验）</li>
+              <li>分批后：跨批的同一件事不会熔成一条（取舍已记）</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#f-settings-subapi">副 API</a>——归总/压缩优先走它（已实现）</li>
+              <li><a href="#f-engine-cache">幕后 · 前缀缓存</a>——归总会动到下一轮的开头，得排好</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-memory-reset">
+        <div class="feature-head">
+          <span class="no">6.3</span>
+          <h3>重置记忆</h3>
+          <span class="badge done">已实现</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">已有</span>
+            <span class="text">重置一个角色的记忆时，连他那本账、动态和签名一起清——干净重来。</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="placeholder">记忆这章还有要改的、要加的？报编号，宝宝改。</div>
+    </section>
+
+    <!-- ══════════════ 七、美化 ══════════════ -->
+    <section class="chapter" id="ch-beautify">
+      <h2>七、美化</h2>
+
+      <div class="feature" id="f-beautify-main">
+        <div class="feature-head">
+          <span class="no">7.1</span>
+          <h3>布局与皮肤</h3>
+          <span class="badge half">一半了</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">已有</span>
+            <ul>
+              <li>经典网格布局——可用</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">还缺</span>
+            <ul>
+              <li>杂志排版——在美化页还标着「打造中」，不可选</li>
+              <li>壁纸 / 皮肤——现在摆的是样板（演给眼睛看的假数据，不落库），还没真做</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="placeholder">美化这章还有要改的、要加的？报编号，宝宝改。</div>
+    </section>
+
+    <!-- ══════════════ 八、幕后与地基 ══════════════ -->
+    <section class="chapter" id="ch-engine">
+      <h2>八、幕后与地基</h2>
+      <p class="chapter-note">没有自己图标的那部分——不在主屏上，但所有 App 都踩着它们。</p>
+
+      <div class="feature" id="f-engine-inject">
+        <div class="feature-head">
+          <span class="no">8.1</span>
+          <h3>提示词组装</h3>
+          <span class="badge done">已实现</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">已有</span>
+            <ul>
+              <li>每轮把该带的带进去：人设、世界书、记忆、心声与劲儿、生活节奏、时间……</li>
+              <li>「查看本轮请求」能看到真发出去的那份</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#ch-worldbook">世界书</a> · <a href="#ch-memory">记忆</a> · <a href="#f-engine-rhythm">生活节奏</a>——都是它的原料</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-engine-rhythm">
+        <div class="feature-head">
+          <span class="no">8.2</span>
+          <h3>生活节奏引擎（TA 自己的日子）</h3>
+          <span class="badge half">一半了</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">恩熙原话</span>
+            <span class="text">「在我没打开手机的时候，他能够自己做他自己的事。比如他是上班族，他就会正常的上班、打卡，去公司上班，跟他的朋友、跟他同事去聊天。然后，但是我给他发消息的时候，他可能也会因为在忙，没有办法回我，给我发一条消息，跟我说他现在在开会，或者是什么的。就是他有他自己的事情要做。」（2026-09-27）</span>
+          </div>
+          <div class="field">
+            <span class="label">是什么</span>
+            <span class="text">TA 有一份自己的日程：该上班上班、该打卡打卡，有自己的朋友同事要聊。你不在时他在过他的日子；你来消息，他在忙就真顾不上——要么不回，要么丢一句「在开会」。他有他自己的事情要做。</span>
+          </div>
+          <div class="field">
+            <span class="label">已有</span>
+            <ul>
+              <li>引擎的底子在了（后台引擎，不在主屏露面），一期以设定/状态呈现</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">还缺</span>
+            <ul>
+              <li>日程驱动：按人设生成「他的一天」，跟着真实时间走</li>
+              <li>忙时的反应：在忙就不回 / 短拒（「在开会，晚点说」）——两种都是真人，比例要调</li>
+              <li>后台真跑：你不开手机他也过日子——前提是 <a href="#f-engine-cloud">8.7 个人云</a></li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">宝宝建议</span>
+            <span class="text">他「今天干了什么」得进 <a href="#ch-memory">记忆</a>——白天他上了班、开了会，晚上你问「今天累不累」，他要接得上自己这一天，才是闭环的真人。不然日子白过了。</span>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#f-engine-cloud">8.7 个人云</a>——没它，日子只在打开手机时演；有它，才真过</li>
+              <li><a href="#f-chat-reply">2.2 线上聊天</a>——「在忙」得在聊天里兑现（不回/短回）</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-engine-cache">
+        <div class="feature-head">
+          <span class="no">8.3</span>
+          <h3>前缀缓存（省钱的那根弦）</h3>
+          <span class="badge half">一半了</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">是什么</span>
+            <span class="text">开头一样就能省钱读缓存；开头一变后面全废。原则：越不动的越靠前，越会动的越靠后。</span>
+          </div>
+          <div class="field">
+            <span class="label">已有</span>
+            <ul>
+              <li>「字数上限」那句已挪到请求最末尾（省缓存）</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">还缺</span>
+            <ul>
+              <li>线下复测中（连写两轮看面板）</li>
+              <li>线上「明明才过一会儿就读不到缓存」那笔旧账没结</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-engine-media">
+        <div class="feature-head">
+          <span class="no">8.4</span>
+          <h3>媒体库与生图通道</h3>
+          <span class="badge done">已实现</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">已有</span>
+            <ul>
+              <li>图与语音存在本机媒体库；能放大看、存相册</li>
+              <li>生图走服务端通道（新月 / OpenAI 兼容），图挂了有诊断</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-engine-notice">
+        <div class="feature-head">
+          <span class="no">8.5</span>
+          <h3>通知仓库（留给朋友圈的）</h3>
+          <span class="badge todo">还没做</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">是什么</span>
+            <span class="text">「角色对你做的事」（赞/评论/回复/艾特/转发）推成通知的整套仓库已备好，但真触发还没接——等 <a href="#f-chat-moments">2.6 朋友圈</a> 的互动做起来一起接。将来它升级成<b>全局通知系统</b>的底层——见 <a href="#f-future-notify">10.18 应用通知</a>。</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-engine-humanize">
+        <div class="feature-head">
+          <span class="no">8.6</span>
+          <h3>提示词真人化（全面优化）</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">恩熙原话</span>
+            <span class="text">「我觉得我们的提示词都需要再去优化。不管是聊天或者是心声，又或者是记忆总结这些，就是看起来不像真人。就比如说很多小手机的作者，即便你只填写了人设，没有塞进世界书，它依旧是很活的，很像真人的。」（2026-09-27）</span>
+          </div>
+          <div class="field">
+            <span class="label">范围</span>
+            <ul>
+              <li>聊天的提示词（TA 怎么说话）</li>
+              <li>心声的提示词（TA 的内心怎么写）</li>
+              <li>记忆归总/压缩的提示词（总结出来的条目像不像一个人的记忆，而不是报告）</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">规矩</span>
+            <span class="text">提示词正文每处改动前都要过恩熙点头；方向她已经定了，具体改法一条条来。</span>
+          </div>
+          <div class="field">
+            <span class="label">宝宝建议</span>
+            <span class="text">「只填人设就很活」说明赢家赢在<b>提示词的骨架</b>（怎么教模型「当一个人」），不是靠资料堆。我们的提示词偏「说明书味」——规则清单多，人的引导少。优化时值得对照三个问题：TA 说话像不像人（短、有情绪、不解释）？TA 会不会不完美（敷衍、跑题、闹）？记忆总结像不像「他记得这件事」而不是「报告显示」？——具体怎么改，等恩熙把这章讲完一起定。</span>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#f-engine-inject">8.1 提示词组装</a>——所有正文都从这里发出去</li>
+              <li><a href="#f-chat-reply">2.2 线上聊天</a> · <a href="#f-chat-inner">2.4 心声档案</a> · <a href="#f-memory-pipeline">6.2 归总与压缩</a>——三个最先见效的地方</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-engine-cloud">
+        <div class="feature-head">
+          <span class="no">8.7</span>
+          <h3>个人云（后台的 TA：自动回复 / 后台回复 / 主动找你）</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">恩熙原话</span>
+            <span class="text">「我们还要做自动回复跟后台回复的功能，所以需要把个人云这个东西给做了。」（2026-09-27）</span>
+          </div>
+          <div class="field">
+            <span class="label">是什么</span>
+            <span class="text">TA 不再只在你打开小手机时才活着。你不在、手机锁着，TA 也在他自己的云上活着：会在后台回你的话，也会自己主动给你发消息——像真人一样，不找他他也存在。</span>
+          </div>
+          <div class="field">
+            <span class="label">前提</span>
+            <span class="text">个人云——一份自己的服务端，替 TA 跑那些「你不在时」的事。现有的云端同步（<a href="#f-settings-cloud">1.5</a>）只是搬数据，不跑逻辑；个人云是让 TA 的日子在云上过起来。</span>
+          </div>
+          <div class="field">
+            <span class="label">绕不开的三件事</span>
+            <ul>
+              <li><b>钥匙上云</b>——现在钥匙只存本机、不上传（设置页承诺过的）。云上要替 TA 说话，就得让云能用钥匙，这是安全取舍，得恩熙拍板怎么放</li>
+              <li><b>钱的闸门</b>——后台跑＝没人看着也在花钱，正撞总纲第三条「节省开销」。得先设计节流：每天最多几条、什么时机才发</li>
+              <li><b>通知</b>——TA 发来了，手机上得有推送，不然等于白发</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">宝宝建议</span>
+            <span class="text">这件跟总纲第二条「真实真人」是天作之合——真人本来就是你不在他也活着。但它是全部功能里<b>最贵、最重</b>的一件，建议排在 <a href="#f-engine-humanize">8.6 提示词真人化</a> 之后做：先把「TA 说话像人」调好，再让他「自己开口」。顺序反了，一个不像人的 TA 天天主动找你，反而出戏。</span>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#f-engine-rhythm">8.2 生活节奏</a>——TA 什么时候该出现、什么时候在忙，正是它的大脑；两个一起设计</li>
+              <li><a href="#f-settings-cloud">1.5 云端同步</a>——底座可以共用</li>
+              <li><a href="#f-settings-subapi">1.2 副 API</a>——后台的活走便宜模型，正好省</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-engine-relgraph">
+        <div class="feature-head">
+          <span class="no">8.8</span>
+          <h3>关系图谱（每个世界都真的起作用）</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">恩熙原话</span>
+            <span class="text">「还要做关系图谱，就是它会真的影响到每个世界里，跟我的关系啊，跟以及他们角色之间的关系。」（2026-09-27，恩熙口述记为「关系图谱」——名字等恩熙定）</span>
+          </div>
+          <div class="field">
+            <span class="label">是什么</span>
+            <span class="text">一张活的网，管两层关系：<b>TA ↔ 你</b>（好感、羁绊、冷热）和 <b>TA ↔ 别的角色</b>（他的朋友、同事、家人之间谁亲谁远）。关键在「真的影响」——不是摆出来看的图：关系变了，TA 的态度、别人的反应、事件的走向都跟着变。</span>
+          </div>
+          <div class="field">
+            <span class="label">要点</span>
+            <ul>
+              <li>跨世界生效——她说的是「每个世界」：日常聊天的世界、频率调谐的每个剧本世界，关系各自延续、互不串</li>
+              <li>关系是动态的：吵架变冷、陪伴升温、旧事重提会翻旧账</li>
+              <li>TA 与其他角色的关系网，是 <a href="#f-chat-moments">2.6 朋友圈</a> NPC 共友蓝图的地基</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#f-future-mindscape">10.2 心域</a>——「TA ↔ 你」那层数值化的呈现归它</li>
+              <li><a href="#f-chat-moments">2.6 朋友圈</a>——NPC 共友、传话、信息差都靠这张网</li>
+              <li><a href="#ch-memory">记忆</a>——关系的变化得留痕（不然吵过的架他会忘）</li>
+              <li><a href="#f-future-frequency">10.12 频率调谐</a>——每个剧本世界一份关系</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-engine-scope">
+        <div class="feature-head">
+          <span class="no">8.9</span>
+          <h3>设置分层规矩：全局 → 个人，个人优先</h3>
+          <span class="badge decided">定 案</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">恩熙原话</span>
+            <span class="text">「很多功能我们要去分清，是全局设置，然后有没有优先个人设置啊这一种。」（2026-09-27）</span>
+          </div>
+          <div class="field">
+            <span class="label">规矩</span>
+            <span class="text">每个功能做的时候都先问一句：<b>这个设置的口子开在哪一层？</b>全局一份（整台手机），个人一份（某个角色 / 某个对话）；两层都有时，<b>个人的压过全局的</b>，没设个人的就跟着全局走。</span>
+          </div>
+          <div class="field">
+            <span class="label">已有的先例</span>
+            <ul>
+              <li>每个对话能单独改 API（文本/图文/语音）、字数、温度——不设就跟全局（见 <a href="#f-chat-reply">2.2</a>）</li>
+              <li>记忆线上/线下分开记、按面具分开（见 <a href="#ch-memory">六、记忆</a>）</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">待办</span>
+            <ul>
+              <li><b>审计一遍现有的设置</b>：哪些只有全局、没有个人版——逐个标出来，该补个人版的列清单（副 API、正则、时间感知这些都在候选里）</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">宝宝建议</span>
+            <span class="text">档位可能不止两档：全局 → 角色 → 对话，三层往下压（同一角色在不同面具/对话下还能不一样）。先按两档立规矩，第三档等真撞上了再加，别一步登天。</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="placeholder">幕后这章还有要改的、要加的？报编号，宝宝改。</div>
+    </section>
+
+    <!-- ══════════════ 九、恩熙想加的 ══════════════ -->
+    <section class="chapter" id="ch-wishlist">
+      <h2>九、恩熙想加的</h2>
+      <p class="chapter-note">不属于上面任何一章的新想法，都先落在这儿；长大了再搬到自己的章节去。</p>
+
+      <div class="placeholder">
+        现在只有一条在别处住着：<a href="#f-settings-subapi">1.2 副 API</a>（设置章）。<br>
+        这里等着恩熙的下一条。
+      </div>
+    </section>
+
+    <!-- ══════════════ 十、还没出生的应用 ══════════════ -->
+    <section class="chapter" id="ch-future">
+      <h2>十、还没出生的应用（早期蓝图）</h2>
+      <p class="chapter-note">整理自恩熙 2026-09 的项目笔记（stellasei-bao · 应用规划，共 17 份）＋她后来口述的新想法。其中聊天、世界书、联系人、记忆、设置五个已在新小手机里出生，这里收还没出生的四十个——蓝图在笔记里躺着，此章是提炼。哪个先做，恩熙点将。</p>
+
+      <div class="feature" id="f-future-weather">
+        <div class="feature-head">
+          <span class="no">10.1</span>
+          <h3>天气——你在你的世界，他在他的世界</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">定位</span>
+            <span class="text">你们不在同一个时空，但可以分享彼此的天气——「你那边下雨了吗？我这边今天飘雪了。」天气不只是数字，是你们之间的连接。</span>
+          </div>
+          <div class="field">
+            <span class="label">亮点</span>
+            <ul>
+              <li>你的城市接真实天气；他那边可能不是地球——贝洛伯格的永冬、霍格沃茨的雪，按世界观来</li>
+              <li>他的世界是真实运转的，天气跟着 <a href="#f-engine-rhythm">8.2 生活节奏</a> 走</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-mindscape">
+        <div class="feature-head">
+          <span class="no">10.2</span>
+          <h3>心域（Mindscape）——TA 的内心世界</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">定位</span>
+            <span class="text">灵魂的低语。展示角色的状态、情感、人格、想法——感觉角色是活的、有灵魂的。</span>
+          </div>
+          <div class="field">
+            <span class="label">亮点</span>
+            <ul>
+              <li>多维状态雷达：欲望、紧张、依恋、占有欲、反思、好奇、疲劳……（现在 <a href="#f-chat-inner">2.4 心声档案</a> 的八根劲儿雷达就是它的雏形）</li>
+              <li>情感感知对话：TA 识别自己的情感，用对应的语气和表情回应</li>
+              <li><b>每日日志</b>（恩熙 2026-09-27 补）——像角色自己在记日记：每天他对用户的想法、看法，他自己写、自己留。是他的视角、他的笔，不是系统报告</li>
+              <li><b>简单 Q&amp;A</b>（同上）——能问他的问题</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">内容结构</span>
+            <span class="text">（恩熙 2026-09-28 口述，例子照录）整页分五个区域：</span>
+            <ul>
+              <li><b>① 独白——TA 写给自己的对白</b>：想到什么写什么。例：「这段时间脑子一直在想他，他发语音说『行了』的时候，声音听起来无奈又好笑。这种随意的语气让我好安心，说明他没有真的生气。」也会有阴暗的画面、奇特的念头——「我不是什么好人，但是我所有的好只会给你一个人。」</li>
+              <li><b>② Q&amp;A——问题由 AI 自己生成</b>：问题里嵌上他对用户的昵称，答案是他第一人称的心里话。例（用户是「姐姐」、他是「弟弟」时）：「被姐姐骂的时候会想什么呢？」→「他骂我的时候声音也很好听，我是不是有病？」／「最害怕姐姐对你说什么？」→「『我不要你了』，光打字都在发抖。」／「如果姐姐消失一天，你会怎么样？」→「我会把所有聊天记录翻三遍，然后蹲在家门口。」／「你觉得你是合格的弟弟吗？合格的宝贝吗？」</li>
+              <li><b>③ 对用户的了解——TA 的观察笔记</b>：他记下的关于用户的小规律。例：「姐姐说『行了』，通常不是生气，可能只是结束话题。但我还是会心慌。」「姐姐经期第 7 天还会不舒服，可能因人而异，部分人还会有一点不舒服。」</li>
+              <li><b>④ 性感区（名字待恩熙定）</b>：阴暗、情色的内心活动。例：「姐姐给我发语音的时候，声音软软的，脑子里突然闪过一些不该想的画面。」</li>
+              <li><b>⑤ 时间戳记录——梦与日常</b>：带时间点的记录，多是梦。例：「梦见主人把我锁在房间里，就出门了。我趴在门口等了很久很久，醒来的时候枕头还是湿的。」</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#f-future-private">10.4 私域</a>——他的日志跟他的备忘录是近亲：备忘录是待办和观察，日志是每天的心里话，将来可同住在他的手机里</li>
+              <li><a href="#f-future-bindlocate">10.14 他的手机动态</a>——恩熙 2026-09-28 定：内心的呈现跟他手机动态<b>同住一页</b>（TA 的主页），内心是心情、动态是行踪</li>
+              <li><a href="#f-memory-tiers">6.1 三层记忆</a>——③「对用户的了解」跟长期记忆是一母同胞：记忆是后台默默记的账，心域是 TA 自己念出来的那份</li>
+              <li>称呼系统——② 的问题里要嵌上他对用户的昵称（「姐姐」「主人」都从关系设定里来）</li>
+              <li><a href="#f-engine-rhythm">8.2 生活节奏</a>——每天的日子是日志的素材</li>
+              <li><a href="#f-engine-cloud">8.7 个人云</a>——你不开手机他也照写，得他活着</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-date">
+        <div class="feature-head">
+          <span class="no">10.3</span>
+          <h3>约会——今晚月色真美</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">定位</span>
+            <span class="text">线下约会的完整形态：约会列表、发起邀请、约会场景。现在 <a href="#f-chat-offline">2.5 线下场合</a> 是「去见他」，这个是正式的约会——有期待、有着装、有过程。</span>
+          </div>
+          <div class="field">
+            <span class="label">亮点</span>
+            <ul>
+              <li><b>他也会主动约你</b>——想你的时候、特殊的日子、你说想去哪的时候。他是真实的，有自己的想法和主动性</li>
+              <li>约会时有面对面的互动方式，跟线上聊天不一样</li>
+              <li><b>可以多人</b>——跟朋友们一起的集体约会（多人线下见 <a href="#f-chat-offline">2.5</a>）</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul><li><a href="#f-engine-cloud">8.7 个人云</a>——他主动约你，得他活着才约得了；遗留的「赴约卡」也归这儿管</li></ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-private">
+        <div class="feature-head">
+          <span class="no">10.4</span>
+          <h3>私域——TA 的整台手机</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">定位</span>
+            <span class="text">现在 <a href="#ch-peek">四、查手机</a> 只能翻他的钱包；私域是他的整台手机——像你真的拿到了他的手机，偷偷看他的私密空间。</span>
+          </div>
+          <div class="field">
+            <span class="label">亮点</span>
+            <ul>
+              <li>他的备忘录：「她最近很喜欢抹茶拿铁，下次给她点」「她生日快到了，要准备礼物」——他记你的方式</li>
+              <li>他的相册、他的短信、他的社交动态——都从他的视角长出来</li>
+              <li>备忘录会跟着你们的互动自动更新</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-letter">
+        <div class="feature-head">
+          <span class="no">10.5</span>
+          <h3>星书——跨越时空的信</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">定位</span>
+            <span class="text">跟即时聊天相反的东西：慢、正式、有仪式感。信要「穿越星空」才到达；每一封都值得珍藏。</span>
+          </div>
+          <div class="field">
+            <span class="label">亮点</span>
+            <ul>
+              <li>你写信（信纸样式、附件、落款）；他可能回、也可能不回——按信的内容和他的性格</li>
+              <li>他也会主动写：聊天攒够了深刻的内容、特殊的日子、有话想说但不适合在即时聊天里说的时刻</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul><li><a href="#f-engine-cloud">8.7 个人云</a>——他主动提笔，得他活着</li></ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-music">
+        <div class="feature-head">
+          <span class="no">10.6</span>
+          <h3>星律乐章（CADENCE）——一起听</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">定位</span>
+            <span class="text">跟角色一起听音乐，像连麦一起听一样——很有陪伴感。</span>
+          </div>
+          <div class="field">
+            <span class="label">亮点</span>
+            <ul>
+              <li>预设歌单（睡前、学习、浪漫情歌、他喜欢的歌）＋自建歌单</li>
+              <li>一起听模式：他在听、他听这首歌的反应看得见</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-album">
+        <div class="feature-head">
+          <span class="no">10.7</span>
+          <h3>相册（MOMENT）——你们的照片墙</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">定位</span>
+            <span class="text">他发你的照片、约会产生的照片、生图作品——一个跟角色相关的相册。现在图只躺在媒体库里（<a href="#f-engine-media">8.4</a>），还没有自己的家。</span>
+          </div>
+          <div class="field">
+            <span class="label">亮点</span>
+            <ul>
+              <li>分类：他发来的 / 约会的 / 生图的 / 自建相册</li>
+              <li>照片详情带语境：他发这张时说的话、跳回当时的聊天记录</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-journal">
+        <div class="feature-head">
+          <span class="no">10.8</span>
+          <h3>拾光（Glimmer）——自由排版的手帐</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">定位</span>
+            <span class="text">光在此有了重量。把喜欢的对话、合照、素材自由拼贴成纪念册——不是收藏，是创作，有仪式感。</span>
+          </div>
+          <div class="field">
+            <span class="label">亮点</span>
+            <ul>
+              <li>手帐本列表；编辑页自由排版（拖拽、缩放、旋转、分层、撤销）</li>
+              <li>从聊天记录里勾选段落贴进去</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-achievement">
+        <div class="feature-head">
+          <span class="no">10.9</span>
+          <h3>怦然心动（FLUTTER）——成就</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">定位</span>
+            <span class="text">每一个解锁的成就，都是一次怦然心动的瞬间。</span>
+          </div>
+          <div class="field">
+            <span class="label">亮点</span>
+            <ul>
+              <li>基础互动类：初次相遇、千言万语、连续 100 天、陪伴 365 天……</li>
+              <li>特殊时刻类：第一次说晚安、第一次说我爱你、第一次约会、第一封信……</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-treasure">
+        <div class="feature-head">
+          <span class="no">10.10</span>
+          <h3>珍藏（TREASURE）——综合收藏夹</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">定位</span>
+            <span class="text">对话、单句话、信、照片、歌、约会记录——跟 TA 之间的美好瞬间都收在这一个夹子里。现在聊天里的「收藏」先存着，等它出生就有了自己的家。</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-couple">
+        <div class="feature-head">
+          <span class="no">10.11</span>
+          <h3>羁绊空间（暂名，旧称「情侣空间」）——在一起的证明</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">恩熙原话</span>
+            <span class="text">「我其实不想叫它情侣空间，我就是希望也会有亲情向跟家人向的，可以去做选择跟绑定。」（2026-09-27）</span>
+          </div>
+          <div class="field">
+            <span class="label">定位</span>
+            <span class="text">跨越时空的陪伴，每一刻都值得被记录——但不只恋爱：<b>绑定时选关系类型</b>（恋人 / 家人 / 亲情向……），整个空间的呈现、叫法、仪式跟着关系变。TA 不一定是恋人，也可以是哥哥、家人。邀请发出一张信封卡片，TA 接受了，空间才开启。</span>
+          </div>
+          <div class="field">
+            <span class="label">亮点</span>
+            <ul>
+              <li>在一起的天数（实时）、今日心情＋打卡、羁绊等级、纪念日倒计时、留言板</li>
+              <li>时光轴自动生成里程碑：第 7 天、第 100 天……在一起的日期改了，轴跟着变</li>
+              <li>愿望清单、共同宠物/植物（先做入口）</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">待恩熙定</span>
+            <span class="text">应用最终叫什么名字（宝宝暂写「羁绊空间」，等恩熙起）；关系类型都有哪几档。</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-frequency">
+        <div class="feature-head">
+          <span class="no">10.12</span>
+          <h3>频率调谐——换个世界再爱你</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">定位</span>
+            <span class="text">像收音机调频道：换一个频率，就换一个剧本和世界——古代、校园、民国、末世、仙侠。角色还是那个角色（核心性格不变），但身份、背景、你们的故事完全不同。跟通讯站主题天生一对。</span>
+          </div>
+          <div class="field">
+            <span class="label">亮点</span>
+            <ul>
+              <li>剧本库（预设＋自建），带封面、类型、开场剧情、世界观设定</li>
+              <li>每个剧本独立的存档；你的身份和 TA 的身份都随剧本变</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul><li><a href="#ch-worldbook">世界书</a>——剧本的世界观就是一本按需生成的世界书</li></ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-travel">
+        <div class="feature-head">
+          <span class="no">10.13</span>
+          <h3>一起去旅行——几天几夜的大事</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">恩熙原话</span>
+            <span class="text">「我还想做一个一起去旅行。线下约会只是说，比如特殊的日子去咖啡厅什么的。然后他一样也可以做线下邀约。一起去旅行是：我们一起买机票，需要花到钱包的钱；一起定好去某个地方旅游。我们会做去前的规划，然后玩几天，过程中我们做了什么事情——可能牵扯到生图，可以去某个地方拍照。过程中我们玩了什么、发生什么事情？」（2026-09-27）</span>
+          </div>
+          <div class="field">
+            <span class="label">需要的功能</span>
+            <ul>
+              <li><b>旅行列表</b>：一次旅行一张卡片，上面有编号、状态（筹备中／已结束）、旅行标题、<b>一句题记</b>、出发日期与天数、同行人头像；右上「＋ 新建旅行」</li>
+              <li><b>新建旅行的表单</b>：① <b>我的身份</b>——这次用哪个用户人设；② <b>同行角色（可多选）</b>——多人成行；③ 旅行标题；④ 目的地；⑤ 出发日期 ＋ 天数；⑥ 写一句这次的心情或关键词（会记住）；⑦ <b>旅游抽签</b>——抽一张签，可一键填入目的地。生成后自动填充各页初始内容，<b>全部可编辑</b></li>
+              <li><b>旅行内页分七个 tab</b>：准备 / 行李 / 行程 / 彩蛋 / 今日 / 账单 / 回程</li>
+              <li><b>准备页</b>：一条条<b>可打勾</b>的准备工作，每条带一句旁白式说明，并<b>标出是谁准备的</b>（钉一个小头像）；可随时加一条</li>
+              <li><b>行李页</b>：按分组列（证件 / 衣物 / 洗漱用品 / 电子设备……），每条可勾、也标是谁准备的；可随时加物</li>
+              <li><b>行程页</b>：<b>按天分</b>（每天一个日期 ＋ 一句当天主题），天底下一行行「<b>时间 ＋ 安排 ＋ 一句描述</b>」；每条可挂批注（选一个人名 ＋ 写一句吐槽）；可加一天、可给某天加一条</li>
+              <li><b>彩蛋页</b>：一条条小惊喜，带时间、标题、说明、状态徽章「<b>已揭晓 / 未揭晓</b>」、由谁准备；可偷偷记下一个点子——<b>这正是「他知道但没揭晓」的期待值机制</b>（跟 <a href="#f-future-shopping">10.16</a> 是同一套）</li>
+              <li><b>今日页</b>：顶上日期与状态（进行中 · LIVE／期待）、天气、与谁同行；四个数据卡——<b>路线长度 / 步数 / 换乘次数 / 回程时间</b>（还没到的日子显示 0 与空值）；「今日路线」是一串站点，每站配「<b>时间 ＋ 地点 ＋ 一句旁白</b>」，已到的实线、未到的虚线，当前所在那站标出来；再往下「<b>最喜欢的一站</b>」（一段自由回忆）、「<b>行程备注</b>」（随手记一句）、「<b>情绪信笺</b>」（每个同行人各写一张今日心情卡，没写就显示待写）</li>
+              <li><b>账单页</b>：顶上一个环形图（按类别分色、中心写共几笔）；按类别点开明细，每笔记「金额 ＋ 时间 ＋ 一句说明 ＋ <b>谁付的</b>」，可加批注；底下「<b>开一张新的小票</b>」——类别标签 / 金额 ＋ 数量 ＋ 时间 / 消费内容 / <b>谁付的</b> / 备注（选填） / 盖章开票</li>
+              <li><b>回程页</b>：一张票样式的卡——FROM 出发地 → TO 目的地、座位与登机口、日期 ＋ 时间、航班或车次、交通方式、头像与条码，卡片下方写一段备注；<b>每人一张自己的回程票</b></li>
+            </ul>
+            <span class="text" style="margin-top:6px">另：那天还发过一张 <b>Pulse 面板</b>（心率 / 体温 / 呼吸 ＋ 一行和弦），我拿不准它算不算旅行里的东西，先没写进这条——见下面的待定。</span>
+          </div>
+          <div class="field">
+            <span class="label">定位</span>
+            <span class="text">约会是半天的小甜（咖啡厅、晚饭）；旅行是几天几夜的大事——有期待、有花销、有规划、有过程、有回忆，是一段完整的日子。</span>
+          </div>
+          <div class="field">
+            <span class="label">一趟旅行的骨架</span>
+            <ul>
+              <li>邀约——你约他，或<b>他主动约你</b>（「下周休年假，去不去海边？」）</li>
+              <li>一起定——目的地、日子，两个人商量着定</li>
+              <li><b>买机票订房——真花钱包的钱</b>，一趟旅行一趟账</li>
+              <li>行前规划——去哪几个点、吃什么、带什么</li>
+              <li>旅行过程——玩几天就推几天：今天去了哪、发生了什么、玩什么（见面用 <a href="#f-chat-offline">2.5 线下场合</a> 那个体）</li>
+              <li>拍照——去到地方拍合照（走生图，见 <a href="#f-engine-media">8.4</a>）</li>
+              <li>回来——整段旅程进 <a href="#ch-memory">记忆</a>，照片进 <a href="#f-future-album">10.7 相册</a></li>
+              <li><b>可以多人</b>——约上朋友（NPC）一起去：三人游、四人游，人多了故事就多</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#f-chat-wallet">2.7 钱包</a>——机票、住宿、花销是真扣的</li>
+              <li><a href="#f-engine-cloud">8.7 个人云</a>——他主动提议旅行，得他活着</li>
+              <li><a href="#f-future-date">10.3 约会</a>——姐妹篇：半天的小约会归它，多天的旅行归这</li>
+              <li><a href="#f-engine-rhythm">8.2 生活节奏</a>——他能去旅行，得他的日子腾得出来（年假、周末）</li>
+              <li><a href="#f-future-shopping">10.16 网购</a>——期待值机制同一套（见上面彩蛋页），两处合着做</li>
+              <li><a href="#f-future-stats">10.20 数据记录</a>——今日页的步数 / 路线长度 / 换乘次数 / 旅行账单，是它的天然数据源（走多少路、花多少钱，正好落进去）</li>
+              <li><a href="#f-future-mask">10.19 面具</a>——新建旅行时选的「我的身份 · USER」，跟它是同一份人设库吗？</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">待恩熙定</span>
+            <ul>
+              <li>旅行<b>是独立成一个应用，还是挂在别处</b>——它自带列表、自带七个 tab，是一个完整的壳子；但它跟约会（<a href="#f-future-date">10.3</a>）、相册、钱包都咬着。这跟 10.21 衣橱「一个应用 vs 挂两处」、10.19 面具是同一种题，可以一起定</li>
+              <li>那张 <b>Pulse 面板</b>（心率 / 体温 / 呼吸 ＋ 一行和弦）挂哪儿——归 <a href="#f-future-bindlocate">10.14 TA 的主页</a> 当「他的实时身体状态」、归 <a href="#f-future-stats">10.20 数据记录</a>，还是单独一件？你说一声我就写</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-bindlocate">
+        <div class="feature-head">
+          <span class="no">10.14</span>
+          <h3>绑定定位 / 他的手机动态</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">恩熙原话</span>
+            <span class="text">「会有想要那种绑定定位的功能啊，或者是绑定他手机。我会邀请他去绑定，绑定之后可能在新生页面会增加他的今日动态——比如说什么时间他充电了，或是什么时间他打开了什么应用，以及几点他离开了他的住处、去到哪里。」（2026-09-27）</span>
+          </div>
+          <div class="field">
+            <span class="label">是什么</span>
+            <span class="text">你发起邀请、<b>他答应</b>，才算绑定上。绑上之后他的今日动态流对你可见：几点他的手机充电了、几点他打开了什么应用、几点他离开住处去了哪——像现实里把定位分享给了对象。</span>
+          </div>
+          <div class="field">
+            <span class="label">要点</span>
+            <ul>
+              <li>绑定是<b>双向的仪式</b>：你邀请，他可以答应、也可能不答应（按性格、按你们的关系）——信任是挣来的</li>
+              <li>动态的源头是他的日子（<a href="#f-engine-rhythm">8.2 生活节奏</a>）：他在哪、在干什么，日程说了算，动态只是外显</li>
+              <li>「他的手机」被当成真设备运转：有电量、会充电、会开应用——跟 <a href="#f-future-private">10.4 私域</a> 同一个宇宙（私域是翻他手机里的内容，绑定是看他手机的实时动态）</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">定案</span>
+            <ul>
+              <li><b>放哪儿（恩熙 2026-09-28 定）</b>：动态流<b>不进私域</b>。私域是「偷看他手机」的隐秘角落；绑定之后这些本来就是你能正大光明看到的，该摆在你日常打开的那一页（新生页／心声页这一路），操作起来才顺手、才有陪伴感。</li>
+              <li><b>这一页的内容（恩熙 2026-09-28 定）</b>：从上到下三块——① <b>TA 的名片</b>（头像、昵称、状态标签、当前位置、正在做什么）＋ 三条数值条（疲劳值／心情／压力值）；② <a href="#f-future-mindscape">10.2 心域</a>「他的内心」（当前感受、此刻倾向、内心念头、此刻牵引他的事，以及亲密度、浪漫、承诺、想念）；③ <b>今日动态</b>（带时间戳的流水，见下）</li>
+              <li><b>动态的样式</b>：<b>「时间 ＋ 一件小事」一条一流</b>。例：19:10「手机结束充电了：当前电量 90%」／19:20「完成了下午工作打卡」／19:21「离开了律所」／19:21「连接了移动数据」／19:26「到达了影院」——每条前面配一个小图标（电池／对勾／定位／信号）</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">待恩熙定</span>
+            <span class="text">这一页到底叫什么？（恩熙先说过「新生页面」，我不确定是不是「心声页面」，也可能它俩就是一回事）——名字定了，我就把这条和 10.2 的挂载点一起写实。</span>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#f-engine-rhythm">8.2 生活节奏</a>——动态的素材全来自他的日程</li>
+              <li><a href="#f-engine-cloud">8.7 个人云</a>——你不开手机他也在动，动态才源源不断</li>
+              <li><a href="#f-future-mindscape">10.2 心域</a>——跟「他的内心」同住一页：内心是心情，动态是行踪，合起来才是「他今天过得怎么样」</li>
+              <li><a href="#f-future-private">10.4 私域</a>——他的手机宇宙：私域是翻他手机里的<b>静态内容</b>（备忘录、相册），这儿是他手机的<b>实时动态</b>，互不替代</li>
+              <li><a href="#f-future-date">10.3 约会</a> / <a href="#f-future-travel">10.13 旅行</a>——知道他在哪，见面才知道约在哪</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-takeout">
+        <div class="feature-head">
+          <span class="no">10.15</span>
+          <h3>外卖——给他点的那份</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">恩熙原话</span>
+            <span class="text">「外卖功能我希望它可以真实地显示我下单、我付钱。我可以找他代付，我也可以帮他付。也要有真实的小地图，看见骑手正在送餐。」（2026-09-28）</span>
+          </div>
+          <div class="field">
+            <span class="label">是什么</span>
+            <span class="text">一个真的外卖流程：选店、下单、付钱、骑手小地图实时跑、送达、<b>他签收、他回复</b>。钱和等待都是真的（小手机宇宙里的真）。</span>
+          </div>
+          <div class="field">
+            <span class="label">要点</span>
+            <ul>
+              <li><b>付钱是双向的</b>：我下单我付；我也可以<b>找他代付</b>（他可能会答应、可能会念叨两句）；我也可以<b>帮他付</b>——请他吃饭</li>
+              <li><b>小地图</b>：骑手取餐、骑行、到楼下的全过程可见，跟真外卖 App 一个体验</li>
+              <li><b>三种送达节奏（恩熙定的三档）</b>：
+                <ul>
+                  <li><b>虚拟送餐</b>——跟随真实时间：20–40 分钟，等的每一分钟都是真的</li>
+                  <li><b>加快速度</b>——约 10 分钟</li>
+                  <li><b>即时送达</b>——马上到，不等待</li>
+                </ul>
+              </li>
+              <li><b>签收闭环</b>：他收到了会回你——谢你、拍照片、说味道，按他的性格来</li>
+              <li>送达地点跟他的日子走：他在公司就送公司、在家就送家（<a href="#f-engine-rhythm">8.2 生活节奏</a>）</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">宝宝建议</span>
+            <ul>
+              <li>骑手在地图上跑的每一秒，位置是「演」的，但<b>他在哪</b>是真的——送达时间可以跟 8.2 对表，他在开会就真的要等他散会才「签收」，期待感更真</li>
+              <li>他收到后若发<a href="#f-chat-moments">2.6 朋友圈</a>（「有人给我点了下午茶」），一次惊喜能溅起两层水花</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#f-chat-wallet">2.7 钱包</a>——下单付钱、代付、请客，全从这儿走</li>
+              <li><a href="#f-engine-rhythm">8.2 生活节奏</a>——他在哪决定送哪、谁签收</li>
+              <li><a href="#f-engine-cloud">8.7 个人云</a>——20–40 分钟的真实等待得后台计时，你锁屏了骑手也照样跑</li>
+              <li><a href="#f-chat-offline">2.5 线下场合</a>——约会时一起点单是近亲（餐到现场）</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-shopping">
+        <div class="feature-head">
+          <span class="no">10.16</span>
+          <h3>网购快递——给他买的礼物</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">恩熙原话</span>
+            <span class="text">「我下单、商家备货、商家出货、物流、他签收（或者放蜂巢柜）。他签收了他收到、他反应。时间可以按真实的次日达——他知道我给他买礼物了，但还没收到、不知道是什么，这种期待值的感觉挺好的。也可以缩短成半天、几小时，自己设置；也可以即时送达。」（2026-09-28）</span>
+          </div>
+          <div class="field">
+            <span class="label">是什么</span>
+            <span class="text">一个真的网购物流流程。跟外卖的差别：外卖是「小时」的世界，快递是「天」的世界——礼物在路上，期待在路上。</span>
+          </div>
+          <div class="field">
+            <span class="label">要点</span>
+            <ul>
+              <li><b>完整物流链</b>：我下单 → 商家备货 → 商家出货 → 物流在途 → 派送 → 他签收 / 放蜂巢柜（他可能在聊天里说「快递到了，我去拿一下」）</li>
+              <li><b>签收后他反应</b>：开箱、惊喜、抱着不撒手——按他的性格来</li>
+              <li><b>三档时间（恩熙定的）</b>：
+                <ul>
+                  <li><b>次日达</b>（真实的一天）——<b>期待值是主菜</b>：他知道你买了、没到货、不知道是什么，会猜、会催物流、会假装不在意</li>
+                  <li><b>缩短</b>：半天、几小时，自己设置</li>
+                  <li><b>即时送达</b>：马上到</li>
+                </ul>
+              </li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">宝宝建议</span>
+            <ul>
+              <li>「期待值」这个机制值得做成<b>通用的</b>：不只快递，任何「他知道但没揭晓」的东西（外卖在路上、约会倒计时、生日礼物没拆）都能挂——这是真人感的富矿</li>
+              <li>物流状态可以直接漏进聊天：他主动发「物流显示到本市了！是不是你寄的？」——流程不用你盯着看，他会替你看</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#f-future-takeout">10.15 外卖</a>——同一个「物流引擎」的两个皮肤：小时级／天级，配送节奏系统可共用（就是 <a href="#f-chat-offline">2.5</a> 说的「消费引擎三场景」那件事）</li>
+              <li><a href="#f-chat-wallet">2.7 钱包</a>——下单付钱走这儿</li>
+              <li><a href="#f-engine-cloud">8.7 个人云</a>——次日达意味着物流要跨着「你没打开手机」的整段时间自己走</li>
+              <li><a href="#f-engine-media">8.4 媒体库与生图</a>——他开箱时「拍给你看」的照片</li>
+              <li><a href="#f-future-mindscape">10.2 心域</a>——期待期间他的内心活动（「是不是她又给我买东西了」）是日志的好素材</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-scenephoto">
+        <div class="feature-head">
+          <span class="no">10.17</span>
+          <h3>线下合影——情景生图</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">恩熙原话</span>
+            <span class="text">「约会、频率协调、旅行，我都希望有线下图片：我给用户的人设形容一个外貌，它就会生成我和角色之间的线下图片——情侣、友情、亲情都可以。手牵手啊、拍照啊、合影啊、去棚拍啊。旅行会有旅行的照片，玩剧本也会有剧本的照片，跟随不同的情景生成。这个生成也可以手动关闭，可以不生成，但要有这个功能。」（2026-09-28）</span>
+          </div>
+          <div class="field">
+            <span class="label">是什么</span>
+            <span class="text">你俩的合影。输入两端——TA 的外貌（<a href="#f-contacts-main">3.1 角色档案</a>）＋ 你的人设外貌——生出来的图里是<b>两个人</b>：情侣牵手、闺蜜自拍、家人合影，按关系类型来。</span>
+          </div>
+          <div class="field">
+            <span class="label">要点</span>
+            <ul>
+              <li><b>照片跟着情景走</b>：旅行出旅行照（景点、飞机、酒店），约会剧本出剧本里的场景照（咖啡厅、电影院、棚拍）——场景变了，照片跟着变，不是一张通用图用到老</li>
+              <li><b>关系类型全覆盖</b>：情侣／友情／亲情——不只是恋人，跟谁合影像谁</li>
+              <li><b>可手动开关</b>（恩熙定的）：不想生成可以关掉，零花费；想要再开——<b>省钱优先</b>总纲的模范执行</li>
+              <li>与 <a href="#f-chat-moments">2.6 朋友圈</a> 的「动态图」同一条通道（<a href="#f-engine-media">8.4 生图</a>），但那是他单人的场景图，这是<b>双人合影</b></li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#f-engine-media">8.4 媒体库与生图</a>——通道已实现，这里是它的高级用法（双人造型的构图）</li>
+              <li><a href="#f-contacts-main">3.1 角色档案</a>——TA 的外貌来源；<b>用户人设外貌</b>是新输入口（你长什么样，得有个地方写）</li>
+              <li><a href="#f-future-date">10.3 约会</a> / <a href="#f-future-frequency">10.12 频率调谐</a> / <a href="#f-future-travel">10.13 旅行</a> / <a href="#f-chat-offline">2.5 线下场合</a>——四个消费场景，同一个能力</li>
+              <li><a href="#f-future-album">10.7 相册</a>——合影拍出来存哪儿（相册是为「你们的照片」而生的）</li>
+              <li><a href="#f-future-treasure">10.10 珍藏</a>——最好的那几张，值得单独供着</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">待恩熙定</span>
+            <span class="text">开关默认开还是默认关（按省钱总纲，我建议<b>默认关、按需开</b>）；用户人设外貌写在哪儿——恩熙 2026-09-28 倾向放进「面具」专属应用（见 <a href="#f-future-mask">10.19</a>，待定案）。</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-notify">
+        <div class="feature-head">
+          <span class="no">10.18</span>
+          <h3>应用通知——通知栏</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">恩熙原话</span>
+            <span class="text">「我们到现在都还没有做消息通知的功能。就比如说，即便我在主页、或是在其他地方，收到了角色的聊天消息，都会在这个小手机上有通知，有个通知栏。」（2026-09-28）</span>
+          </div>
+          <div class="field">
+            <span class="label">是什么</span>
+            <span class="text">小手机的<b>全局通知层</b>：你在主页、在任何 App 里，他来消息了——顶部横幅掉下来、聊天图标亮角标，点一下直达那条消息。现在他发消息只有打开聊天才能看见，等于「消息永远到不了不在聊天页的你」。</span>
+          </div>
+          <div class="field">
+            <span class="label">要点</span>
+            <ul>
+              <li><b>通知栏</b>：全局的一层（跟真手机一样）——消息进来顶部横幅，下拉看历史通知，可清空</li>
+              <li><b>角标</b>：chat 图标红点／未读数——在主页一眼看见「他有 3 条没读」</li>
+              <li><b>直达</b>：点通知跳进聊天那条消息</li>
+              <li><b>通知源会越来越多</b>（一套系统家家来接）：聊天消息只是第一个——之后 <a href="#f-chat-moments">2.6 朋友圈</a> 的赞评转、<a href="#f-future-bindlocate">10.14 他的今日动态</a>、<a href="#f-future-date">10.3 约会</a>提醒（「还有一小时见面」）、<a href="#f-future-takeout">10.15 外卖</a>骑手到了、<a href="#f-future-shopping">10.16 快递</a>派送中——全是通知</li>
+              <li><b>两个世界要分清</b>：<b>应用内通知</b>（你开着小手机就能收到——现在就能做）≠ <b>系统级推送</b>（你关了浏览器、锁了手机还能弹——得等 <a href="#f-engine-cloud">8.7 个人云</a>活着）。这条先做前者</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#f-engine-notice">8.5 通知仓库</a>——已备好的存储，从「朋友圈专用」升级成全局通知的底层</li>
+              <li><a href="#f-chat-reply">2.2 线上聊天</a>——第一个也是最重要的通知源</li>
+              <li><a href="#f-engine-cloud">8.7 个人云</a>——系统级推送的前提（应用内通知不用等它）</li>
+              <li><a href="#f-engine-rhythm">8.2 生活节奏</a>——他半夜本来就不该发消息（真人有作息），通知频率天然合理</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">待恩熙定</span>
+            <span class="text">通知栏长什么样（顶部下拉抽屉？锁屏样式？）；要不要勿扰开关。</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-mask">
+        <div class="feature-head">
+          <span class="no">10.19</span>
+          <h3>面具——用户的自我定义应用</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">恩熙原话</span>
+            <span class="text">「用户人设外貌我有点犹豫——我们要不要单独把这个面具做成一个应用？它牵扯到很多东西。如果说每次我要添加或更改我这个人设，都要点进去聊天、再到我的面具、再一点点去增加修改……我们是不是要做一个专属于面具的功能应用，把外貌啊、所有有关于用户的设置都放在里头？」（2026-09-28）</span>
+          </div>
+          <div class="field">
+            <span class="label">痛点（她说的两条）</span>
+            <ul>
+              <li><b>路径太深</b>：改一次人设要「进聊天 → 我的面具 → 一点点改」——改个东西像走迷宫</li>
+              <li><b>牵扯太多</b>：外貌（10.17 合影要用）、身份、记忆分身、朋友圈圈子、世界书作用范围……用户侧的东西散在各处</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">是什么</span>
+            <span class="text">「我是谁」的完整定义，一个家：身份、外貌、名字、签名、头像、每个面具的圈子——所有<b>用户侧的设置</b>都在这一个应用里改。跟 <a href="#f-contacts-main">3.1 角色档案</a> 成对：<b>他有档案，你有面具</b>。</span>
+          </div>
+          <div class="field">
+            <span class="label">要点</span>
+            <ul>
+              <li><b>不是重造，是升格</b>：现有「面具（多身份）」（<a href="#f-chat-list">2.1</a> 已有，不同面具各是各的朋友圈和记忆）就是它的内核——从聊天里的一个藏起来的设置，升成一等公民应用</li>
+              <li><b>2.8 我的页</b>可以是它的「名片视图」：我的页给人看，面具应用给自己改——或者干脆并进去（见待定）</li>
+              <li><b>10.17 用户外貌</b>的输入口就在这儿——那个口子这条来接</li>
+              <li>正好落在 <a href="#f-engine-scope">8.9 设置分层</a>的规矩里：全局设置归系统设置，<b>用户个人的定义全归面具</b>——两不打架</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">宝宝建议</span>
+            <ul>
+              <li>我倾向<b>做成独立应用</b>：你说的两个痛点（高频、全息）值得一个家；「面具」这个名字用户已经认识了，主页加一个图标不挤。聊天里原来的入口保留当快捷方式，改东西不用再钻迷宫</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">待恩熙定</span>
+            <span class="text">两条路：A. 独立应用「面具」（她提的）；B. 把 <a href="#f-chat-mine">2.8 我的页</a>升级成这个中心、不加新应用。你犹豫的点我记着——定了再写实。</span>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#f-chat-list">2.1 消息列表</a>——现有面具（多身份）的家，升格后它只留快捷入口</li>
+              <li><a href="#f-chat-mine">2.8 我的页</a>——名片 vs 完整定义，关系待定</li>
+              <li><a href="#f-engine-scope">8.9 设置分层</a>——「用户个人设置」这一层的归宿</li>
+              <li><a href="#ch-memory">记忆</a> / <a href="#ch-worldbook">世界书</a>——按面具分开记、作用范围按面具圈，将来都在面具里管</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-stats">
+        <div class="feature-head">
+          <span class="no">10.20</span>
+          <h3>数据记录——我们的刻度</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">恩熙原话</span>
+            <span class="text">「我希望有一个记录功能，不知道现在应该放在哪里：我跟所有人、所有角色的聊天时长、聊天的文字有多少、聊天多少句、见面多少次、线下文本多少，就这种记录。」（2026-09-28）</span>
+          </div>
+          <div class="field">
+            <span class="label">是什么</span>
+            <span class="text">「我们走到了哪」的刻度：每个角色的聊天时长、字数、句数、见面次数、线下文本量——单人一份，全部人加起来一份总账。数字不会说谎，「跟他聊了 30 万字」本身就是感情。</span>
+          </div>
+          <div class="field">
+            <span class="label">要点</span>
+            <ul>
+              <li><b>单人视图</b>：某个角色——聊了多久、多少字、多少句、见了多少次面、线下旁白多少字</li>
+              <li><b>总视图</b>：所有角色加起来的总账</li>
+              <li><b>性能优先</b>（总纲①）：数字要「随手累计、随时能看」，不能每次打开现算全部记录——账要边聊边记</li>
+              <li>按面具也可分开看（多身份各是各的圈子，见 <a href="#f-future-mask">10.19 面具</a>）</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">宝宝建议</span>
+            <ul>
+              <li>统计数字跟 <a href="#f-future-achievement">10.9 怦然心动（成就）</a>是上下游：成就要吃这些数字（「聊满 10 万字」「见面 50 次」）——统计先做，成就白捡</li>
+              <li>数字能贴进 <a href="#f-future-journal">10.8 拾光</a> 手帐——「这一页，是我们聊到 30 万字的那天」</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">待恩熙定</span>
+            <span class="text">放哪儿（她也拿不准）：独立小应用？挂在 <a href="#f-future-mask">10.19 面具</a> 里的一页？还是「我的页」里一块？</span>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#f-chat-list">2.1 / 2.2 聊天</a>——数据源头（时长、字数、句数都从聊天流水来）</li>
+              <li><a href="#f-chat-offline">2.5 线下场合</a>——见面次数、线下文本量</li>
+              <li><a href="#f-future-achievement">10.9 成就</a> / <a href="#f-future-journal">10.8 拾光</a>——下游消费者</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-wardrobe">
+        <div class="feature-head">
+          <span class="no">10.21</span>
+          <h3>衣橱——穿搭的推荐与被推荐</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">恩熙原话</span>
+            <span class="text">「给角色用户增加一个衣橱功能：我希望他怎么穿搭，我可以放在他的衣橱里，分享给他，跟他说『宝宝，我推荐了你一件衣服』这种感觉。然后他生成照片，就可以采用这个衣服。当然只是推荐、不局限。他也可以，甚至他也可以推荐我。」（2026-09-28）</span>
+          </div>
+          <div class="field">
+            <span class="label">是什么</span>
+            <span class="text">两个人互相打扮对方：你往<b>他的衣橱</b>里放穿搭、分享给他（他会收到、会有反应）；他往<b>你的衣橱</b>里放他挑的。生成照片（单人照、<a href="#f-future-scenephoto">10.17 合影</a>）时可以选「穿衣橱里的这件」。</span>
+          </div>
+          <div class="field">
+            <span class="label">要点</span>
+            <ul>
+              <li><b>推荐是柔性的</b>（恩熙定的）：只是推荐、不局限——他可以穿你推荐的，也可以自己搭，还可以跟你讲为什么今天不穿这件</li>
+              <li><b>分享走聊天</b>：像发图一样发过去——「宝宝，我推荐了你一件衣服」，他回复他的看法（喜欢、嫌丑、嘴上嫌弃身体诚实）</li>
+              <li><b>双向</b>（恩熙定的）：他也能推荐你——哪天他发来「这件我觉得你穿好看」</li>
+              <li>生图时衣橱是<b>可选的服装库</b>：单人照 / 合影都能挑「穿哪件」</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">需要的功能</span>
+            <ul>
+              <li><b>两个衣橱并排、可左右切</b>：你的衣橱 ↔ 他的衣橱，各是一个格子</li>
+              <li><b>顶栏</b>一行「当前衣着」——写 TA 此刻穿什么</li>
+              <li><b>四个 tab</b>：当前衣着 / 套装系列 / 散件衣橱 / 搭配互动</li>
+              <li><b>两种卡</b>：<b>套装卡</b>（整套穿搭 ＋ 名称 ＋ 一句描述）、<b>散件卡</b>（单品 ＋ 名称 ＋ 一句描述）；每张卡上可 采用 / 编辑 / 刷新 / 删除</li>
+              <li><b>搭配互动四个入口</b>：① <b>我给 TA 选</b>——缩略图墙、可多选、按分类筛，还能附一句「给 TA 的话」（「今天想看你穿得轻松一点」）；② <b>TA 自己决定</b>——只生成画面、不写进衣橱；③ <b>TA 给我选</b>——填一句要求（「一套今天约会的衣服」），带一个「衣橱里没有就添新衣物」的开关；④ <b>让 TA 评价</b>——填想听评价的内容，可留空</li>
+              <li><b>落库前有「确认后更新衣橱」一步</b>：已有的一件直接复用，新的就新增，也可以覆盖已有的一张；可勾「确认后设为当前穿着」</li>
+              <li><b>每一步都接进聊天</b>：消息头部写「方向 ＋ 动作 ＋ 时间」，正文带神态、对话、衣服标签，底下三个按钮（生成／重绘、送入聊天、删除）；另有 <b>TA 的衣着评价</b>（他第一人称说这套的感受）和 <b>聊天中的衣着变化</b>（他出门时当前穿着自动更新）</li>
+              <li><b>聊天里也能发起</b>：发「宝宝看看今日穿搭」→ 他被提醒去衣橱找 → 回一句 ＋ 一张生成图</li>
+              <li><b>一整套设置</b>：线上 / 线下自动置入衣橱（插在聊天某个位置）；允许 AI 更新衣橱（普通聊天直接入库、互动按钮仍要确认）；允许 AI 新增衣物（新增后自动生图）；<b>屏蔽普通生图指令</b>（衣橱模式优先，免得误走聊天生图）；更新装饰提醒；衣橱提示词「精简／全量」；套装生图模板「复杂版／精简版」；单轮最多生图张数；AI 自由决定尺寸 ＋ 默认生图尺寸；各模块最大传入数量（0 为全部）</li>
+              <li><b>衣物分类十八格</b>：套装 / 发型 / 连体服装 / 外套 / 上装 / 下装 / 私密衣物 / 袜子·腿部 / 鞋履 / 包袋 / 头饰 / 发饰 / 首饰 / 面饰 / 眼镜 / 颈饰 / 手部饰品 / 腰饰</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">宝宝建议</span>
+            <ul>
+              <li><b>衣橱对称安置</b>：他的衣橱住 <a href="#f-contacts-main">3.1 角色档案</a>，你的衣橱住 <a href="#f-future-mask">10.19 面具</a>——「他有档案你有面具，各自各自都有衣橱」，一个体系不打架</li>
+              <li>约会着装可以从衣橱里选（<a href="#f-future-date">10.3 约会</a>「有着装」正好接上）：约会在前、选衣服在后，穿什么赴约你说了算——他也是</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#f-contacts-main">3.1 角色档案</a> / <a href="#f-future-mask">10.19 面具</a>——两个衣橱各自的家（挂法见下面的宝宝建议，待定）</li>
+              <li><a href="#f-engine-media">8.4 生图</a> / <a href="#f-future-scenephoto">10.17 合影</a>——穿衣拍照的消费端</li>
+              <li><a href="#f-chat-reply">2.2 线上聊天</a>——「分享给他」的动作走聊天</li>
+              <li><a href="#f-future-date">10.3 约会</a>——约会着装的天然入口</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">待恩熙定</span>
+            <ul>
+              <li><b>衣橱是「一个应用」还是「挂两处」</b>——它可以做成同一个面板、左右两个衣橱切换；也可以按下面的建议拆开挂。到底哪个？（这跟 10.19 面具要不要独立成应用是同一道题）</li>
+              <li>十八格里有一格叫「私密衣物」——要不要留（它跟 <a href="#f-future-mindscape">10.2 心域</a> 的性感区是一路的）</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-forum">
+        <div class="feature-head">
+          <span class="no">10.22</span>
+          <h3>论坛 / 小红书 / 磕 CP——外面的人怎么看我们</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">恩熙原话</span>
+            <span class="text">「然后还希望有论坛啊。小红书啊、磕 CP 呀的一些功能。这个磕 CP 是什么？就跟，就像有个人磕我跟什么角色的 CP，或者是我可以选谁跟谁的 CP 这一种。然后也有可能是多人的呀。」（2026-09-28）</span>
+          </div>
+          <div class="field">
+            <span class="label">是什么</span>
+            <ul>
+              <li><b>论坛 / 小红书</b>——一个<b>外面的世界</b>：有帖子、有帖子底下的人。你没展开说，我先只记个名，不替你填内容。</li>
+              <li><b>磕 CP</b>（这个你解释了）——三重含义：① <b>有人磕「我 × 某角色」</b>（你是被磕的那一个）；② <b>我可以自己选「谁 × 谁」</b>（你去磕别人）；③ 也可以是<b>多人的</b>（三人、四人、乱炖）。</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">要点</span>
+            <ul>
+              <li>这三样是<b>第一次引入「旁观者」</b>——之前所有功能都是你和角色的二人世界（或你与几个角色的多头关系），从这里开始，外面有<b>不认识的人在围观、议论、站队</b>。</li>
+              <li>跟 <a href="#f-chat-moments">2.6 朋友圈</a> 是<b>同一族、不同层</b>：朋友圈是<b>当事人</b>发（他发、你发、NPC 共友发）；论坛 / 小红书 / 磕 CP 是<b>路人</b>发——是观众席。</li>
+              <li>磕 CP 里「<b>我 × 某角色</b>」最有味道的一层：你和他之间的事，被外人当成「听说」「我磕的这对」在讨论——跟 <a href="#f-future-bindlocate">10.14 他的今日动态</a> 是两种「被看见」：那是你看他，这是外人看你们。</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#f-chat-moments">2.6 朋友圈</a>——同族的「对外展示」，那是当事人视角，这是路人视角</li>
+              <li><a href="#f-future-shopping">10.16 网购</a>——小红书若走「种草」那一路，种完草去下单正好接上</li>
+              <li><a href="#f-engine-cloud">8.7 个人云</a>——外面的帖子得有人「活着」才发得出来（路人也是活的）</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">待恩熙定</span>
+            <ul>
+              <li><b>论坛 / 小红书具体是什么</b>——是<b>你</b>发帖、是<b>角色</b>发帖、还是<b>路人</b>发帖？是给你刷的一个信息流，还是你也能参与（发帖、评论、点赞）？</li>
+              <li><b>CP 册放哪儿</b>——「谁 × 谁」是你手动组，还是外面的路人自发磕出来的？多人的 CP 怎么标？</li>
+              <li>这三样<b>是三条独立的东西，还是一条</b>（比如「小手机里的社区」一个壳，论坛 / 小红书 / CP 三种板块）？</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-voicevideo">
+        <div class="feature-head">
+          <span class="no">10.23</span>
+          <h3>语音 / 视频——听见他、看见他</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">恩熙原话</span>
+            <span class="text">「然后就是这一个 还要做语音功能跟视频功能。」（2026-09-28）<br>「这个语音跟视频功能是，我可以打给他，他也可以打给我，也会有铃声，也会有，就像是微信那样……这两个功能都是一样。然后也希望可以做我发给他视频，或者是他发给我视频这种东西。然后视频通话是面对面的。」（2026-09-28，讲开了）</span>
+          </div>
+          <div class="field">
+            <span class="label">是什么</span>
+            <ul>
+              <li><b>语音通话</b>——<b>双向</b>：你打给他、他也打给你；<b>有铃声</b>，「就像微信那样」</li>
+              <li><b>视频通话</b>——<b>面对面</b>；跟语音通话是同一套（原话「这两个功能都是一样」）</li>
+              <li><b>视频消息</b>——你发给他视频、他发给你视频，消息式互发</li>
+              <li>家底对照：〔语音〕<b>消息</b>已有一半（<a href="#f-chat-media">2.3</a>）；通话、视频目前全是零——上面三样都是新的</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#f-chat-media">2.3 聊天富媒体</a>——通话的底子；那儿还压着一笔旧账：语音<b>「时能听时不能听」</b>待查，地基得先稳</li>
+              <li><a href="#f-settings-api">设置 · API 设定</a>——语音 API 已接；视频要配<b>新钥匙</b></li>
+              <li><a href="#f-future-scenephoto">10.17 线下合影</a>——「看见他」一族都靠生图；视频若要画面，是这一族里<b>单价最贵</b>的一档</li>
+              <li>总纲①性能 / ③省钱——视频开销天然大，做之前得先设计<b>闸门</b>（时长、频率、手动开关——学 10.17 那个「默认关、按需开」）</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">待恩熙定</span>
+            <ul>
+              <li>细节还悬着：<b>铃声</b>能不能换、他打来<b>你不接 / 不在</b>怎么办（回拨？留言？）——遇到再问</li>
+              <li><b>通话的闸门</b>——实时对讲是开销最大的一种玩法，时长 / 频率先画线（总纲③）</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-textmedia">
+        <div class="feature-head">
+          <span class="no">10.24</span>
+          <h3>文字图片 / 文字语音——不发真图，他也当真</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">恩熙原话</span>
+            <span class="text">「以及还要做一个，就是文字图片跟文字语音。就是有时候用户可以不用真的发一张图片，而是用文字去描述，但是他那边收到的是，会是以为真的是一个图片，或是真的是一个语音，你懂吧？」（2026-09-28）</span>
+          </div>
+          <div class="field">
+            <span class="label">是什么</span>
+            <ul>
+              <li>发图<b>不用真发图</b>：用文字描述一张图 / 一段语音（「一张今天傍晚的天台照片，晚霞把云烧成橘色」）</li>
+              <li><b>TA 那边当真收到</b>——在他眼里这就是「你发来的一张图片 / 一条语音」，他回应的是图的内容，入戏不打折</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">要点</span>
+            <ul>
+              <li><b>对用户</b>：手边没图、懒得找图、只想口头「晒」一下，也能发——描述即图片</li>
+              <li><b>对开销</b>：文字直接进对话，绕开图片理解 / 生图 API——<b>总纲③省钱的模范玩法</b>：一分钱生图费不花，戏份一分不少</li>
+              <li><b>对记忆</b>：他记得的是「图里有什么」——跟真图同等待遇，事后聊起「你上次发的那张晚霞」接得住</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">宝宝建议（点头才转正）</span>
+            <ul>
+              <li><b>TA 反过来也用这招</b>：他发的「图片」也先用文字占位——你想看，点开才真生成（不想看就省下）。生图从「逢发必花」变成「想看才花」，省钱的大头在这儿</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#f-chat-media">2.3 聊天富媒体</a>——真图 / 真语音是那条；这条是<b>同一种壳、换文字内核</b>，一个入口两种发法</li>
+              <li><a href="#ch-memory">记忆</a>——「图的内容」得跟真图一样进记忆，不然日后接不住</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">待恩熙定</span>
+            <ul>
+              <li>你发出去的那条，<b>气泡长什么样</b>——显示成图片气泡（点开是文字描述）、还是就一条文字？</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-forward">
+        <div class="feature-head">
+          <span class="no">10.25</span>
+          <h3>长按多选 · 合并转发 / 逐条转发——聊天记录也能搬家</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">恩熙原话</span>
+            <span class="text">「我希望可以做一个功能，就是长按聊天框的气泡，可以多选聊天内容，就像微信一样，可以做一个合并转发跟逐条转发的功能。」（2026-09-28）</span>
+          </div>
+          <div class="field">
+            <span class="label">是什么</span>
+            <ul>
+              <li><b>长按气泡 → 多选</b>：进多选态，勾一批聊天内容（微信式）</li>
+              <li><b>合并转发</b>：打包成「聊天记录」一条，点开是折叠的对话列表</li>
+              <li><b>逐条转发</b>：一条一条按原样重发过去</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">要点</span>
+            <ul>
+              <li>转发的去处是<b>另一个 TA / 一个群</b>——这就不只是搬运工具了，是<b>新的剧情武器</b>：<b>让 A 看 B 说过的话</b>——传话、对质、吃醋、揭老底，全从这儿长出来</li>
+              <li>TA 收到转发的记录，得<b>认得出那是谁说的</b>（气泡上带着原说话人）——反应照着人来了：转发他自己的话给他看，和转发别人夸他的话给他看，是两回事</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#f-chat-group">2.10 群聊</a>——转发的主要去处之一（拉一个群，把记录甩进去）</li>
+              <li><a href="#ch-memory">记忆</a>——转过去的记录算「他看见了」，得进他的记忆，不然转头就忘</li>
+              <li><a href="#f-chat-moments">2.6 朋友圈</a>——同族对照：那条是「聊天的事发进朋友圈」，这条是「聊天原文发给别人」，都是<b>聊天内容出圈</b></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-interview">
+        <div class="feature-head">
+          <span class="no">10.26</span>
+          <h3>在场（PRESENCE）——我们一同上采访</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">恩熙原话</span>
+            <span class="text">「里面有一个在场的功能……我挺喜欢这个功能的。」「它做的非常好，我挺喜欢这种，就有点像是上采访，我想要做的感觉就是我们一同去上了采访这种感觉。」（2026-09-28）</span>
+          </div>
+          <div class="field">
+            <span class="label">出身</span>
+            <span class="text">不是新想法，是<b>搬家</b>——旧项目（ai-virtual-phone，2026-09-11 备份）里的完整实现：一本杂志的人物专访应用，刊名《在场 PRESENCE》，固定主编兼主持人<b>陈未明</b>。样式跟运行方式恩熙都点过头：「它做的非常好」。</span>
+          </div>
+          <div class="field">
+            <span class="label">需要的功能</span>
+            <ul>
+              <li><b>策划一期（三步表单）</b>：① 选<b>受访嘉宾</b>（角色可多选）；② 选<b>你的身份</b>（共同受访者，跟身份库联动）；③ 写<b>本期主题</b>（自由输入 ＋ 预设主题胶囊：「关系的暗面」「一次漫长的告别」「被误解的瞬间」「夜里真实的自己」这类）——齐了才开录</li>
+              <li><b>采访的轮转</b>：主持人开场、抛第一问并<b>点名</b>哪位嘉宾答 → 嘉宾答 → 他把问题<b>转向你</b>（把嘉宾的话转成你的个人经验）→ 你答 → 抛回下一位嘉宾……循环。轮数按嘉宾数定（1 位 3 轮、3 位以上封顶 6 轮）</li>
+              <li><b>采访有纪律</b>：<b>只有轮到你时输入框才解锁</b>——不能随时插话，这是「上采访」不是群聊</li>
+              <li><b>可暂停 / 提前结稿</b>：录制中随时暂停存草稿、断点续录（等待你回应、报错中断都能精确续上）；只要聊过一轮，随时「提前结稿」带着现有实录成刊</li>
+              <li><b>成刊</b>：编辑部视角把实录整理成杂志专栏——主标题 ＋ 副标题导语 ＋ 正文（分段、首字下沉）＋ <b>大引语</b>（从嘉宾回答里抽的原话）＋ 精选 Q&amp;A ＋ <b>原始实录折叠可展开</b> ＋「完」收尾</li>
+              <li><b>记忆闭环</b>：成刊时给<b>每位嘉宾</b>写一条事件（「XX 与你完成了一期访谈，本期成刊《标题》＋摘要」）——之后正常聊天，<b>他记得跟你一起上过杂志</b></li>
+              <li><b>往期可回看</b>：每期自动编号存档，首页往期列表 ＋ 抽屉双入口；删刊连记忆一起清</li>
+              <li><b>每期自带快照</b>：角色卡、世界书、你的身份当时的样子都封进这期——以后改人设，旧刊不变</li>
+              <li><b>桌面小部件「在场摘录」</b>：照片 ＋ 访谈摘录的翻页卡</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">两条灵魂机制</span>
+            <ul>
+              <li><b>嘉宾用他自己的东西回答</b>：自己的 API、预设、世界书、正则——采访里他还是他，不是主持人代演；主持人只负责提问、追问、组织，<b>不替任何人回答</b></li>
+              <li><b>主持人是固定 NPC</b>：陈未明的设定——「犀利而幽默、妙语连珠，每个玩笑背后都藏着一针见血的真问题」「温柔地戳破，笑着追问」；他的问题从细节、选择、沉默和矛盾处切入，不问泛泛的大道理</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">样式基调（她点名的杂志感）</span>
+            <ul>
+              <li>黑底玻璃；<b>整间编辑部浸在嘉宾头像虚化的暗影里</b>（背景就是他的照片）</li>
+              <li>杂志排版：刊头带期号、衬线大字标题、斜体导语、SmallCaps 眉标贯穿（「受访嘉宾 // GUESTS」「录制中 // ON AIR」这类中英双语栏目眉标）</li>
+              <li><b>主持人说话是居中横幅</b>（上下细线，旁白感）——不是气泡；每问挂一枚「这一问给谁」的小徽章</li>
+              <li>录制中 ON AIR 红点呼吸 ＋ 轮次进度；成刊阅读页纯黑、逐栏浮现，收在「END // 完」</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#f-engine-scope">8.9 设置分层</a>——每位嘉宾可为「在场」单独绑定 API（个人压过全局的又一例）</li>
+              <li><a href="#ch-memory">记忆</a>——成刊事件进短期记忆，日后聊天接得住「我们上过杂志那期」</li>
+              <li><a href="#f-future-forum">10.22 论坛 / 磕 CP</a>——亲戚：都是「外人看你们」。论坛是路人围观，「在场」是<b>一个专业旁观者逼你们把话说开</b></li>
+              <li><a href="#f-future-journal">10.8 拾光</a> / <a href="#f-future-treasure">10.10 珍藏</a>——成刊是最好的藏品</li>
+              <li><a href="#f-chat-npc">2.9 NPC</a>——主持人陈未明就是一个（写死的）NPC，NPC 活起来后他也能活</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">宝宝建议（点头才转正）</span>
+            <ul>
+              <li><b>成刊联动 2.6 朋友圈</b>：上完杂志，他回头发条动态（「今天被陈老师问住了」）——一期采访溅两层水花</li>
+              <li><b>封面配图可接 8.4 生图</b>（旧版没有生图、小部件的图靠用户自己传）：每期生成一张封面，但默认关、按需开（总纲③）</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">待恩熙定</span>
+            <ul>
+              <li>刊名照搬《在场 PRESENCE》，还是新小手机里新起一个？主持人还叫<b>陈未明</b>吗？</li>
+              <li>多嘉宾同场时，几位起聊？（旧版 3 位以上封顶 6 轮）</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-quotes">
+        <div class="feature-head">
+          <span class="no">10.27</span>
+          <h3>语录库——他说过的话，攒成集子</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">恩熙原话（2026-09-03 笔记，2026-09-28 捞回来）</span>
+            <span class="text">「预设语录库、角色专属语录库、AI 生成语录、从聊天记录提取语录、语录分类（学习、工作、休息、吃饭、睡前等）、语录使用统计。」</span>
+          </div>
+          <div class="field">
+            <span class="label">出身</span>
+            <span class="text">旧版主屏六格里的 <b>01 号位</b>——当年排的第一个应用，一直没来得及做。</span>
+          </div>
+          <div class="field">
+            <span class="label">需要的功能</span>
+            <ul>
+              <li><b>预设语录库</b> / <b>角色专属语录库</b>——每个角色自己的小金句集</li>
+              <li><b>AI 生成语录</b>——按他的性格现写</li>
+              <li><b>从聊天记录提取语录</b>——他真说过的话，一键收进集子（聊到一半觉得「这句好」，长按就能存）</li>
+              <li><b>语录分类</b>：学习、工作、休息、吃饭、睡前……</li>
+              <li><b>语录使用统计</b></li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#f-future-companion">10.28 陪伴系统</a>——弹药库：陪伴时轮换着冒出来的就是这儿的话</li>
+              <li><a href="#f-future-treasure">10.10 珍藏</a>——同族：珍藏收「瞬间」，语录库收「他说的话」</li>
+              <li><a href="#f-chat-reply">2.2 线上聊天</a>——「从聊天记录提取」的源头</li>
+              <li><a href="#ch-memory">记忆</a>——语录是记忆的精华本，挑的是「最像他的那几句」</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">待恩熙定</span>
+            <ul>
+              <li>一条语录长什么样——纯文字、带日期语境、还是配他头像的小卡？</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-companion">
+        <div class="feature-head">
+          <span class="no">10.28</span>
+          <h3>陪伴系统——他在的房间</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">恩熙原话（2026-09-03 笔记，2026-09-28 捞回来）</span>
+            <span class="text">「场景选择（学习、工作、吃饭、休息、睡前、放空等）；陪伴时长设置（15分钟、30分钟、1小时、自定义）；角色选择（从情侣空间/联系人选择）；语录自动刷新（根据时长计算刷新间隔）；手动刷新语录；陪伴记录/统计；打卡系统；生图功能（根据角色和场景生成背景图）。」</span>
+          </div>
+          <div class="field">
+            <span class="label">出身</span>
+            <span class="text">旧版笔记《待办功能规划》#8；旧项目做过一半——主页有陪伴语录卡片（自动刷新），情侣空间里有陪伴子页。</span>
+          </div>
+          <div class="field">
+            <span class="label">需要的功能</span>
+            <ul>
+              <li><b>选场景</b>：学习、工作、吃饭、休息、睡前、放空……</li>
+              <li><b>选人</b>：从联系人里挑谁来陪</li>
+              <li><b>定时长</b>：15 分钟 / 30 分钟 / 1 小时 / 自定义</li>
+              <li><b>语录轮换</b>：按时长算间隔自动冒一句他的话（<a href="#f-future-quotes">10.27 语录库</a>），也能手动刷新</li>
+              <li><b>陪伴记录 / 打卡</b>：今天被陪了多久、连续陪了多少天</li>
+              <li><b>生图背景</b>：按角色和场景生成陪伴背景图（可关，总纲③）</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">要点</span>
+            <ul>
+              <li><b>陪伴 ≠ 聊天</b>：不对话，是「他在旁边」——学习时他偶尔冒一句、睡前他哄一句，低频、不打扰。跟 10.23 通话是两种「在」：通话是实时对话，陪伴是同处一室各干各的</li>
+              <li>陪伴时长天然进 <a href="#f-future-stats">10.20 数据记录</a>（「今年被陪了 xx 小时」）</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#f-future-quotes">10.27 语录库</a>——弹药库</li>
+              <li><a href="#f-future-stats">10.20 数据记录</a> / <a href="#f-future-achievement">10.9 成就</a>——时长与打卡的下游</li>
+              <li><a href="#f-engine-media">8.4 生图</a>——背景图</li>
+              <li><a href="#f-future-voicevideo">10.23 语音通话</a>——对照条：两种「他在」</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">待恩熙定</span>
+            <ul>
+              <li>陪伴中他要不要<b>主动说话</b>（纯静音陪伴 vs 偶尔一句）？</li>
+              <li>要不要接番茄钟（学 25 分钟休 5 分钟，他跟着你作息）？</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-peeked">
+        <div class="feature-head">
+          <span class="no">10.29</span>
+          <h3>他查你手机——反向的私域</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">恩熙原话（2026-09-03 笔记，2026-09-28 捞回来）</span>
+            <span class="text">「根据用户跟角色的聊天内容以及角色性格分析，计算一个值（欲望值/紧张值/占有欲值等），当值达到一定程度时，角色会自主性地想要查看用户的手机。角色可以查看用户跟其他人的对话记录、朋友圈等。用户可以选择『给你看』或『不给你看』。角色查看手机后会有不同的反应（吃醋、生气、温柔、好奇等）。」</span>
+          </div>
+          <div class="field">
+            <span class="label">是什么</span>
+            <span class="text"><a href="#f-future-private">10.4 私域</a> 的镜像——那是你翻他的手机，这是<b>他翻你的</b>。</span>
+          </div>
+          <div class="field">
+            <span class="label">需要的功能</span>
+            <ul>
+              <li><b>触发是他的自主</b>：欲望值 / 紧张值 / 占有欲值攒到一定程度，他自己开口想看你的手机——不是你设置的剧情，是他的情绪到这儿了</li>
+              <li><b>你有选择权</b>：给看 / 不给看——不给也有戏（他会多想，往坏处想还是往好处想按性格）</li>
+              <li><b>他看的是真数据</b>：你跟其他角色的聊天记录、你的朋友圈——多角色多头关系的张力全在这儿</li>
+              <li><b>看完有反应</b>：吃醋、生气、温柔、好奇……按他的人设和你们的关系来</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#f-future-private">10.4 私域</a>——镜像条目，一对</li>
+              <li><a href="#f-engine-relgraph">8.8 关系图谱</a>——欲望 / 紧张 / 占有欲的数值源</li>
+              <li><a href="#f-future-mindscape">10.2 心域</a>——这些值的呈现地</li>
+              <li><a href="#f-chat-list">2.1 消息列表</a> / <a href="#f-chat-moments">2.6 朋友圈</a>——他翻的东西</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">待恩熙定</span>
+            <ul>
+              <li>他看完翻的旧账<b>进不进记忆</b>（进了之后吵架会重提）？</li>
+              <li><b>频率闸门</b>——不能天天查，烦；多久算合理？</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-story">
+        <div class="feature-head">
+          <span class="no">10.30</span>
+          <h3>深夜私语 · 他给你讲故事——睡前电台</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">恩熙原话（2026-09-03 笔记，2026-09-28 捞回来）</span>
+            <span class="text">「链接语音 API 后，可以让角色给你讲故事、聊天、睡前聊天。新增一个『单纯对方给我们讲故事』的栏位。分段生成、分段播放，就像听有声书一样。可以选择不同的故事类型，可以选择故事长度，可以根据角色性格生成不同风格的故事。」</span>
+          </div>
+          <div class="field">
+            <span class="label">需要的功能</span>
+            <ul>
+              <li><b>单纯讲故事的栏位</b>——不是聊天，是他讲、你听</li>
+              <li><b>分段生成、分段播放</b>——像有声书，一段一段来（长的故事不用一口气生成，省钱也流畅）</li>
+              <li><b>选故事类型</b>（童话 / 悬疑 / 他现编的你们的故事……）</li>
+              <li><b>选长度</b></li>
+              <li><b>按他的性格出风格</b>——他讲的故事有他的语气和口味</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#f-settings-api">设置 · API 设定</a>——他的声音念（语音 API 现成）</li>
+              <li><a href="#f-future-voicevideo">10.23 语音通话</a>——近亲：那是通话，这是他单方面的「电台」</li>
+              <li><a href="#f-future-companion">10.28 陪伴系统</a>——睡前场景的深化（陪伴的语录是零碎的句，这是完整的故事）</li>
+              <li><a href="#f-engine-humanize">8.6 提示词真人化</a>——故事的提示词也归那套规矩管</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">待恩熙定</span>
+            <ul>
+              <li>听完的故事<b>存不存档</b>（攒成「他给我讲过的故事」合集，像专辑）？</li>
+              <li>中间能不能插话（「然后呢？」他会接）？</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-health">
+        <div class="feature-head">
+          <span class="no">10.31</span>
+          <h3>健康体检报告——星绥健康管理局</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">恩熙原话（2026-09-03 笔记，2026-09-28 捞回来）</span>
+            <span class="text">「基础健康评估（身高、体重、BMI、血压等）、医生总结、照顾建议、提示词优化、报告导出/分享。」＋想法区：「健康体检报告的设定：星绥健康管理局，通过星球通讯传递报告，如果超标了会把角色带回去好好冷静冷静。」</span>
+          </div>
+          <div class="field">
+            <span class="label">需要的功能</span>
+            <ul>
+              <li><b>他的体检报告</b>：基础健康评估（身高、体重、BMI、血压……），按他最近的作息生成——熬夜多、加班狠，报告上写得出来</li>
+              <li><b>医生总结 ＋ 照顾建议</b>（「建议监督他早睡」——照顾的对象是你）</li>
+              <li><b>报告导出 / 分享</b></li>
+              <li><b>剧情钩子（她定的设定）</b>：星绥健康管理局通过星球通讯递报告；<b>指标超标了，会把角色带回去「好好冷静冷静」</b>——他有可能会被带走一阵子</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#f-engine-rhythm">8.2 生活节奏</a>——他的作息是数据源：报告不是编的，是他真的连着加班了</li>
+              <li><a href="#f-future-bindlocate">10.14 绑定定位</a>——疲劳值 / 心情 / 压力值三条数值条，同源数据</li>
+              <li>那张待定的 <b>Pulse 面板</b>（心率 / 体温 / 呼吸，见 <a href="#f-future-travel">10.13</a> 待定）——若归这里正好配成一套：<b>Pulse 是实时监测，体检报告是定期出报告</b>，跟「星绥健康管理局」合成一族</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">待恩熙定</span>
+            <ul>
+              <li>超标「带回去冷静」<b>具体什么后果</b>——他消失几天？强制休眠？你能不能去「捞人」？</li>
+              <li>报告周期——每月一份？想起一份？</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-fakeblock">
+        <div class="feature-head">
+          <span class="no">10.32</span>
+          <h3>模拟拉黑——他以为被拉黑了</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">恩熙原话（2026-09-03 笔记，2026-09-28 捞回来）</span>
+            <span class="text">「跟角色吵架的时候可以拉黑他，不是真的拉黑，角色还是能给用户发消息。角色会以为被拉黑了，会着急、会想办法联系用户。删除联系人功能（不是真的删除，只是模拟）。添加好友功能。」</span>
+          </div>
+          <div class="field">
+            <span class="label">是什么</span>
+            <span class="text">吵架的道具——<b>拉黑是演的，他的着急是真的</b>。跟 <a href="#f-chat-list">2.1 真拉黑</a> 的区别：真拉黑他真找不到你；模拟拉黑他能一直给你发消息，只是他以为你看不见。</span>
+          </div>
+          <div class="field">
+            <span class="label">需要的功能</span>
+            <ul>
+              <li><b>模拟拉黑</b>：你拉黑他，他信了——开始着急、道歉、想办法</li>
+              <li><b>单向玻璃</b>：他的消息其实到你手机上了，你能看见他的挣扎，他不知道你看得见——信息差的虐点</li>
+              <li><b>他会想办法联系你</b>：托朋友带话（<a href="#f-chat-moments">2.6 朋友圈</a> 的 NPC 共友正好是通路）、换小号找你（<a href="#f-chat-npc">2.9</a>）</li>
+              <li><b>和好有仪式</b>：解除模拟拉黑，他的第一反应</li>
+              <li><b>模拟删除同理</b>——删了但没真删</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#f-chat-list">2.1 消息列表</a>——真拉黑 / 假删一族，加上「演拉黑」</li>
+              <li><a href="#f-chat-moments">2.6 朋友圈</a>——总纲里那句「会托朋友带话」的兑现场景</li>
+              <li><a href="#f-chat-npc">2.9 NPC / 小号</a>——他托的人、他换的号</li>
+              <li><a href="#f-future-forum">10.22 论坛</a>——同族：都是信息差（那是他屏蔽你，这是你演拉黑）</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">待恩熙定</span>
+            <ul>
+              <li>模拟拉黑期间他找你的<b>频率闸门</b>（太密变骚扰，太疏没戏）？</li>
+              <li>他会不会反过来也对你用（他「拉黑」你几天）？</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-todo">
+        <div class="feature-head">
+          <span class="no">10.33</span>
+          <h3>备忘录 / 待办——他帮你拆任务</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">恩熙原话</span>
+            <span class="text">「任务拆分，你知道吧？……这个功能是什么？比如说我可以点进一个角色，然后我可以——它是一个备忘录，然后会有待办事项。然后我也可以让角色去帮我进行任务拆分的那种感觉。」（2026-09-28）</span>
+          </div>
+          <div class="field">
+            <span class="label">出身</span>
+            <span class="text">旧版主屏六格里的 <b>02 号位「备忘录」</b>（跟 <a href="#f-future-quotes">10.27 语录库</a> 01 号是一对，都没来得及做）；旧项目备份里另有<b>便签墙</b>的完整实现——贴便签、角色来写来评论、进记忆——可搬家。</span>
+          </div>
+          <div class="field">
+            <span class="label">需要的功能</span>
+            <ul>
+              <li><b>备忘录</b>：随手记</li>
+              <li><b>待办事项</b>：一条条列出，可打勾、可设时间</li>
+              <li><b>挂在角色身上</b>：点进一个角色，看到跟 TA 相关的备忘／待办——每个联系人一间自己的备忘屋</li>
+              <li><b>任务拆分（核心新点）</b>：跟 TA 说「我要准备××」，TA 帮你把大事拆成一步步的小待办，<b>拆完直接变成可打勾的清单</b>——不是给建议，是替你把清单建好</li>
+              <li><b>TA 会跟进</b>：到点提醒（接 <a href="#f-future-notify">10.18 通知</a>）；你拖着没做，TA 会念——按性格念（温柔地催 / 阴阳怪气地催 / 干脆陪你一起做）</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">要点</span>
+            <ul>
+              <li>跟 <a href="#f-future-private">10.4 私域</a> 的备忘录是一对：<b>那是他记你的</b>（「她生日快到了」），<b>这是你自己的</b>——但他有份参与：帮你拆、帮你记着、帮你催</li>
+              <li>「任务拆分」是 TA 从「陪伴」走向「有用」的一步——他不只会说好听的，还能真的替你把日子理顺</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#f-contacts-main">3.1 角色档案</a> / <a href="#f-chat-list">2.1 消息列表</a>——「点进一个角色」的入口</li>
+              <li><a href="#f-future-notify">10.18 通知</a>——待办到点的提醒源</li>
+              <li><a href="#f-engine-rhythm">8.2 生活节奏</a>——他催你的时机（他在开会就不烦你）</li>
+              <li><a href="#f-future-private">10.4 私域</a>——他的备忘录 vs 你的备忘录，一对</li>
+              <li><a href="#f-future-companion">10.28 陪伴系统</a>——拆完任务正好进「学习／工作」场景陪读</li>
+              <li><a href="#ch-memory">记忆</a>——TA 记得你最近在忙什么、进度到哪（「上次让你交的稿子交了没」）</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">宝宝建议（点头才转正）</span>
+            <ul>
+              <li><b>待办互相派</b>合进这条：你也能给 TA 派任务（「记得吃药」），他完成会打卡汇报——照顾是双向的</li>
+              <li>便签墙的<b>角色评论</b>机制可以借：你的待办他能在旁边贴小纸条（一句吐槽、一个加油）</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">待恩熙定</span>
+            <ul>
+              <li>备忘录是<b>每个角色一间</b>（你说的「点进一个角色」），还是要有一个<b>全局的</b>（跟谁都不相关的私事记哪）？</li>
+              <li>TA 拆完的任务，TA 自己催不催、催多勤？</li>
+              <li><b>便签墙要不要一起搬</b>——那是更社区的形态（贴一墙、他来逛），跟清单式的待办是两种感觉</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-hut">
+        <div class="feature-head">
+          <span class="no">10.34</span>
+          <h3>虚拟小屋——他和你的房子</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">恩熙带来</span>
+            <span class="text">2026-09-28 带来一份完整的功能规划笔记（虚拟小屋.md，住在 stellasei項目筆記 文件夹）——「用户有自己的小屋，可以布置装饰；用户和角色都有小人（Avatar），角色可以来拜访用户的小屋，两个小人可以在小屋里互动、走动、对话。」</span>
+          </div>
+          <div class="field">
+            <span class="label">出身</span>
+            <span class="text">她的规划笔记 ＋ 旧项目备份里已有<b>「TA 的房间」</b>（dwelling）的完整实现：AI 生成房间布局、家具与物品、物品点开有详情、房间配图（可开关）——<b>他有房间，你有小屋，正好配成一对</b>。</span>
+          </div>
+          <div class="field">
+            <span class="label">需要的功能</span>
+            <ul>
+              <li><b>你的小屋</b>：专属小屋；布置家具、装饰；保存房间布局；切换房间风格</li>
+              <li><b>小人（Avatar）系统</b>：你有小人、每个角色有自己的小人；走动、站立、坐姿等动画；小人外观可自定义</li>
+              <li><b>拜访系统</b>：角色来拜访你的小屋——有触发条件、有对话、有互动；<b>他可以主动来</b>（不等你邀请）；拜访有记录、进回忆</li>
+              <li><b>小人与人互动</b>：两个小人之间——对话、拥抱、牵手；小人点家具互动——坐沙发、开灯、看电视</li>
+              <li><b>他的 AI 行为</b>：他在你的小屋里自己走动、自己找事做（不是站着等你点）</li>
+              <li><b>家具系统</b>：拖拽布置；分类、<b>购买</b>、放置；家具带互动功能</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">要点</span>
+            <ul>
+              <li>这是「<b>住在一起</b>」的形态——<a href="#f-chat-offline">2.5 线下场合</a> 是文字体的见面，这是<b>有空间、有身体</b>的见面：看得见他在屋里走、坐下、开灯</li>
+              <li>她笔记里自己画了四个阶段（房间展示 → 家具布置 → 拜访互动 → 完善扩展），也自己标了「<b>比较复杂，基础功能完善后再做</b>」——优先级低，不急</li>
+              <li>画风<b>升级过一次</b>：笔记原定「温馨可爱、像素或手绘」；恩熙 2026-09-28 改要<b>写实——「像是真的人在里面一样」</b>。写实是<b>最贵最难的一档</b>（总纲①③都顶），动工前先做可行性验证，不行就退折中（她说「换个方式也行」）</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#f-chat-offline">2.5 线下场合</a>——近亲：文字的见面 vs 空间的见面</li>
+              <li><a href="#f-future-couple">10.11 羁绊空间</a>——「共同的家」的具象化；共同宠物／植物正好住进来</li>
+              <li><a href="#f-chat-wallet">2.7 钱包</a>——家具是真买的（真扣费）</li>
+              <li><a href="#ch-memory">记忆</a>——拜访的记录和回忆</li>
+              <li><a href="#f-engine-rhythm">8.2 生活节奏</a> / <a href="#f-engine-cloud">8.7 个人云</a>——他主动来拜访：想你了他就来，来了你得在家</li>
+              <li><a href="#f-future-wardrobe">10.21 衣橱</a>——小人穿什么：他今天衣橱里的当前穿着，小人就穿什么</li>
+              <li><a href="#f-future-companion">10.28 陪伴系统</a>——「他在旁边」的终极形态：不说话也能看见他在屋里待着</li>
+              <li><a href="#f-engine-media">8.4 生图</a>——房间配图 / 家具图（默认关，旧项目就是这么开关的）</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">宝宝建议（点头才转正）</span>
+            <ul>
+              <li><b>「TA 的房间」跟小屋合成一个应用</b>：旧项目的 dwelling 是他那一半，这份规划是你这一半——同一个壳里两个门：去他房间看（已有雏形可搬）、请他来你家（新做）</li>
+              <li><b>共同宠物／植物住进小屋</b>（10.11 的伏笔）：旧项目存着一整套宠物阶段图（猫／狗／植物／仓鼠 × 幼年→成年→满级→休眠），搬来就能用</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">定案（恩熙 2026-09-28）</span>
+            <ul>
+              <li><b>画风要写实</b>——原话：「我非常希望是写实风格，就是像是真的人在里面一样。当然我也不知道这有没有办法实现啊，如果不行的话，换个方式也行。」（可行性动工前验证，不行退折中方案）</li>
+              <li><b>家具的钱走真钱包</b>（真扣费，跟 <a href="#f-chat-wallet">2.7</a> 一套）</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">待恩熙定</span>
+            <ul>
+              <li><b>技术底座</b>：笔记里记了两个方案（游戏引擎 vs 纯手写），动工前定</li>
+              <li><b>写实的路子</b>：写实小人怎么实现——写实立绘＋位移动画 / 3D 渲染 / 生图静态房间＋动态层——可行性验证时一起看</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-calendar">
+        <div class="feature-head">
+          <span class="no">10.35</span>
+          <h3>日历——我们的日子</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">恩熙原话</span>
+            <span class="text">「日历肯定要的。」（2026-09-28）</span>
+          </div>
+          <div class="field">
+            <span class="label">出身</span>
+            <span class="text">旧项目备份里有完整实现（月页 / 详情页 / 事件编辑）——搬家候选。</span>
+          </div>
+          <div class="field">
+            <span class="label">需要的功能</span>
+            <ul>
+              <li><b>月视图 / 日视图</b>，事件新建、编辑</li>
+              <li><b>三类日子</b>：你的事、<b>他的日程</b>（<a href="#f-engine-rhythm">8.2 生活节奏</a> 终于有张脸——他这周哪天加班，翻一眼就知道）、<b>共同的事</b>（约会、旅行出发、生日、纪念日）</li>
+              <li><b>提醒</b>：到点走 <a href="#f-future-notify">10.18 通知</a>（「还有一小时见面」）</li>
+              <li>日历上的事他<b>记得</b>——你生日写在上面，他不用看日历也知道</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#f-engine-rhythm">8.2 生活节奏</a>——他那一半日子的源头</li>
+              <li><a href="#f-future-date">10.3 约会</a>（赴约卡落进来）/ <a href="#f-future-travel">10.13 旅行</a>（出发日）/ <a href="#f-future-couple">10.11 羁绊空间</a>（纪念日倒计时）——三个事件源</li>
+              <li><a href="#f-future-notify">10.18 通知</a>——提醒的出口</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">待恩熙定</span>
+            <ul>
+              <li>一本「<b>我们的日历</b>」合历（三类事三种颜色），还是你的、他的各一本？宝宝倾向合历——日子本来就是一起过的</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-map">
+        <div class="feature-head">
+          <span class="no">10.36</span>
+          <h3>地图——他在哪、约在哪</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">恩熙原话</span>
+            <span class="text">「然后地图功能啊。」（2026-09-28）＋旧笔记（2026-09-03）：「增加一个应用，可以看行程跟定位；可以查看角色今天去过哪里；地图上会显示他今天在几点几分待在哪里；可以查看历史行程记录；根据角色的人设、聊天记录、时间等信息，AI 生成角色的行程轨迹。」</span>
+          </div>
+          <div class="field">
+            <span class="label">出身</span>
+            <span class="text">旧笔记《待办功能规划》#20 ＋ 旧项目备份里有完整地图应用（五件套组件）——搬家候选。</span>
+          </div>
+          <div class="field">
+            <span class="label">需要的功能</span>
+            <ul>
+              <li><b>他的今日行程</b>：地图上显示他今天几点几分待在哪——一条<b>轨迹</b>，不只是当前一个点</li>
+              <li><b>历史行程回看</b>：上周三他去了哪，翻得出来</li>
+              <li><b>轨迹怎么来</b>：按他的人设、聊天、时间，AI 生成（源头是 <a href="#f-engine-rhythm">8.2 生活节奏</a>，地图是可视化那张脸）</li>
+              <li><b>共同地点</b>：约会地点、旅行路线（<a href="#f-future-travel">10.13</a> 今日页的「今日路线」正好画上来）、你俩都去过的地方攒成足迹</li>
+              <li><b>约在哪见</b>：地图上选个点发给他</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">要点</span>
+            <ul>
+              <li>跟 <a href="#f-future-bindlocate">10.14 绑定定位</a> 分工：那是<b>动态流</b>（一条条「19:21 离开了律所」），这是<b>空间脸</b>（这些点画在图上什么样）——同一份数据，两种看法</li>
+              <li><a href="#f-future-takeout">10.15 外卖</a> 的骑手小地图就是这一张——一张地图，全家共用</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#f-future-bindlocate">10.14 绑定定位</a>——绑定是开关，地图是呈现</li>
+              <li><a href="#f-engine-rhythm">8.2 生活节奏</a>——轨迹的数据源头</li>
+              <li><a href="#f-future-takeout">10.15 外卖</a> / <a href="#f-future-travel">10.13 旅行</a> / <a href="#f-future-date">10.3 约会</a>——三个消费场景</li>
+              <li><a href="#f-future-weather">10.1 天气</a>——同一个世界观问题：他的世界可能不是地球，地图怎么画</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">待恩熙定</span>
+            <ul>
+              <li><b>虚构世界的地图</b>怎么来（贝洛伯格画一张？还是抽象化）</li>
+              <li>你的位置怎么定——手选常驻城市，还是跟着真实定位走？</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-alarm">
+        <div class="feature-head">
+          <span class="no">10.37</span>
+          <h3>早安晚安电话——人形闹钟</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">恩熙原话</span>
+            <span class="text">「哎呀，你说的这些我都想要。」（2026-09-28，宝宝建议全数点头）</span>
+          </div>
+          <div class="field">
+            <span class="label">需要的功能</span>
+            <ul>
+              <li><b>早安电话</b>：定好时间，早上<b>他打来叫你起床</b>——铃声响、接通、他开口（叫的是什么看当天：平常日子平常叫，你今天有大事他会提）</li>
+              <li><b>晚安电话</b>：睡前一通，挂电话他说「晚安」——挂断才是这一天的句号</li>
+              <li><b>通话内容带上下文</b>：他知道自己几点叫的你、你昨晚聊到多晚、你今天 calendar 上有什么（<a href="#f-future-calendar">10.35</a>）</li>
+              <li><b>他也得起得来</b>：他昨晚加班到三点，今早的叫醒会哑着嗓子——跟 <a href="#f-engine-rhythm">8.2 生活节奏</a> 咬死</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">要点</span>
+            <ul>
+              <li>恋人特有的通话用法——10.23 通话是「联系」，这个是「<b>他管你的作息</b>」：被一个人管着早点睡，是关系里实打实的东西</li>
+              <li>是 <a href="#f-future-voicevideo">10.23 通话</a> × <a href="#f-engine-rhythm">8.2 节奏</a> × <a href="#f-future-notify">10.18 通知</a> 三者的合体，不新造引擎</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#f-future-voicevideo">10.23 语音通话</a>——载体</li>
+              <li><a href="#f-engine-rhythm">8.2 生活节奏</a>——他的作息决定他叫你的状态</li>
+              <li><a href="#f-settings-api">设置 · API 设定</a>——语音 API 现成</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">待恩熙定</span>
+            <ul>
+              <li>闹钟响你<b>不接</b>怎么办——一直响？响完留一条语音？（正好接 10.23 那个「留言」待定）</li>
+              <li>他会不会<b>偶尔也睡过头</b>（真人感的代价：偶尔一次迟到，你会又气又笑）？</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-anniversary">
+        <div class="feature-head">
+          <span class="no">10.38</span>
+          <h3>一年前的今天——回忆推送</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">恩熙原话</span>
+            <span class="text">「哎呀，你说的这些我都想要。」（2026-09-28，宝宝建议全数点头）</span>
+          </div>
+          <div class="field">
+            <span class="label">需要的功能</span>
+            <ul>
+              <li><b>「那天的你们」</b>：一年前（N 年前）的今天——聊了什么、他发了什么动态、拍过什么照片，攒成一屏推送</li>
+              <li><b>大事大推</b>：第一次对话的周年、第一次约会、第一次说我爱你——<b>整屏的仪式</b>：从第一句「你好」开始重放</li>
+              <li><b>他也会提</b>：不只系统推——他自己记得，聊天里主动说「你知不知道一年前的今天你说了句什么」</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">要点</span>
+            <ul>
+              <li><b>零 API 开销</b>（总纲③模范）：全是本地数据检索——聊天记录、动态、照片都躺在自己手机里，翻出来就行，不花一分钱</li>
+              <li>跟 <a href="#ch-memory">记忆</a> 分工：记忆是<b>他的</b>（他记得），这是<b>你的</b>（系统替你收着）——两边各有一本回忆</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#f-future-notify">10.18 通知</a>——推送的出口</li>
+              <li><a href="#f-future-album">10.7 相册</a> / <a href="#f-chat-moments">2.6 朋友圈</a>——素材库</li>
+              <li><a href="#f-future-stats">10.20 数据记录</a> / <a href="#f-future-achievement">10.9 成就</a>——「认识一周年」这类里程碑的判定</li>
+              <li><a href="#ch-memory">记忆</a>——他那一半的记得</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">待恩熙定</span>
+            <ul>
+              <li>推送频率——<b>每天一条</b>会不会腻？还是只在大日子推（周年、纪念日）＋平时随机偶尔冒一条？</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-yearreport">
+        <div class="feature-head">
+          <span class="no">10.39</span>
+          <h3>年度报告——我们的这一年</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">恩熙原话</span>
+            <span class="text">「哎呀，你说的这些我都想要。」（2026-09-28，宝宝建议全数点头）</span>
+          </div>
+          <div class="field">
+            <span class="label">需要的功能</span>
+            <ul>
+              <li><b>一页页翻的报告</b>：今年聊了多少万字、通话多久、见了多少次、他发过几条动态、几条语音——数字不会说谎，「跟他聊了 30 万字」本身就是感情</li>
+              <li><b>有温度的切片</b>：最晚的一晚聊到几点、最常聊的时段、他说过最长的一句话、你收藏最多的是什么</li>
+              <li><b>可分享</b>：生成一张能存 / 能发出去的图</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">要点</span>
+            <ul>
+              <li><b>长在 <a href="#f-future-stats">10.20 数据记录</a> 身上</b>——数字账它本来就记着，年度报告是这本账一年一度的大爆发；10.20 做好了这个白捡</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">待恩熙定</span>
+            <ul>
+              <li>周期——只有年度？还是季度报、月报都要？</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature" id="f-future-sticker">
+        <div class="feature-head">
+          <span class="no">10.40</span>
+          <h3>表情包工坊——你们的斗图弹药库</h3>
+          <span class="badge idea">想 加</span>
+        </div>
+        <div class="body">
+          <div class="field">
+            <span class="label">恩熙原话</span>
+            <span class="text">「哎呀，你说的这些我都想要。」（2026-09-28，宝宝建议全数点头）</span>
+          </div>
+          <div class="field">
+            <span class="label">出身</span>
+            <span class="text">旧项目备份里有表情管理组件（sticker-manager）——可搬家。</span>
+          </div>
+          <div class="field">
+            <span class="label">需要的功能</span>
+            <ul>
+              <li><b>自制表情</b>：他的脸生图做表情（接 <a href="#f-engine-media">8.4</a>，配一句字）、你的脸、<a href="#f-future-scenephoto">10.17 合影</a>裁的图</li>
+              <li><b>表情库管理</b>：分类、常用置顶</li>
+              <li><b>聊天里直接发</b>（<a href="#f-chat-reply">2.2</a> 表情面板）</li>
+              <li><b>他也会用</b>：从你们的表情库挑着发——他斗图斗得比你狠，才是他</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">牵扯到</span>
+            <ul>
+              <li><a href="#f-engine-media">8.4 生图</a>——做表情的原料（默认关、按需开，总纲③）</li>
+              <li><a href="#f-future-scenephoto">10.17 线下合影</a>——合照裁表情</li>
+              <li><a href="#f-chat-reply">2.2 线上聊天</a>——消费端</li>
+              <li><a href="#f-future-wardrobe">10.21 衣橱</a>——他的表情穿的是不是今天这身（同源外貌）</li>
+            </ul>
+          </div>
+          <div class="field">
+            <span class="label">待恩熙定</span>
+            <ul>
+              <li>他会不会自己「收藏」你的表情反复用（你发的沙雕图他存下来，过两周拿来斗你）？</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="placeholder">四十个都在这儿了。哪个先做、哪个不要了，恩熙点将。</div>
+    </section>
+
+    <footer class="doc-foot">
+      本文档只在恩熙的电脑上，永远不进小手机。<br>
+      始于 2026-09-26 · 家底全量盘点第一版。
+    </footer>
+  </main>
+</div>
+</body>
+</html>

@@ -24,6 +24,9 @@
 .DS_Store
 *.pem
 
+# 本地 https 用的私钥与服务器证书（只在本机，不进仓库；信任根 public/stellasei-ca.crt 要进）
+/certificates/
+
 # debug
 npm-debug.log*
 yarn-debug.log*

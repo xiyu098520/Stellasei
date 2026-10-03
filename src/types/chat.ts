@@ -723,6 +723,16 @@ export interface VoiceApiExtras {
   speed: number;
   /** 音调（-1 到 1，0＝正常）。 */
   pitch: number;
+  /**
+   * 情绪起伏档（0–1，0.5＝中性；越低越有情绪起伏、越活，越高越平）。**仅 ElevenLabs 用**，
+   * 对应它 voice_settings.stability；别家服务商没这一格，传了也被忽略。
+   */
+  stability: number;
+  /**
+   * 风格夸张度（0–1，0＝自然；越高越入戏、越夸张）。**仅 ElevenLabs 用**，对应它
+   * voice_settings.style；别家服务商没这一格。
+   */
+  style: number;
 }
 
 /** 语音附加参数默认值。 */
@@ -730,6 +740,11 @@ export const DEFAULT_VOICE_EXTRAS: VoiceApiExtras = {
   voice: "alloy",
   speed: 1,
   pitch: 0,
+  /* 1.9.87：默认给一点表现力（恩熙定「中」）——0.5 是 ElevenLabs 的中性值，往下压一点
+     声音就更有起伏、更像在跟人说话而不是念稿；style 抬一点让它更入戏。两格都只是**默认**，
+     设置里可随时拖。 */
+  stability: 0.4,
+  style: 0.4,
 };
 
 /**

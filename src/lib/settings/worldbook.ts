@@ -7,7 +7,12 @@
 import { kvGet, kvSet } from "@/lib/db/idb";
 import { uuid } from "@/lib/uuid";
 import { normalizeEntryPosition } from "@/types/worldbook";
-import type { WorldBook, WorldBookEntry, WorldBookScope } from "@/types/worldbook";
+import {
+  type EntryPosition,
+  type WorldBook,
+  type WorldBookEntry,
+  type WorldBookScope,
+} from "@/types/worldbook";
 
 const BOOKS_KEY = "world-books";
 
@@ -25,13 +30,14 @@ export function parseEntryKeys(keys: string): string[] {
 export async function getWorldBooks(): Promise<WorldBook[]> {
   const saved = await kvGet<WorldBook[]>(BOOKS_KEY);
   if (!saved) return [];
-  // 旧数据归一化：补注入位置/触发概率默认值；单选绑定迁移为多选数组（结构升级不丢旧书）。
+  // 旧数据归一化：补注入位置/触发概率默认值；单选绑定迁移为多选数组；补绑定世界栏位（结构升级不丢旧书）。
   return saved.map((b) => ({
     ...b,
     boundCharacterIds:
       b.boundCharacterIds ?? ((b as { boundCharacterId?: string | null }).boundCharacterId
         ? [(b as { boundCharacterId?: string | null }).boundCharacterId as string]
         : []),
+    boundCategoryIds: b.boundCategoryIds ?? [],
     entries: b.entries.map((e) => ({
       ...e,
       position: normalizeEntryPosition(e.position),
@@ -54,6 +60,7 @@ export async function createWorldBook(name = "未命名之书"): Promise<WorldBo
     description: "",
     scope: "global" satisfies WorldBookScope,
     boundCharacterIds: [],
+    boundCategoryIds: [],
     entries: [],
     createdAt: now,
     updatedAt: now,
@@ -140,25 +147,109 @@ export async function deleteEntry(bookId: string, entryId: string): Promise<void
   }
 }
 
+/**
+ * 酒馆（SillyTavern／社区）导出的条目位置是数字，与本项目的四种位置对得上：
+ * 0=角色定义前／1=角色定义后／2=作者注释顶／3=作者注释底／4=示例对话顶／5=示例对话底。
+ * 后两种（示例对话）我们没有对应的格子，落到「对话后」，别丢。
+ */
+function mapNumericPosition(value: number): EntryPosition {
+  if (value === 0) return "role_before";
+  if (value === 1) return "role_after";
+  if (value === 2) return "chat_before";
+  return "chat_after";
+}
+
+/** 关键词：本项目是逗号分隔的字符串，酒馆是字符串阵列，两种都收。 */
+function readKeys(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (!Array.isArray(value)) return "";
+  return value
+    .filter((k): k is string => typeof k === "string")
+    .map((k) => k.trim())
+    .filter(Boolean)
+    .join(",");
+}
+
+/**
+ * 收录时把一条原始条目归一成项目里的条目，两种来源格式都过这里。
+ *
+ * ⚠️ 1.6.8 之前这里只认自家的写法——`entries` 得是**阵列**，关键词栏位叫 `keys`、
+ * 停用叫 `disabled`、位置是字符串。而酒馆／社区导出的书 `entries` 是**对象**
+ * （键是序号），条目里关键词叫 `key`（阵列）、备注叫 `comment`、停用叫 `disable`、
+ * 位置是**数字** —— 于是整本书被收进来却一条条目都没有，界面还报「收录成功」。
+ * 恩熙报的「活人感世界书插到别的小手机就好使、插到咱们这儿一点反应没有」，
+ * 就是这条（见施工日志第 613 条）。
+ */
+function normalizeImportedEntry(
+  raw: Record<string, unknown>,
+  now: string,
+): WorldBookEntry | null {
+  const content = typeof raw.content === "string" ? raw.content.trim() : "";
+  /* 没正文的条目永远注不进提示词，不入库——省得书架里躺一堆空条目。 */
+  if (!content) return null;
+  return {
+    id: uuid(),
+    title:
+      typeof raw.title === "string"
+        ? raw.title
+        : typeof raw.comment === "string"
+          ? raw.comment
+          : "",
+    keys: readKeys(raw.keys ?? raw.key),
+    content,
+    constant: raw.constant === true,
+    /* 自家叫 disabled，酒馆叫 disable，两个都认。 */
+    disabled: raw.disabled === true || raw.disable === true,
+    position:
+      typeof raw.position === "number"
+        ? mapNumericPosition(raw.position)
+        : normalizeEntryPosition(raw.position),
+    probability:
+      typeof raw.probability === "number" && raw.probability >= 0 && raw.probability <= 100
+        ? Math.round(raw.probability)
+        : 100,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+/** 条目列表归一：`entries` 是阵列（自家）或对象（酒馆，键是序号）都认。 */
+function normalizeImportedEntries(value: unknown, now: string): WorldBookEntry[] {
+  const rows: Record<string, unknown>[] = Array.isArray(value)
+    ? (value.filter((e) => typeof e === "object" && e !== null) as Record<string, unknown>[])
+    : typeof value === "object" && value !== null
+      ? (Object.values(value).filter(
+          (e) => typeof e === "object" && e !== null,
+        ) as Record<string, unknown>[])
+      : [];
+  return rows
+    .map((e) => normalizeImportedEntry(e, now))
+    .filter((e): e is WorldBookEntry => e !== null);
+}
+
 /* ----------------------------- 导入 ----------------------------- */
 
 /**
  * 批量收录世界书：重编书与条目 id 后追加到书架（不覆盖现有书）。
  * 条目缺省栏位自动补默认值，坏行跳过不中断。
- * 返回 [收录后的完整书架, 成功条数]。
+ * 返回 [收录后的完整书架, 收录的书数, 收录的条目数]。
  */
 export async function importWorldBooks(
   incoming: unknown[],
-): Promise<[WorldBook[], number]> {
+): Promise<[WorldBook[], number, number]> {
   const books = await getWorldBooks();
   const now = new Date().toISOString();
-  let count = 0;
+  let bookCount = 0;
+  let entryCount = 0;
 
   const parsed: WorldBook[] = [];
   incoming.forEach((raw) => {
     if (typeof raw !== "object" || raw === null) return;
     const b = raw as Record<string, unknown>;
-    const entries = Array.isArray(b.entries) ? b.entries : [];
+    const entries = normalizeImportedEntries(b.entries, now);
+    /* 一条都没落进来的书不入库：从前照收，书架里多出一本空书、界面还报「收录成功」，
+       等于把「格式没收进来」这件事悄悄咽掉（1.6.8 改，原因见上面那条注释）。 */
+    if (entries.length === 0) return;
     const book: WorldBook = {
       id: uuid(),
       name: typeof b.name === "string" && b.name ? b.name : "收录之书",
@@ -166,23 +257,10 @@ export async function importWorldBooks(
       scope:
         b.scope === "online" || b.scope === "offline" ? b.scope : "global",
       boundCharacterIds: [],
-      entries: entries
-        .filter((e): e is Record<string, unknown> => typeof e === "object" && e !== null)
-        .map((e) => ({
-          id: uuid(),
-          title: typeof e.title === "string" ? e.title : "",
-          keys: typeof e.keys === "string" ? e.keys : "",
-          content: typeof e.content === "string" ? e.content : "",
-          constant: e.constant === true,
-          disabled: e.disabled === true,
-          position: normalizeEntryPosition(e.position),
-          probability:
-            typeof e.probability === "number" && e.probability >= 0 && e.probability <= 100
-              ? Math.round(e.probability)
-              : 100,
-          createdAt: now,
-          updatedAt: now,
-        })),
+      boundCategoryIds: Array.isArray(b.boundCategoryIds)
+        ? b.boundCategoryIds.filter((x): x is string => typeof x === "string")
+        : [],
+      entries,
       createdAt: now,
       updatedAt: now,
     };
@@ -196,10 +274,12 @@ export async function importWorldBooks(
       book.boundCharacterIds = b.boundCharacterIds as string[];
     }
     parsed.push(book);
-    count += 1;
+    bookCount += 1;
+    entryCount += entries.length;
   });
 
   const merged = [...parsed, ...books];
-  await saveWorldBooks(merged);
-  return [merged, count];
+  /* 一本都没收进来就别写库（否则只是把原样读出来的书架原样写回去）。 */
+  if (parsed.length > 0) await saveWorldBooks(merged);
+  return [merged, bookCount, entryCount];
 }

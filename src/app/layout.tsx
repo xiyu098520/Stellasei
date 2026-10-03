@@ -5,6 +5,8 @@ import "./globals.css";
 import "./lxgw-wenkai.css";
 // 志莽行（同样自托管、按码点分块）：世界书牌面上书名那一版手写行书，见文件内注释。
 import "./zhi-mang-xing.css";
+// 朱雀仿宋（同样自托管、按码点分块）：私密心声那一页说心声用的字，见文件内注释。
+import "./zhuque-fangsong.css";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",

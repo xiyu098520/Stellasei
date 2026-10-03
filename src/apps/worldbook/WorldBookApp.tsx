@@ -14,8 +14,8 @@ import {
   updateEntry,
   updateWorldBook,
 } from "@/lib/settings/worldbook";
-import { getArchives } from "@/lib/settings/contact";
-import type { ArchiveEntry } from "@/types/contact";
+import { getArchives, getCategories } from "@/lib/settings/contact";
+import type { ArchiveCategory, ArchiveEntry } from "@/types/contact";
 import {
   POSITION_META,
   SCOPE_META,
@@ -295,6 +295,8 @@ function RuneField({
 export default function WorldBookApp() {
   const [books, setBooks] = useState<WorldBook[] | null>(null);
   const [archives, setArchives] = useState<ArchiveEntry[] | null>(null);
+  /* 档案的「世界」（分类）：绑定面板里除了角色还能绑一整个世界。 */
+  const [archiveCategories, setArchiveCategories] = useState<ArchiveCategory[]>([]);
   const [failed, setFailed] = useState(false);
   const [openBookId, setOpenBookId] = useState<string | null>(null);
   const [confirmDeleteBook, setConfirmDeleteBook] = useState<string | null>(null);
@@ -359,10 +361,14 @@ export default function WorldBookApp() {
         if (valid.length === 0) {
           msg = "收录失败：文件里没有可识别的牌";
         } else {
-          void importWorldBooks(valid).then(([merged, count]) => {
+          void importWorldBooks(valid).then(([merged, count, entryCount]) => {
             setBooks(merged);
+            /* 一本书都没落进来＝文件里的条目格式咱们认不出（从前这里照报「收录成功」，
+               书架里只多出一本空书，等于把「没收进来」咽掉了——1.6.8 改成如实报）。 */
             setImportMsg(
-              `收录成功 · ${count} 张已落桌${list.length > valid.length ? `（跳过 ${list.length - valid.length} 个无效项）` : ""}`,
+              count === 0
+                ? "收录失败：牌里没有能读出来的设定条目"
+                : `收录成功 · ${count} 张已落桌、${entryCount} 条设定${list.length > valid.length ? `（跳过 ${list.length - valid.length} 个无效项）` : ""}`,
             );
             setTimeout(() => setImportMsg(""), 4000);
           });
@@ -381,6 +387,7 @@ export default function WorldBookApp() {
   const load = useCallback(async () => {
     try {
       setBooks(await getWorldBooks());
+      setArchiveCategories(await getCategories());
       setFailed(false);
     } catch {
       setFailed(true);
@@ -396,6 +403,13 @@ export default function WorldBookApp() {
       })
       .catch(() => {
         if (alive) setFailed(true);
+      });
+    getCategories()
+      .then((list) => {
+        if (alive) setArchiveCategories(list);
+      })
+      .catch(() => {
+        if (alive) setArchiveCategories([]);
       });
     getArchives()
       .then((list) => {
@@ -460,6 +474,7 @@ export default function WorldBookApp() {
           key={openBook.id}
           book={openBook}
           index={books.findIndex((b) => b.id === openBook.id)}
+          archiveCategories={archiveCategories}
           archives={archives ?? []}
           onBack={() => {
             /* 回到牌桌：刚才翻过去的那张要转回来。 */
@@ -610,7 +625,7 @@ export default function WorldBookApp() {
               const book = await createWorldBook();
               await load();
               /* 新落的牌在末位，转盘跟着移到它身上
-                 （books 是这一帧的旧表，其长度正好是新书的下标）。 */
+                 （books 是这一帧的旧表，长度正好是新书的座位号）。 */
               setPage(books.length);
               setOpenBookId(book.id);
             }}
@@ -948,6 +963,7 @@ export default function WorldBookApp() {
 function BookDetail({
   book,
   index,
+  archiveCategories,
   archives,
   onBack,
   onPatchBook,
@@ -960,6 +976,8 @@ function BookDetail({
   /* 这一册在牌桌上的位次（0 起）。牌面上印的是「第几张」，详情页顶上那行「第 N 册」
      得跟牌桌上数得对得上，所以这个数不从 book 里读，由牌桌那边数出来传进来。 */
   index: number;
+  /** 档案的「世界」（分类）：绑定面板里能整世界一起绑。 */
+  archiveCategories: ArchiveCategory[];
   archives: ArchiveEntry[];
   onBack: () => void;
   onPatchBook: (patch: Partial<Omit<WorldBook, "id" | "entries">>) => void;
@@ -974,6 +992,8 @@ function BookDetail({
   const [desc, setDesc] = useState(book.description);
   const [scope, setScope] = useState<WorldBookScope>(book.scope);
   const [boundIds, setBoundIds] = useState<string[]>(book.boundCharacterIds);
+  /* 绑定的世界（档案分类）：这个世界里的角色全都能读到这张牌。 */
+  const [boundCatIds, setBoundCatIds] = useState<string[]>(book.boundCategoryIds || []);
   const [pickerOpen, setPickerOpen] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -983,6 +1003,7 @@ function BookDetail({
       description: string;
       scope: WorldBookScope;
       boundCharacterIds: string[];
+      boundCategoryIds: string[];
     }) => {
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(() => {
@@ -994,18 +1015,26 @@ function BookDetail({
   );
 
   const patchBookField = (
-    next: Partial<{ name: string; desc: string; scope: WorldBookScope; boundIds: string[] }>,
+    next: Partial<{
+      name: string;
+      desc: string;
+      scope: WorldBookScope;
+      boundIds: string[];
+      boundCatIds: string[];
+    }>,
   ) => {
     const merged = {
       name: next.name !== undefined ? next.name : name,
       description: next.desc !== undefined ? next.desc : desc,
       scope: next.scope !== undefined ? next.scope : scope,
       boundCharacterIds: next.boundIds !== undefined ? next.boundIds : boundIds,
+      boundCategoryIds: next.boundCatIds !== undefined ? next.boundCatIds : boundCatIds,
     };
     setName(merged.name);
     setDesc(merged.description);
     setScope(merged.scope);
     setBoundIds(merged.boundCharacterIds);
+    setBoundCatIds(merged.boundCategoryIds);
     scheduleSave(merged);
   };
 
@@ -1095,7 +1124,7 @@ function BookDetail({
         </RuneField>
 
         <RuneField label="角色" className="relative mt-4">
-          {archives.length > 0 ? (
+          {archives.length > 0 || archiveCategories.length > 0 ? (
             <button
               type="button"
               onClick={() => setPickerOpen(true)}
@@ -1104,13 +1133,24 @@ function BookDetail({
             >
               <span
                 className="truncate text-[12px]"
-                style={{ color: boundIds.length === 0 ? ARCANA_INK_FAINT : ARCANA_INK }}
+                style={{
+                  color:
+                    boundIds.length === 0 && boundCatIds.length === 0
+                      ? ARCANA_INK_FAINT
+                      : ARCANA_INK,
+                }}
               >
-                {boundIds.length === 0
+                {boundIds.length === 0 && boundCatIds.length === 0
                   ? "所有角色"
-                  : boundIds
-                      .map((id) => archives.find((a) => a.id === id)?.data.name ?? "已删角色")
-                      .join("、")}
+                  : [
+                      ...boundCatIds.map(
+                        (id) =>
+                          `${archiveCategories.find((c) => c.id === id)?.name ?? "已删的世界"}（世界）`,
+                      ),
+                      ...boundIds.map(
+                        (id) => archives.find((a) => a.id === id)?.data.name ?? "已删角色",
+                      ),
+                    ].join("、")}
               </span>
               <ChevronDown size={14} strokeWidth={1.6} className="ml-2 shrink-0 text-[rgba(168,138,80,0.55)]" />
             </button>
@@ -1118,9 +1158,9 @@ function BookDetail({
             <p className="text-[10px]" style={{ color: ARCANA_INK_FAINT }}>档案中还没有唤醒的角色</p>
           )}
           <p className="mt-1.5 text-[9px]" style={{ color: ARCANA_INK_FAINT }}>
-            {boundIds.length === 0
+            {boundIds.length === 0 && boundCatIds.length === 0
               ? "所有角色的对话都会读到这张牌"
-              : `仅这 ${boundIds.length} 位角色的对话会读到这张牌`}
+              : `仅这 ${boundCatIds.length} 个世界与 ${boundIds.length} 位角色的对话会读到这张牌`}
           </p>
         </RuneField>
       </section>
@@ -1245,11 +1285,13 @@ function BookDetail({
       </div>
       </AppChrome>
 
-      {/* 绑定角色勾选面板（底部动作面板，多选） */}
+      {/* 绑定面板（底部动作面板，多选）：世界一节＋角色一节。 */}
       {pickerOpen ? (
         <CharacterPicker
           archives={archives}
+          categories={archiveCategories}
           selected={boundIds}
+          selectedCats={boundCatIds}
           onToggle={(id) =>
             patchBookField({
               boundIds: boundIds.includes(id)
@@ -1257,7 +1299,14 @@ function BookDetail({
                 : [...boundIds, id],
             })
           }
-          onSelectAll={() => patchBookField({ boundIds: [] })}
+          onToggleCat={(id) =>
+            patchBookField({
+              boundCatIds: boundCatIds.includes(id)
+                ? boundCatIds.filter((x) => x !== id)
+                : [...boundCatIds, id],
+            })
+          }
+          onSelectAll={() => patchBookField({ boundIds: [], boundCatIds: [] })}
           onClose={() => setPickerOpen(false)}
         />
       ) : null}
@@ -1572,23 +1621,31 @@ function EntryCard({
 }
 
 /* =======================================================================
- * 绑定角色勾选面板：底部动作面板，多选（iOS 底部弹层手感）
+ * 绑定面板：底部动作面板，多选——先「世界」一节（整世界一起绑），再逐个角色。
+ * 「所有角色」＝世界与角色两个都清空（老规矩不变）。
  * ===================================================================== */
 
 function CharacterPicker({
   archives,
+  categories,
   selected,
+  selectedCats,
   onToggle,
+  onToggleCat,
   onSelectAll,
   onClose,
 }: {
   archives: ArchiveEntry[];
+  /** 档案的世界（分类）：勾一个＝这个世界里的角色全绑上（角色挪进挪出跟着档案走）。 */
+  categories: ArchiveCategory[];
   selected: string[];
+  selectedCats: string[];
   onToggle: (id: string) => void;
+  onToggleCat: (id: string) => void;
   onSelectAll: () => void;
   onClose: () => void;
 }) {
-  const allActive = selected.length === 0;
+  const allActive = selected.length === 0 && selectedCats.length === 0;
 
   const row = (
     key: string,
@@ -1648,11 +1705,10 @@ function CharacterPicker({
         {/* 拖动指示条 */}
         <div className="mx-auto mb-3 h-[3px] w-9 rounded-full" style={{ background: "rgba(237,231,218,0.22)" }} />
 
-        {/* 题头跟详情页的解析区一个写法：左边一个词、中间一条起笔有头的金线、右边一件事。
-            （原先只是「左一个词、右一个按钮」，两件东西各自漂着。） */}
+        {/* 题头跟详情页的解析区一个写法：左边一个词、中间一条起笔有头的金线、右边一件事。 */}
         <div className="mb-1 flex items-center gap-3">
           <span className="shrink-0 text-[10px] tracking-[0.4em]" style={{ color: ARCANA_INK_FAINT }}>
-            绑定角色
+            绑定
           </span>
           <RuleLine className="flex-1" />
           <button
@@ -1666,9 +1722,43 @@ function CharacterPicker({
         </div>
 
         {row("all", "所有角色", allActive, onSelectAll, "不指定绑定，谁都能读到")}
-        {archives.map((a) =>
-          row(a.id, a.data.name || "未命名", selected.includes(a.id), () => onToggle(a.id)),
-        )}
+
+        {/* 世界一节：勾一个世界＝这个世界里的角色全都绑上（活名单，跟着档案走）。
+            没有自订世界时这一节整个不露（只剩「所有角色」与角色行，跟从前一个样子）。 */}
+        {categories.length > 0 ? (
+          <div className="mt-2">
+            <div className="mb-1 flex items-center gap-3">
+              <span className="shrink-0 text-[9px] tracking-[0.34em]" style={{ color: ARCANA_INK_FAINT }}>
+                世界
+              </span>
+              <RuleLine className="flex-1" />
+            </div>
+            {categories.map((c) =>
+              row(
+                `cat-${c.id}`,
+                c.name,
+                selectedCats.includes(c.id),
+                () => onToggleCat(c.id),
+                "这个世界里的角色，对话都读这张牌",
+              ),
+            )}
+          </div>
+        ) : null}
+
+        {/* 角色一节：逐个挑。 */}
+        {archives.length > 0 ? (
+          <div className="mt-2">
+            <div className="mb-1 flex items-center gap-3">
+              <span className="shrink-0 text-[9px] tracking-[0.34em]" style={{ color: ARCANA_INK_FAINT }}>
+                角色
+              </span>
+              <RuleLine className="flex-1" />
+            </div>
+            {archives.map((a) =>
+              row(a.id, a.data.name || "未命名", selected.includes(a.id), () => onToggle(a.id)),
+            )}
+          </div>
+        ) : null}
       </div>
     </div>
   );

@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>主题样式生成 · 10 套预设</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;background:#f6f6f7;color:#1b1a1e;padding:44px 24px 72px;
+       font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+       -webkit-font-smoothing:antialiased}
+  header{max-width:1180px;margin:0 auto 34px}
+  h1{font-size:23px;font-weight:600;letter-spacing:.01em;margin:0 0 10px}
+  .sub{margin:0;color:#6d6c75;font-size:14px;line-height:1.85}
+  .sub b{color:#1b1a1e;font-weight:600}
+  .grid{display:grid;gap:20px;max-width:1180px;margin:0 auto;
+        grid-template-columns:repeat(auto-fill,minmax(286px,1fr))}
+  .card{background:#fff;border-radius:16px;overflow:hidden;
+        box-shadow:0 1px 2px rgba(0,0,0,.05),0 10px 26px rgba(0,0,0,.055)}
+  .band{display:flex;height:52px}
+  .band i{flex:1}
+  .body{padding:15px 18px 18px}
+  .name{font-size:15px;font-weight:600;margin:0 0 3px}
+  .en{font-size:11.5px;color:#93929b;letter-spacing:.06em;text-transform:uppercase;margin:0 0 11px}
+  .use{font-size:12.5px;color:#6d6c75;line-height:1.65;margin:0 0 14px;min-height:33px}
+  .demo{border-radius:13px;padding:12px 12px 14px;display:flex;flex-direction:column;gap:7px}
+  .b{max-width:78%;border-radius:14px;padding:7px 11px;font-size:12.5px;line-height:1.5}
+  .b.ot{align-self:flex-start;border-bottom-left-radius:4px}
+  .b.me{align-self:flex-end;border-bottom-right-radius:4px}
+</style>
+</head>
+<body>
+<header>
+  <h1>主题样式生成 · 10 套预设</h1>
+  <p class="sub">这个技能自带 10 套配色，每套都是<b>搭好的一整组</b>——底色、主色、点缀色、文字色配在一起，不用自己凑。<br>
+  每张卡：上面一条色带，下面是套上去之后的聊天样子。你看中哪套，我就按它把咱 App 那一页整套换过去。</p>
+</header>
+<div class="grid" id="g"></div>
+<script>
+const T = [
+  {n:"Ocean Depths", zh:"海洋深处", use:"专业、沉静，深蓝的海",
+   band:["#1a2332","#2d8b8b","#a8dadc","#f1faee"],
+   base:"#1a2332", me:["#2d8b8b","#f1faee"], ot:["#a8dadc","#1a2332"]},
+  {n:"Sunset Boulevard", zh:"落日大道", use:"暖、亮，夕阳那会儿的颜色",
+   band:["#e76f51","#f4a261","#e9c46a","#264653"],
+   base:"#264653", me:["#e76f51","#fff7f2"], ot:["#e9c46a","#264653"]},
+  {n:"Forest Canopy", zh:"林间树冠", use:"自然、稳，草本的土色",
+   band:["#2d4a2b","#7d8471","#a4ac86","#faf9f6"],
+   base:"#faf9f6", me:["#2d4a2b","#faf9f6"], ot:["#a4ac86","#233620"]},
+  {n:"Modern Minimalist", zh:"现代极简", use:"干净、当代，黑白灰",
+   band:["#36454f","#708090","#d3d3d3","#ffffff"],
+   base:"#ffffff", me:["#36454f","#ffffff"], ot:["#d3d3d3","#36454f"]},
+  {n:"Golden Hour", zh:"金色时刻", use:"浓郁、温暖，秋天的调子",
+   band:["#f4a900","#c1666b","#d4b896","#4a403a"],
+   base:"#d4b896", me:["#f4a900","#4a403a"], ot:["#c1666b","#fdf4ec"]},
+  {n:"Arctic Frost", zh:"极地霜色", use:"清爽、利落，冬天的冷调",
+   band:["#d4e4f7","#4a6fa5","#c0c0c0","#fafafa"],
+   base:"#fafafa", me:["#4a6fa5","#ffffff"], ot:["#d4e4f7","#33507a"]},
+  {n:"Desert Rose", zh:"沙漠玫瑰", use:"柔、雅，褪了色的暖灰粉",
+   band:["#d4a5a5","#b87d6d","#e8d5c4","#5d2e46"],
+   base:"#e8d5c4", me:["#5d2e46","#e8d5c4"], ot:["#d4a5a5","#4a2438"]},
+  {n:"Tech Innovation", zh:"科技感", use:"冲、亮，高对比的科技味",
+   band:["#0066ff","#00ffff","#1e1e1e","#ffffff"],
+   base:"#1e1e1e", me:["#0066ff","#ffffff"], ot:["#00ffff","#1e1e1e"]},
+  {n:"Botanical Garden", zh:"植物园", use:"新鲜、有生气，花园色",
+   band:["#4a7c59","#f9a620","#b7472a","#f5f3ed"],
+   base:"#f5f3ed", me:["#4a7c59","#f5f3ed"], ot:["#f9a620","#231a0d"]},
+  {n:"Midnight Galaxy", zh:"午夜星河", use:"戏剧、幽深，宇宙的紫",
+   band:["#2b1e3e","#4a4e8f","#a490c2","#e6e6fa"],
+   base:"#2b1e3e", me:["#4a4e8f","#e6e6fa"], ot:["#a490c2","#2b1e3e"]}
+];
+document.getElementById("g").innerHTML = T.map(t => `
+  <div class="card">
+    <div class="band">${t.band.map(c => `<i style="background:${c}"></i>`).join("")}</div>
+    <div class="body">
+      <p class="name">${t.zh}</p>
+      <p class="en">${t.n}</p>
+      <p class="use">${t.use}</p>
+      <div class="demo" style="background:${t.base}">
+        <div class="b ot" style="background:${t.ot[0]};color:${t.ot[1]}">你今天出门带伞了吗</div>
+        <div class="b me" style="background:${t.me[0]};color:${t.me[1]}">带了，你别操心我</div>
+      </div>
+    </div>
+  </div>`).join("");
+</script>
+</body>
+</html>

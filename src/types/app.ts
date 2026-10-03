@@ -12,6 +12,7 @@ export type AppId =
   | "worldbook" // 世界书
   | "memory" // 类人记忆
   | "rhythm" // 生活节奏（一期以设定/状态呈现，不一定有独立入口）
+  | "peek" // 查手机（翻 TA 的手机：钱包／零钱）
   | "beautify" // 美化（布局／桌布／主题）
   | "settings"; // 设置（API、存储、云同步）
 
