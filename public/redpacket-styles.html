@@ -69,97 +69,75 @@
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .rp .sub { margin-top: 5px; font-size: 9.5px; letter-spacing: .28em; }
-  /* 照片占位：一帧安静的暮色 */
   .rp .photo {
     position: absolute; inset: 0; z-index: 0;
     background:
       radial-gradient(90% 60% at 72% 12%, rgba(255,238,216,.55) 0%, rgba(255,238,216,0) 58%),
       linear-gradient(155deg, #F6D9C4 0%, #E6B0BA 40%, #A88CAD 70%, #6E7599 100%);
   }
-  /* 照片上垫一层薄纱，字才读得清 */
   .rp .scrim { position: absolute; inset: 0; z-index: 1; opacity: 0; }
   .rp.has-photo .scrim { opacity: 1; }
-  /* 领完之后淡上来的浅色渐层 */
+  /* 已领取：浅浅一层粉白纱盖在底上、字在纱上面，所以字还看得清 */
   .rp .veil {
-    position: absolute; inset: 0; z-index: 6; pointer-events: none;
-    background: linear-gradient(158deg, rgba(255,248,252,.9) 0%, rgba(253,236,245,.92) 50%, rgba(250,224,239,.94) 100%);
-  }
-  .rp.claimed .note { color: #A4507A; text-shadow: none; }
-  .rp.claimed .sub { color: rgba(164,80,122,.8); }
-  .rp.claimed .ring, .rp.claimed .spark, .rp.claimed .ribbon { filter: saturate(.5) brightness(1.06); }
-
-  /* ───────────── 甲 · 暖玉封 ───────────── */
-  /* 没有红纸，没有字。一层焐热的暖杏金，右缘一枚空心金环，光从环里透出来。 */
-  .rp-a {
-    color: #8C4A3F;
-    background: linear-gradient(146deg, #FCE9D6 0%, #F5D0AC 40%, #EAAD8E 74%, #DE9179 100%);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.65), 0 12px 24px -14px rgba(176,96,72,.7);
-  }
-  .rp-a .ring {
-    position: relative; z-index: 3; flex: none; margin-left: 10px;
-    width: 30px; height: 30px; border-radius: 50%;
-    border: 2px solid rgba(189,139,63,.78);
-    box-shadow: inset 0 0 0 3px rgba(255,251,243,.42), 0 0 13px rgba(255,214,160,.65);
-  }
-  .rp-a .ring::after {
-    content: ""; position: absolute; inset: 21%; border-radius: 50%;
-    background: radial-gradient(circle, rgba(255,247,231,.98) 0%, rgba(247,214,160,.42) 68%, rgba(247,214,160,0) 100%);
-  }
-  .rp-a .note { text-shadow: 0 1px 1px rgba(255,255,255,.55); }
-  .rp-a .sub { color: rgba(140,74,63,.6); }
-  .rp-a .scrim { background: linear-gradient(90deg, rgba(255,247,238,.88) 0%, rgba(255,245,234,.62) 58%, rgba(255,245,234,.3) 100%); }
-
-  /* ───────────── 乙 · 折光封 ───────────── */
-  /* 墨绛的底，一道暖光斜斜地穿过卡面，右上角起了柔晕。安静的、暗处透出来的光。 */
-  .rp-b {
-    color: #F7E6D6;
-    background: linear-gradient(150deg, #291A22 0%, #3E1F2B 56%, #582536 100%);
-    box-shadow: inset 0 1px 0 rgba(255,200,150,.14), 0 14px 26px -16px rgba(40,12,26,.82);
-  }
-  .rp-b .glow {
-    position: absolute; right: -22px; top: -30px; width: 128px; height: 128px; z-index: 1;
-    background: radial-gradient(circle, rgba(255,194,128,.4) 0%, rgba(255,194,128,0) 68%);
-  }
-  .rp-b .beam {
     position: absolute; inset: 0; z-index: 2; pointer-events: none;
-    background: linear-gradient(116deg, rgba(255,206,150,0) 40%, rgba(255,206,150,.42) 50%, rgba(255,206,150,0) 60%);
+    background: linear-gradient(158deg, rgba(255,248,252,.86) 0%, rgba(253,236,245,.88) 50%, rgba(250,224,239,.9) 100%);
   }
-  .rp-b .spark {
-    position: relative; z-index: 3; flex: none; margin-left: 10px;
-    width: 13px; height: 13px; border-radius: 2px;
-    transform: rotate(45deg);
-    background: linear-gradient(140deg, #F8DCAE 0%, #D9A55E 100%);
-    box-shadow: 0 0 11px rgba(255,200,130,.75);
-  }
-  .rp-b .note { text-shadow: 0 1px 3px rgba(20,6,14,.7); }
-  .rp-b .sub { color: rgba(247,214,182,.58); }
-  .rp-b .scrim { background: linear-gradient(90deg, rgba(30,10,20,.72) 0%, rgba(30,10,20,.42) 60%, rgba(30,10,20,.18) 100%); }
+  .rp.claimed .note { color: #A4507A; }
+  .rp.claimed .sub { color: rgba(164,80,122,.8); }
 
-  /* ───────────── 丙 · 缎封 ───────────── */
-  /* app 家底的粉笺，左缘一道粉编目条，右侧斜过一条缎带、打一个菱形结。像礼物已经包好了。 */
+  /* ─────────── 甲 · 墨笺 ───────────
+     墨底、暖白字。左边一道极细金线做立柱，把两行字托起来。
+     投影是柔的、深的——夜里那一点暖。 */
+  .rp-a {
+    color: #FFF6EA;
+    background: linear-gradient(168deg, #2A232A 0%, #211B21 55%, #191519 100%);
+    box-shadow:
+      0 12px 26px -14px rgba(20,19,24,.62),
+      0 2px 6px -4px rgba(20,19,24,.42);
+  }
+  .rp-a .post {
+    position: absolute; left: 14px; top: 50%; width: 2px; height: 26px;
+    transform: translateY(-50%); border-radius: 2px; z-index: 2;
+    background: linear-gradient(180deg, #EBCB86 0%, #C1933F 100%);
+  }
+  .rp-a .body { padding-left: 13px; }
+  .rp-a .note { color: #FFF6EA; }
+  .rp-a .sub { color: rgba(255,226,188,.6); }
+  .rp-a .scrim { background: linear-gradient(90deg, rgba(12,8,10,.68) 0%, rgba(12,8,10,.36) 58%, rgba(12,8,10,.08) 100%); }
+
+  /* ─────────── 乙 · 素笺 ───────────
+     暖白纸、墨字。左边一道 app 粉竖签（4px），
+     纸影用家底的硬偏移 3px 3px 0——最像自家东西的一版。 */
+  .rp-b {
+    color: #241E24;
+    background: linear-gradient(170deg, #FFFEFA 0%, #FFF8F3 100%);
+    box-shadow:
+      3px 3px 0 rgba(20,19,24,.08),
+      0 14px 26px -18px rgba(120,90,110,.62);
+  }
+  .rp-b .bar {
+    position: absolute; left: 0; top: 0; bottom: 0; width: 4px; z-index: 2;
+    background: #E86A9B;
+  }
+  .rp-b .body { padding-left: 7px; }
+  .rp-b .note { color: #241E24; }
+  .rp-b .sub { color: rgba(42,33,38,.46); }
+  .rp-b .scrim { background: linear-gradient(90deg, rgba(255,252,249,.94) 0%, rgba(255,250,246,.7) 55%, rgba(20,14,22,.34) 100%); }
+
+  /* ─────────── 丙 · 粉笺 ───────────
+     粉纸、莓色字。全靠排版：字级拉大、署名拉开、行距松，
+     投影带一层粉晕。最轻的一版。 */
   .rp-c {
-    color: #A4507A;
-    background: linear-gradient(166deg, #FCE0EF 0%, #F8CFE4 60%, #F5C3DE 100%);
-    border-left: 4px solid #E86A9B;
-    box-shadow: 3px 3px 0 rgba(20,19,24,.06), 0 12px 24px -16px rgba(178,105,142,.62);
+    color: #7E2C4E;
+    background: linear-gradient(165deg, #FFF2F8 0%, #FBE0ED 100%);
+    box-shadow:
+      0 12px 26px -14px rgba(200,110,155,.6),
+      0 2px 8px -6px rgba(200,110,155,.4);
   }
-  .rp-c .ribbon {
-    position: absolute; z-index: 2; pointer-events: none;
-    right: -16px; top: -14px; width: 20px; height: 74px;
-    transform: rotate(42deg); transform-origin: top right;
-    background: linear-gradient(180deg, #C6405F 0%, #97284A 100%);
-    box-shadow: 0 2px 9px -2px rgba(140,26,60,.45);
-  }
-  .rp-c .ribbon::after {
-    content: ""; position: absolute; left: 50%; top: 46%;
-    width: 13px; height: 13px; border-radius: 1px;
-    transform: translate(-50%,-50%) rotate(45deg);
-    background: linear-gradient(140deg, #D2506C 0%, #A82A4C 100%);
-    box-shadow: inset 0 0 0 1px rgba(255,224,196,.55), 0 0 8px rgba(140,26,60,.4);
-  }
-  .rp-c .body { padding-right: 46px; }
-  .rp-c .note { color: #A4507A; }
-  .rp-c .scrim { background: linear-gradient(90deg, rgba(255,252,249,.9) 0%, rgba(255,250,246,.7) 55%, rgba(255,250,246,.42) 100%); }
+  .rp-c .body { padding-left: 2px; }
+  .rp-c .note { color: #7E2C4E; font-size: 15px; letter-spacing: .02em; }
+  .rp-c .sub { color: rgba(126,44,78,.5); letter-spacing: .34em; margin-top: 6px; }
+  .rp-c .scrim { background: linear-gradient(90deg, rgba(255,250,246,.92) 0%, rgba(255,248,246,.66) 55%, rgba(255,248,246,.32) 100%); }
 
   footer {
     margin-top: 40px; padding-top: 18px;
@@ -173,7 +151,7 @@
   <header>
     <h1>红包 · 发出来的样子</h1>
     <div class="rule"></div>
-    <p>三版方向，都没有字、没有「福」——只留红包那份暖。<br>每版三种状态：默认封面 · 自定义照片 · 已领取。尺寸跟聊天里那张卡一模一样（228×76）。</p>
+    <p>只做卡本身——颜色、阴影、排版。没有图案、没有字。<br>每版三种状态：默认封面 · 自定义照片 · 已领取。尺寸跟聊天里那张卡一模一样（228×76）。</p>
   </header>
   <div class="zoom-row">
     <button id="z1" class="on" type="button">原大</button>
@@ -181,79 +159,74 @@
   </div>
 
   <section class="ver">
-    <div class="ver-head"><span class="tag">甲</span><span class="name">暖玉封</span></div>
-    <p class="desc">一层焐热的暖杏金，右缘一枚空心金环，环里透出柔光。像把心意温在一方玉里——暖、亮、净，离红纸那套最远。</p>
+    <div class="ver-head"><span class="tag">甲</span><span class="name">墨笺</span></div>
+    <p class="desc">墨底配暖白字，左边一道极细金线做立柱。投影柔而深，夜里那一点暖——照片放上去也压得住。</p>
     <div class="chat">
       <span class="state-label">默认封面 · 未领</span>
       <div class="rp rp-a">
+        <div class="post"></div>
         <div class="body"><div class="note">恭喜发财，大吉大利</div><div class="sub">星绥红包</div></div>
-        <div class="ring"></div>
       </div>
       <span class="state-label">自定义照片 · 未领</span>
       <div class="rp rp-a has-photo">
-        <div class="photo"></div><div class="scrim"></div>
+        <div class="photo"></div><div class="scrim"></div><div class="post"></div>
         <div class="body"><div class="note">去看晚霞吧</div><div class="sub">星绥红包</div></div>
-        <div class="ring"></div>
       </div>
       <span class="state-label">已领取</span>
       <div class="rp rp-a claimed">
+        <div class="post"></div>
         <div class="body"><div class="note">恭喜发财，大吉大利</div><div class="sub">他已领取</div></div>
-        <div class="ring"></div>
         <div class="veil"></div>
       </div>
     </div>
   </section>
 
   <section class="ver">
-    <div class="ver-head"><span class="tag">乙</span><span class="name">折光封</span></div>
-    <p class="desc">墨绛的底，一道暖光斜斜穿过卡面，右上角起了柔晕、落一点金。安静、克制，像红包在暗处透出来的那点光。</p>
+    <div class="ver-head"><span class="tag">乙</span><span class="name">素笺</span></div>
+    <p class="desc">暖白纸配墨字，左边一道 app 粉竖签；纸影用家底那记硬偏移（3px 3px 0）。最像自家东西的一版。</p>
     <div class="chat">
       <span class="state-label">默认封面 · 未领</span>
       <div class="rp rp-b">
-        <div class="glow"></div><div class="beam"></div>
+        <div class="bar"></div>
         <div class="body"><div class="note">恭喜发财，大吉大利</div><div class="sub">星绥红包</div></div>
-        <div class="spark"></div>
       </div>
       <span class="state-label">自定义照片 · 未领</span>
       <div class="rp rp-b has-photo">
-        <div class="photo"></div><div class="scrim"></div><div class="beam"></div>
+        <div class="photo"></div><div class="scrim"></div><div class="bar"></div>
         <div class="body"><div class="note">去看晚霞吧</div><div class="sub">星绥红包</div></div>
-        <div class="spark"></div>
       </div>
       <span class="state-label">已领取</span>
       <div class="rp rp-b claimed">
+        <div class="bar"></div>
         <div class="body"><div class="note">恭喜发财，大吉大利</div><div class="sub">他已领取</div></div>
-        <div class="spark"></div>
         <div class="veil"></div>
       </div>
     </div>
   </section>
 
   <section class="ver">
-    <div class="ver-head"><span class="tag">丙</span><span class="name">缎封</span></div>
-    <p class="desc">app 家底的粉笺，左缘一道粉编目条，右侧斜过一条缎带、打一个菱形结。像礼物已经包好了，等你拆。</p>
+    <div class="ver-head"><span class="tag">丙</span><span class="name">粉笺</span></div>
+    <p class="desc">粉纸配莓色字，全靠排版：字级拉大、署名拉开、行距放宽，投影带一层粉晕。最轻的一版。</p>
     <div class="chat">
       <span class="state-label">默认封面 · 未领</span>
       <div class="rp rp-c">
-        <div class="ribbon"></div>
-        <div class="body"><div class="note">恭喜发财</div><div class="sub">星绥红包</div></div>
+        <div class="body"><div class="note">恭喜发财，大吉大利</div><div class="sub">星绥红包</div></div>
       </div>
       <span class="state-label">自定义照片 · 未领</span>
       <div class="rp rp-c has-photo">
-        <div class="photo"></div><div class="scrim"></div><div class="ribbon"></div>
+        <div class="photo"></div><div class="scrim"></div>
         <div class="body"><div class="note">去看晚霞吧</div><div class="sub">星绥红包</div></div>
       </div>
       <span class="state-label">已领取</span>
       <div class="rp rp-c claimed">
-        <div class="ribbon"></div>
-        <div class="body"><div class="note">恭喜发财</div><div class="sub">他已领取</div></div>
+        <div class="body"><div class="note">恭喜发财，大吉大利</div><div class="sub">他已领取</div></div>
         <div class="veil"></div>
       </div>
     </div>
   </section>
 
   <footer>
-    挑一版（<b>甲</b> 暖玉封／<b>乙</b> 折光封／<b>丙</b> 缎封），也可以混搭——比如「乙的墨底＋甲的金环」。定了我落进真正的聊天卡、开红包页和制作封面三处。
+    挑一版（<b>甲</b> 墨笺／<b>乙</b> 素笺／<b>丙</b> 粉笺），也可以混搭——比如「墨底 + 粉竖签」。定了我落进真正的聊天卡、开红包页和制作封面三处。
   </footer>
 
   <script>
@@ -265,6 +238,14 @@
     }
     b1.addEventListener('click', function () { setZoom(false); });
     b2.addEventListener('click', function () { setZoom(true); });
+    var h = location.hash.replace('#', '');
+    if (h === 'a' || h === 'b' || h === 'c') {
+      var vs = document.querySelectorAll('.ver');
+      for (var i = 0; i < vs.length; i++) {
+        if ('abc'.charAt(i) !== h) vs[i].style.display = 'none';
+      }
+      setZoom(true);
+    }
   </script>
 </body>
 </html>
