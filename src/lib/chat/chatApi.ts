@@ -1106,6 +1106,24 @@ function stripNarrationAsterisks(text: string): string {
 }
 
 /**
+ * 双语输出（1.9.80）：「外语原文|简体中文」一刀两半。
+ *
+ * 外语聊天现在让模型**一次就写两半**（见 ChatWindow 的 langRule），不再事后发第二次
+ * 翻译请求——从根上免掉「有些它突然不翻」（恩熙 2026-10-03 报的那个）。
+ * 按**最后一个**竖线切（半角 `|`／全角 `｜` 都认）；两侧都非空才算数，
+ * 只写了一侧、或压根没写竖线 → 只当源文，译文留空交给兜底翻。
+ */
+export function splitBilingual(text: string): { src: string; zh?: string } {
+  const s = text.trim();
+  const m = /^([\s\S]*?)[|｜]([^|｜]+)$/.exec(s);
+  if (!m) return { src: s };
+  const src = m[1].trim();
+  const zh = m[2].trim();
+  if (!src || !zh) return { src: s };
+  return { src, zh };
+}
+
+/**
  * 把 AI 回复拆成多条短消息（微信体的「连发」效果）。
  * 三层规则：
  * 1. 先按空行切块——AI 用空行自己分的条原样保留；
@@ -1121,8 +1139,11 @@ function stripNarrationAsterisks(text: string): string {
  * @param maxBubbles 气泡数硬上限（设置里的「气泡条数」；0／不传＝不限）。
  *                   拆出来比上限多时，把相邻的两条并成一条、并到落进上限为止——
  *                   内容一个字不丢（提示词侧已提前打过招呼，见 buildStylePrompt）。
+ * @param pairMode 外语聊天的双语模式（1.9.80）：每条气泡是「原文|译文」成对的一整块。
+ *                 这种块**不当正文切**（切了会把原文和译文劈散），整块原样留作一条；
+ *                 并条时也只把「原文拼原文、译文拼译文」，不把两半搅在一起。
  */
-export function splitReply(reply: string, maxBubbles = 0): string[] {
+export function splitReply(reply: string, maxBubbles = 0, pairMode = false): string[] {
   /* 单条气泡的「目标窗口」（字符数）：攒到 TARGET_MIN 才算够，攒过 TARGET_MAX 就收手。 ｜ 详细见 docs/施工日志.md */
   const TARGET_MIN = 30;
   const TARGET_MAX = 48;
@@ -1160,6 +1181,12 @@ export function splitReply(reply: string, maxBubbles = 0): string[] {
       continue;
     }
     for (const para of rows) {
+      /* 双语模式：带「原文|译文」的块整块留作**一条**，绝不进下面的切句——
+         切句会照着句末标点把原文和译文劈散（见 splitBilingual）。 */
+      if (pairMode && splitBilingual(para).zh) {
+        out.push(para);
+        continue;
+      }
       if (para.length <= TARGET_MAX) {
         out.push(para);
         continue;
@@ -1207,9 +1234,14 @@ export function splitReply(reply: string, maxBubbles = 0): string[] {
   }
   /* 气泡条数上限：超出时把**相邻的两条**并成一条，反复并到落进上限为止。 ｜ 详细见 docs/施工日志.md */
   const merged =
-    maxBubbles > 0 && out.length > maxBubbles ? mergeToCap(out, maxBubbles) : out;
-  // 每条末尾收口，见 sealTailPunct。
-  return merged.map(sealTailPunct).filter((m) => m.length > 0);
+    maxBubbles > 0 && out.length > maxBubbles ? mergeToCap(out, maxBubbles, pairMode) : out;
+  // 每条末尾收口，见 sealTailPunct。双语那条各自收口，别让原文的逗号尾巴留下来。
+  const sealed = merged.map((m) => {
+    if (!pairMode) return sealTailPunct(m);
+    const p = splitBilingual(m);
+    return p.zh ? `${sealTailPunct(p.src)}|${sealTailPunct(p.zh)}` : sealTailPunct(m);
+  });
+  return sealed.filter((m) => m.length > 0);
 }
 
 /**
@@ -1217,14 +1249,25 @@ export function splitReply(reply: string, maxBubbles = 0): string[] {
  * 短的先并、长的原样留着——并出来的每条都只多背一点，不会像「其余全塞进最后一条」
  * 那样在末尾鼓出一大坨（缘起见 splitReply 里的注释与施工日志）。
  */
-function mergeToCap(list: string[], cap: number): string[] {
+function mergeToCap(list: string[], cap: number, pairMode = false): string[] {
+  /* 双语那条只按**原文半边**算长短、并条也只拼同样那半边——两半始终成对，不搅乱。 */
+  const len = (s: string) => (pairMode ? splitBilingual(s).src.length : s.length);
+  const join = (a: string, b: string): string => {
+    if (!pairMode) return a + b;
+    const pa = splitBilingual(a);
+    const pb = splitBilingual(b);
+    /* 两半都齐才拼译文；有一半缺译文就整条不要译文——让兜底翻重翻整句，
+       好过留一笔「原文变长、译文只有一半」的对不上。 */
+    const zh = pa.zh && pb.zh ? pa.zh + pb.zh : undefined;
+    return zh ? `${pa.src}${pb.src}|${zh}` : pa.src + pb.src;
+  };
   const arr = [...list];
   while (arr.length > cap) {
     let at = 0;
     for (let i = 1; i < arr.length - 1; i++) {
-      if (arr[i].length + arr[i + 1].length < arr[at].length + arr[at + 1].length) at = i;
+      if (len(arr[i]) + len(arr[i + 1]) < len(arr[at]) + len(arr[at + 1])) at = i;
     }
-    arr.splice(at, 2, arr[at] + arr[at + 1]);
+    arr.splice(at, 2, join(arr[at], arr[at + 1]));
   }
   return arr;
 }
@@ -1242,6 +1285,7 @@ function mergeToCap(list: string[], cap: number): string[] {
 export function splitReplyStream(
   text: string,
   maxBubbles = 0,
+  pairMode = false,
 ): { settled: string[]; tail: string } {
   const sep = /\n[ \t]*\n(?:[ \t]*\n)*/g;
   let lastEnd = -1;
@@ -1249,7 +1293,7 @@ export function splitReplyStream(
   // 还没出现空行：整段都是尾巴，一个字都没定型。
   if (lastEnd < 0) return { settled: [], tail: toFullWidthPunct(stripNarrationAsterisks(text).trim()) };
   return {
-    settled: splitReply(text.slice(0, lastEnd), maxBubbles),
+    settled: splitReply(text.slice(0, lastEnd), maxBubbles, pairMode),
     /* 尾巴也过同一趟归正（外加剪星号旁白）：这一段定型后改走 splitReply，
        标点不会突然变样、旁白也不会在转正那刻才啪地消失。 */
     tail: toFullWidthPunct(stripNarrationAsterisks(text.slice(lastEnd)).trim()),
@@ -1263,7 +1307,7 @@ export function splitReplyStream(
  * 这里先按落库同一套规则把标记剥掉，再把末尾可能只收到半截的标记（「〔图」）
  * 连同它后面的内容一起截断，预览里一个字都不露；落库仍走完整流程生成真图片。
  */
-export function stripMetaMarkersForPreview(text: string): string {
+export function stripMetaMarkersForPreview(text: string, pairMode = false): string {
   /* 引用标记（〔引用:原话〕）落库时会被摘出来贴到气泡上方，预览里没有那一块——
      留着只会先闪一行「〔引用:…」再消失，所以整块剃掉、一个字不露；
      还没打完的（括号没闭的「〔引用:宝宝」）从它那儿截断，后面的正文等闭了再露。 */
@@ -1283,10 +1327,14 @@ export function stripMetaMarkersForPreview(text: string): string {
      所以开头那截账（认标题、不认标签）也在这里剃掉。 */
   const ahead = stripLeadingLedger(noThink);
   const noLedger = ahead ? ahead.rest.replace(/^[ \t\r\n]+/, "") : noThink;
-  const partial = noLedger.match(
+  /* 双语（1.9.80）：预览只长**原文**那半边——把每行竖线及其后的译文剃掉。
+     不剃的话，预览会先照「原文|中文」长一版，转正那刻才收成「原文＋下面一行中文」，
+     看着像跳了一下。 */
+  const srcOnly = pairMode ? noLedger.replace(/[|｜][^\n]*/g, "") : noLedger;
+  const partial = srcOnly.match(
     /(^|\n)[ \t]*[〔【（(\[]\s*(?:签\s*名|动\s*态|图\s*片|语\s*音|红\s*包|转\s*账|退\s*还|不\s*领|签|动|图|语|红|转|退|不)?\s*(?:[)）】\]〕]|$)/,
   );
-  return partial?.index !== undefined ? noLedger.slice(0, partial.index).trim() : noLedger;
+  return partial?.index !== undefined ? srcOnly.slice(0, partial.index).trim() : srcOnly;
 }
 
 /**
@@ -2998,7 +3046,8 @@ function stripLeadingLedger(text: string): { ledger: string; rest: string } | un
 export function parseInnerSnapshot(
   raw: string,
   prev?: InnerSnapshot,
-): { voice: string; snapshot: InnerSnapshot | undefined } {
+  bilingual = false,
+): { voice: string; snapshot: InnerSnapshot | undefined; pairs: Record<string, string> } {
   const buf: Record<
     | "scene"
     | "action"
@@ -3043,30 +3092,62 @@ export function parseInnerSnapshot(
   }
 
   const tidy = (s: string) => toFullWidthPunct(stripNarrationAsterisks(s).trim()).trim();
-  const voice = tidy(buf.voice.join("\n"));
+  /* 心声页双语（1.9.80）：`inner` 开着时，<think> 里每一行也写成「原文|简体中文」。
+     左半边照旧进快照（页里显示的就是它），右半边收进 pairs——键＝洗净的左半边，
+     正好对上 InnerVoicePage 的 useTrans 查缓存用的键（原文逐字），一进页就命中、
+     瞬间显中文，不必再点一下。没写竖线、或两侧缺一的，原样当外语（交给点译兜底）。 */
+  const pairs: Record<string, string> = {};
+  const biLine = (s: string): string => {
+    const c = tidy(s);
+    if (!bilingual) return c;
+    const { src, zh } = splitBilingual(c);
+    if (zh) pairs[src] = zh;
+    return src;
+  };
+  /* 整块（多行）也单独记一条：页里有的地方是**整段**交给 useTrans 的（心声那一栏
+     就是个多行块），只按单行登记会对不上整段的键。每一行都写全了才记整块。 */
+  const biText = (s: string): string => {
+    if (!bilingual) return tidy(s);
+    const srcs: string[] = [];
+    const zhs: string[] = [];
+    let allPaired = true;
+    for (const raw of s.split(/\r?\n/)) {
+      const c = tidy(raw);
+      if (!c) continue;
+      const { src, zh } = splitBilingual(c);
+      if (zh) pairs[src] = zh;
+      else allPaired = false;
+      srcs.push(src);
+      zhs.push(zh ?? "");
+    }
+    const srcBlock = srcs.join("\n").trim();
+    if (allPaired && srcBlock) pairs[srcBlock] = zhs.join("\n").trim();
+    return srcBlock;
+  };
+  const voice = biText(buf.voice.join("\n"));
 
   /* 环境（1.9.0）：旧「穿着／动作」并成的一格，也是**继承的一格**——这一轮没写就沿用
      上一次那份环境（地点和穿着没变时他多半不重写，见 SNAPSHOT_LABELS）。 */
   const scene =
-    tidy(buf.scene.join("\n")) ||
+    biText(buf.scene.join("\n")) ||
     prev?.scene?.trim() ||
     /* 跨 1.9.0 那道坎：上一份老快照里只有分开的穿着／动作，合成「环境」接着用，
        免得升级后的头几轮那一栏空着。 */
     [prev?.outfit, prev?.action].map((s) => s?.trim()).filter(Boolean).join("；");
-  const action = tidy(buf.action.join("\n"));
+  const action = biText(buf.action.join("\n"));
   /* 穿着（1.7.92）：**唯一继承的一格**——这一轮没写就沿用上一次。 */
-  const outfit = tidy(buf.outfit.join("\n")) || prev?.outfit?.trim() || "";
-  const mood = tidy(buf.mood.join("\n"));
-  const desire = tidy(buf.desire.join("\n"));
-  const fear = tidy(buf.fear.join("\n"));
+  const outfit = biText(buf.outfit.join("\n")) || prev?.outfit?.trim() || "";
+  const mood = biText(buf.mood.join("\n"));
+  const desire = biText(buf.desire.join("\n"));
+  const fear = biText(buf.fear.join("\n"));
   /* 细处：一行一条。TA 也常把几条并在一行里（用分号连写），所以行内再拆一道，
      顺手去掉行首那个列表点。 */
   const memo = buf.memo
     .flatMap((block) => block.split(/\r?\n/))
     .flatMap((line) => line.split(/[；;]/))
-    .map((line) => tidy(line.replace(/^[·•・\-—\s]+/, "")))
+    .map((line) => biLine(line.replace(/^[·•・\-—\s]+/, "")))
     .filter(Boolean);
-  const diary = tidy(buf.diary.join("\n"));
+  const diary = biText(buf.diary.join("\n"));
 
   const snapshot: InnerSnapshot | undefined =
     sawLabel &&
@@ -3090,7 +3171,7 @@ export function parseInnerSnapshot(
         }
       : undefined;
 
-  return { voice, snapshot };
+  return { voice, snapshot, pairs };
 }
 
 /**
@@ -3101,10 +3182,12 @@ export function parseInnerSnapshot(
 export function extractInnerVoice(
   reply: string,
   prevSnapshot?: InnerSnapshot,
+  bilingual = false,
 ): {
   clean: string;
   innerVoice: string | undefined;
   snapshot: InnerSnapshot | undefined;
+  pairs: Record<string, string>;
 } {
   const closed = reply.match(
     /^[ \t\r\n]*<\s*think(?:ing)?\s*>([\s\S]*?)<\s*\/\s*think(?:ing)?\s*>[ \t]*\r?\n?/i,
@@ -3123,15 +3206,16 @@ export function extractInnerVoice(
   }
   const clean = rest.replace(/^[ \t\r\n]+/, "");
   if (!ledger.trim()) {
-    return { clean, innerVoice: undefined, snapshot: undefined };
+    return { clean, innerVoice: undefined, snapshot: undefined, pairs: {} };
   }
   /* 心声是给人读的，跟正文过同一趟归正（半角标点折全角、剪成对的星号旁白），
      读着才跟气泡里的字一个样。 */
-  const parsed = parseInnerSnapshot(ledger, prevSnapshot);
+  const parsed = parseInnerSnapshot(ledger, prevSnapshot, bilingual);
   return {
     clean,
     innerVoice: parsed.voice || undefined,
     snapshot: parsed.snapshot,
+    pairs: parsed.pairs,
   };
 }
 
