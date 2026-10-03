@@ -821,14 +821,25 @@ function CoverSheet({
       <div style={scrimStyle} />
       <div style={coverSheetPaperStyle}>
         <div style={gripStyle} />
-        <div style={{ ...headerStyle, padding: "0 20px" }}>
+        {/* 页头的留白得一项一项写：用 padding 简写会把 headerStyle 自带的
+            paddingTop 冲掉，整行就贴死在抓手底下、又贴死在正文头上（× 没了喘气的地方）。 */}
+        <div
+          style={{
+            ...headerStyle,
+            paddingLeft: 20,
+            paddingRight: 20,
+            paddingBottom: 12,
+          }}
+        >
           <span style={headerTitleStyle}>{title}</span>
           <button type="button" aria-label="关闭" onClick={onClose} style={closeBtnStyle}>
             <X size={14} strokeWidth={2} />
           </button>
         </div>
         {children}
-        {footer ? <div style={{ ...footerStyle, padding: "0 20px" }}>{footer}</div> : null}
+        {footer ? (
+          <div style={{ ...footerStyle, paddingLeft: 20, paddingRight: 20 }}>{footer}</div>
+        ) : null}
       </div>
       {overlay}
     </div>
