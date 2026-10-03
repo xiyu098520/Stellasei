@@ -24,16 +24,17 @@
  * 【封面留多高】`CUT_Y` 就是封面（自定义照片也一样）能占的高度，也是弧的最低点。
  * 自定义图是主角，宁肯它多露一点——往下压弧、把 `CARD_H` 跟着加高，别去削纸面。
  *
- * 【卡面上的字】封面那两行与「開」走 `SERIF`（1.9.78 起——「柔和野兽派」是衬线斜体），
- *  弧下纸面的注脚走 `KAI`（霞鹜文楷）；金额那串数字留等宽（数位对齐才齐整）。
- *  文楷只带 300／400／500，凡走 KAI 的地方字重别写 600；走 SERIF 的可以到 600。
+ * 【卡面上的字】两张脸的文字统一走 `SERIF`（1.9.78 起——「柔和野兽派」是衬线斜体）：
+ *  封面那两行、「開」、弧下纸面的状态与落款，连「查看领取详情」；只有金额那串数字留等宽
+ *  （数位对齐才齐整）。
+ *  凡走 SERIF 的地方字重可以到 600。
  *
  * 【不许改】卡宽固定 250：聊天里开红包那一页按这个宽摆的，改宽要连那边一起看。
  */
 
 import type { ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
-import { KAI, SERIF, T } from "./shared";
+import { SERIF, T } from "./shared";
 import { WALLET_MONO } from "./WalletSheet";
 import { RED_COVER_TONE } from "./redpacket";
 
@@ -95,8 +96,8 @@ const BAND_BG =
 /** 封面那块沿底边（＝那条弧）往下投的一道柔影：颜色拉平之后，全靠它把弧交代出来。
  *  跟着封面底边的双半径走，所以影子的形状就是那条弧；浅了弧就没了，重了像一道脏边。 */
 const COVER_LIP = "0 7px 13px -8px rgba(0,0,0,.22)";
-/** 白纸上的金额色：暖金，压在纸上才读得清。 */
-const AMOUNT_GOLD = "#BD8B3F";
+/** 白纸上的金额色（1.9.78 起跟「柔和野兽派」走墨色，不再是暖金）。 */
+const AMOUNT_INK = RED_COVER_TONE.ink;
 
 /** 预设封套上那道纸柔光（自定义照片不压——照片自己就有光影，再压一道只会脏）。 */
 function SoftLight() {
@@ -144,10 +145,12 @@ export function RedEnvelopeCard({
         position: "relative",
         width: RED_CARD_W,
         height: CARD_H,
+        boxSizing: "border-box",
         borderRadius: 16,
         overflow: "hidden",
         background: "#FFFFFF",
-        boxShadow: "0 26px 48px -22px rgba(0,0,0,.5)",
+        border: `2px solid ${RED_COVER_TONE.chipBorder}`,
+        boxShadow: RED_COVER_TONE.shadow,
       }}
     >
       {/* 底下那条带：一条纯矩形，从弧的两侧一直包到底；中间那一截一会儿被照片盖掉 */}
@@ -300,10 +303,12 @@ export function RedOpenedCard({
       style={{
         position: "relative",
         width: RED_CARD_W,
+        boxSizing: "border-box",
         borderRadius: 16,
         overflow: "hidden",
         background: "#FFFFFF",
-        boxShadow: "0 22px 46px -24px rgba(0,0,0,.46)",
+        border: `2px solid ${RED_COVER_TONE.chipBorder}`,
+        boxShadow: RED_COVER_TONE.shadow,
       }}
     >
       {/* 封面那块：与没开那张同一块封面、同一条往下圆的弧。
@@ -336,7 +341,7 @@ export function RedOpenedCard({
               fontFamily: WALLET_MONO,
               fontSize: 15,
               fontWeight: 500,
-              color: AMOUNT_GOLD,
+              color: AMOUNT_INK,
             }}
           >
             ¥
@@ -347,7 +352,7 @@ export function RedOpenedCard({
               fontSize: 34,
               fontWeight: 700,
               lineHeight: 1,
-              color: AMOUNT_GOLD,
+              color: AMOUNT_INK,
               letterSpacing: "-.01em",
             }}
           >
@@ -355,12 +360,29 @@ export function RedOpenedCard({
           </span>
         </div>
         <div
-          style={{ marginTop: 12, fontFamily: KAI, fontSize: 13, color: T.ink2, letterSpacing: ".02em" }}
+          style={{
+            marginTop: 12,
+            fontFamily: SERIF,
+            fontStyle: "italic",
+            fontWeight: 500,
+            fontSize: 13,
+            color: RED_COVER_TONE.inkSoft,
+            letterSpacing: ".04em",
+          }}
         >
           {statusLine}
         </div>
         <div
-          style={{ marginTop: 6, fontFamily: KAI, fontSize: 11, color: T.ink3, letterSpacing: ".06em" }}
+          style={{
+            marginTop: 6,
+            fontFamily: SERIF,
+            fontStyle: "italic",
+            fontWeight: 500,
+            fontSize: 10.5,
+            color: RED_COVER_TONE.inkSoft,
+            letterSpacing: ".06em",
+            opacity: 0.8,
+          }}
         >
           {footLine}
         </div>
@@ -388,7 +410,8 @@ export function RedOpenedCard({
             color: T.pink,
             fontSize: 13,
             letterSpacing: ".06em",
-            fontFamily: KAI,
+            fontFamily: SERIF,
+            fontStyle: "italic",
           }}
         >
           查看领取详情
