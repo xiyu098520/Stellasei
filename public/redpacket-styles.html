@@ -3,155 +3,178 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>红包样式 · 三版预览</title>
+<title>红包样式 · Risograph 三版</title>
 <style>
+  :root {
+    --paper:  #FFFBF0;   /* 新闻纸，永远不用纯白 */
+    --paper2: #F6EFDD;   /* 纸的暗面 */
+    --ink:    #1A1A1A;
+    --pink:   #FF6B9D;   /* 荧光粉 */
+    --blue:   #2563EB;   /* 油墨蓝 */
+    --orange: #FF8A00;   /* 烧橙 */
+    --green:  #22C55E;   /* 树液绿 */
+    --mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', monospace;
+    --snap: .1s linear;
+  }
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html { zoom: var(--page-zoom, 1); }
   body {
-    background: #1B161B;
-    background-image:
-      radial-gradient(circle, rgba(255,253,248,.045) 1px, transparent 1.2px),
-      radial-gradient(130% 90% at 50% 0%, rgba(255,253,248,.07) 0%, transparent 62%);
-    background-size: 10px 10px, 100% 100%;
-    color: #FFFDF8;
-    font-family: 'LXGW WenKai GB', 'Kaiti SC', 'STKaiti', 'KaiTi', 'Songti SC', serif;
+    background-color: var(--paper);
+    background-image: radial-gradient(circle, rgba(26,26,26,.04) 1px, transparent 1.2px);
+    background-size: 4px 4px;
+    color: var(--ink);
+    font-family: var(--mono);
     padding: 26px 16px calc(env(safe-area-inset-bottom, 0px) + 48px);
     max-width: 470px;
     margin: 0 auto;
   }
   header { text-align: center; }
-  header h1 { font-size: 20px; font-weight: 500; letter-spacing: .16em; text-indent: .16em; }
-  header .rule {
-    width: 40px; height: 1px; margin: 13px auto 0;
-    background: linear-gradient(90deg, transparent, #E86A9B, transparent);
+  header h1 {
+    font-size: 19px; font-weight: 700; letter-spacing: .1em; text-indent: .1em;
+    text-shadow: 2px 2px 0 rgba(255,107,157,.9), -2px -2px 0 rgba(37,99,235,.75);
   }
-  header p { margin-top: 12px; font-size: 12px; color: rgba(255,253,248,.5); letter-spacing: .05em; line-height: 1.9; }
+  header .chips { display: flex; justify-content: center; gap: 5px; margin-top: 13px; }
+  header .chips i { width: 12px; height: 12px; border: 2px solid var(--ink); display: block; }
+  header .chips i:nth-child(1) { background: var(--pink); }
+  header .chips i:nth-child(2) { background: var(--blue); }
+  header .chips i:nth-child(3) { background: var(--green); }
+  header p { margin-top: 12px; font-size: 11px; color: rgba(26,26,26,.62); letter-spacing: .02em; line-height: 1.95; }
 
   .zoom-row { margin-top: 15px; display: flex; justify-content: center; gap: 8px; }
   .zoom-row button {
-    font-family: inherit; font-size: 11.5px; letter-spacing: .18em; text-indent: .18em;
-    color: rgba(255,253,248,.6); background: transparent;
-    border: 1px solid rgba(255,253,248,.22); border-radius: 999px;
-    padding: 5px 15px; cursor: pointer;
+    font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .16em; text-indent: .16em;
+    color: var(--ink); background: var(--paper);
+    border: 2px solid var(--ink); border-radius: 0;
+    padding: 5px 14px; cursor: pointer;
+    transition: box-shadow var(--snap), transform var(--snap);
   }
-  .zoom-row button.on { color: #1B161B; background: #E86A9B; border-color: #E86A9B; }
+  .zoom-row button.on {
+    background: var(--pink);
+    box-shadow: 3px 3px 0 var(--blue);
+  }
   body.zoomed { --page-zoom: 1.55; }
 
-  .ver { margin-top: 38px; }
+  .ver { margin-top: 34px; }
   .ver-head { display: flex; align-items: baseline; gap: 10px; }
   .ver-head .tag {
-    font-size: 12px; letter-spacing: .22em; text-indent: .22em; color: #E86A9B;
-    border: 1px solid rgba(232,106,155,.45); padding: 2px 8px; border-radius: 3px;
+    font-size: 11px; font-weight: 700; letter-spacing: .14em; text-indent: .14em;
+    color: var(--paper); background: var(--ink);
+    border: 2px solid var(--ink); padding: 2px 6px; border-radius: 0;
   }
-  .ver-head .name { font-size: 17px; font-weight: 500; letter-spacing: .1em; }
-  .ver .desc { font-size: 12px; color: rgba(255,253,248,.52); letter-spacing: .03em; line-height: 1.9; margin: 8px 0 14px; }
+  .ver-head .name { font-size: 16px; font-weight: 700; letter-spacing: .06em; }
+  .ver .desc { font-size: 11px; color: rgba(26,26,26,.6); letter-spacing: .01em; line-height: 1.95; margin: 9px 0 14px; }
 
-  /* 聊天底：浅色画布，卡像消息一样靠右 */
+  /* 聊天底：一块压暗的新闻纸，硬边 */
   .chat {
-    background: linear-gradient(160deg, #FFFFFF 0%, #FFF1F6 100%);
-    border-radius: 14px;
-    padding: 16px 12px;
+    background: var(--paper2);
+    border: 2px solid var(--ink);
+    border-radius: 0;
+    padding: 15px 12px;
     display: flex; flex-direction: column; gap: 13px; align-items: flex-end;
-    box-shadow: inset 0 0 0 1px rgba(20,19,24,.05), 0 18px 36px -24px rgba(0,0,0,.6);
   }
-  .state-label { align-self: flex-start; font-size: 10.5px; color: rgba(20,19,24,.36); letter-spacing: .16em; padding-left: 3px; }
+  .state-label { align-self: flex-start; font-size: 10px; font-weight: 700; letter-spacing: .14em; color: rgba(26,26,26,.45); }
   .state-label + .rp { margin-bottom: 3px; }
 
-  /* ── 卡骨架：跟真卡一个尺寸（228×76、圆角 11、内边距 14） ── */
+  /* ── 卡骨架：跟真卡一个尺寸（228×76、内边距 14）。硬边、硬框、零模糊 ── */
   .rp {
-    position: relative; width: 228px; height: 76px; border-radius: 11px;
+    position: relative; width: 228px; height: 76px; border-radius: 4px;
     box-sizing: border-box; overflow: hidden;
     display: flex; align-items: center; padding: 0 14px;
+    border: 2px solid var(--ink);
+    font-family: var(--mono);
+    transition: box-shadow var(--snap);
   }
   .rp .body { position: relative; z-index: 3; flex: 1; min-width: 0; }
   .rp .note {
-    font-size: 14px; font-weight: 500; letter-spacing: .03em; line-height: 1.32;
+    font-size: 13.5px; font-weight: 700; letter-spacing: .04em; line-height: 1.3;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  .rp .sub { margin-top: 5px; font-size: 9.5px; letter-spacing: .28em; }
-  .rp .photo {
-    position: absolute; inset: 0; z-index: 0;
-    background:
-      radial-gradient(90% 60% at 72% 12%, rgba(255,238,216,.55) 0%, rgba(255,238,216,0) 58%),
-      linear-gradient(155deg, #F6D9C4 0%, #E6B0BA 40%, #A88CAD 70%, #6E7599 100%);
-  }
+  .rp .sub { margin-top: 5px; font-size: 9px; font-weight: 700; letter-spacing: .3em; }
+
+  /* 自定义照片：半调网点套印（riso 里照片就是这样印出来的） */
+  .rp .photo { position: absolute; inset: 0; z-index: 0; }
   .rp .scrim { position: absolute; inset: 0; z-index: 1; opacity: 0; }
   .rp.has-photo .scrim { opacity: 1; }
-  /* 已领取：浅浅一层粉白纱盖在底上、字在纱上面，所以字还看得清 */
+  .rp.has-photo .note,
+  .rp.has-photo .sub { color: var(--paper); }
+  .rp.has-photo .note { text-shadow: 2px 2px 0 rgba(26,26,26,.45); }
+
+  /* 已领取：一层平的纸白罩在底上，字在罩子上面 */
   .rp .veil {
     position: absolute; inset: 0; z-index: 2; pointer-events: none;
-    background: linear-gradient(158deg, rgba(255,248,252,.86) 0%, rgba(253,236,245,.88) 50%, rgba(250,224,239,.9) 100%);
+    background: rgba(255,251,240,.72);
   }
-  .rp.claimed .note { color: #A4507A; }
-  .rp.claimed .sub { color: rgba(164,80,122,.8); }
+  .rp.claimed .note { color: rgba(26,26,26,.55); }
+  .rp.claimed .sub { color: rgba(26,26,26,.4); }
 
-  /* ─────────── 甲 · 墨笺 ───────────
-     墨底、暖白字。左边一道极细金线做立柱，把两行字托起来。
-     投影是柔的、深的——夜里那一点暖。 */
+  /* ─────────── 甲 · 双版叠印 ───────────
+     新闻纸底、墨字。右下粉版 + 左上蓝版 —— 两版错位投影，是 riso 的签名。 */
   .rp-a {
-    color: #FFF6EA;
-    background: linear-gradient(168deg, #2A232A 0%, #211B21 55%, #191519 100%);
-    box-shadow:
-      0 12px 26px -14px rgba(20,19,24,.62),
-      0 2px 6px -4px rgba(20,19,24,.42);
+    color: var(--ink);
+    background: var(--paper);
+    box-shadow: 3px 3px 0 var(--pink), -2px -2px 0 var(--blue);
   }
-  .rp-a .post {
-    position: absolute; left: 14px; top: 50%; width: 2px; height: 26px;
-    transform: translateY(-50%); border-radius: 2px; z-index: 2;
-    background: linear-gradient(180deg, #EBCB86 0%, #C1933F 100%);
+  .rp-a:hover { box-shadow: 6px 6px 0 var(--pink), -4px -4px 0 var(--blue); }
+  .rp-a .photo {
+    background-color: var(--blue);
+    background-image: radial-gradient(circle, rgba(255,107,157,.9) 1.1px, transparent 1.4px);
+    background-size: 5px 5px;
   }
-  .rp-a .body { padding-left: 13px; }
-  .rp-a .note { color: #FFF6EA; }
-  .rp-a .sub { color: rgba(255,226,188,.6); }
-  .rp-a .scrim { background: linear-gradient(90deg, rgba(12,8,10,.68) 0%, rgba(12,8,10,.36) 58%, rgba(12,8,10,.08) 100%); }
+  .rp-a .scrim { background: rgba(37,99,235,.3); }
 
-  /* ─────────── 乙 · 素笺 ───────────
-     暖白纸、墨字。左边一道 app 粉竖签（4px），
-     纸影用家底的硬偏移 3px 3px 0——最像自家东西的一版。 */
+  /* ─────────── 乙 · 实墨 ───────────
+     通版粉墨实底、墨字。油墨不透明、不上渐变——最海报的一版。 */
   .rp-b {
-    color: #241E24;
-    background: linear-gradient(170deg, #FFFEFA 0%, #FFF8F3 100%);
-    box-shadow:
-      3px 3px 0 rgba(20,19,24,.08),
-      0 14px 26px -18px rgba(120,90,110,.62);
+    color: var(--ink);
+    background: var(--pink);
+    box-shadow: 3px 3px 0 var(--blue), -2px -2px 0 var(--green);
   }
-  .rp-b .bar {
-    position: absolute; left: 0; top: 0; bottom: 0; width: 4px; z-index: 2;
-    background: #E86A9B;
+  .rp-b:hover { box-shadow: 6px 6px 0 var(--blue), -4px -4px 0 var(--green); }
+  .rp-b .photo {
+    background-color: var(--orange);
+    background-image: radial-gradient(circle, rgba(37,99,235,.9) 1.1px, transparent 1.4px);
+    background-size: 5px 5px;
   }
-  .rp-b .body { padding-left: 7px; }
-  .rp-b .note { color: #241E24; }
-  .rp-b .sub { color: rgba(42,33,38,.46); }
-  .rp-b .scrim { background: linear-gradient(90deg, rgba(255,252,249,.94) 0%, rgba(255,250,246,.7) 55%, rgba(20,14,22,.34) 100%); }
+  .rp-b .scrim { background: rgba(255,138,0,.28); }
 
-  /* ─────────── 丙 · 粉笺 ───────────
-     粉纸、莓色字。全靠排版：字级拉大、署名拉开、行距松，
-     投影带一层粉晕。最轻的一版。 */
+  /* ─────────── 丙 · 半调 ───────────
+     纸底压粉点半调，墨字；右上角一枚绿套准标记，静止时错位、悬停才落位。 */
   .rp-c {
-    color: #7E2C4E;
-    background: linear-gradient(165deg, #FFF2F8 0%, #FBE0ED 100%);
-    box-shadow:
-      0 12px 26px -14px rgba(200,110,155,.6),
-      0 2px 8px -6px rgba(200,110,155,.4);
+    color: var(--ink);
+    background-color: var(--paper);
+    background-image: radial-gradient(circle, rgba(255,107,157,.55) 1.3px, transparent 1.6px);
+    background-size: 5px 5px;
+    box-shadow: 3px 3px 0 var(--pink), -2px -2px 0 var(--blue);
   }
-  .rp-c .body { padding-left: 2px; }
-  .rp-c .note { color: #7E2C4E; font-size: 15px; letter-spacing: .02em; }
-  .rp-c .sub { color: rgba(126,44,78,.5); letter-spacing: .34em; margin-top: 6px; }
-  .rp-c .scrim { background: linear-gradient(90deg, rgba(255,250,246,.92) 0%, rgba(255,248,246,.66) 55%, rgba(255,248,246,.32) 100%); }
+  .rp-c:hover { box-shadow: 6px 6px 0 var(--pink), -4px -4px 0 var(--blue); }
+  .rp-c .reg {
+    position: absolute; z-index: 4; right: 6px; top: 6px;
+    width: 10px; height: 10px;
+    background: var(--green); border: 2px solid var(--ink);
+    transform: translate(2px,-2px);
+    transition: transform var(--snap);
+  }
+  .rp-c:hover .reg { transform: translate(0,0); }
+  .rp-c .photo {
+    background-color: var(--pink);
+    background-image: radial-gradient(circle, rgba(37,99,235,.85) 1.1px, transparent 1.4px);
+    background-size: 5px 5px;
+  }
+  .rp-c .scrim { background: rgba(255,107,157,.3); }
 
   footer {
-    margin-top: 40px; padding-top: 18px;
-    border-top: 1px solid rgba(255,253,248,.12);
-    font-size: 12px; color: rgba(255,253,248,.55); letter-spacing: .04em; line-height: 1.95;
+    margin-top: 38px; padding-top: 16px;
+    border-top: 2px solid var(--ink);
+    font-size: 11px; color: rgba(26,26,26,.62); letter-spacing: .02em; line-height: 2;
   }
-  footer b { color: #E86A9B; font-weight: 500; }
+  footer b { color: var(--ink); font-weight: 700; }
 </style>
 </head>
 <body>
   <header>
     <h1>红包 · 发出来的样子</h1>
-    <div class="rule"></div>
-    <p>只做卡本身——颜色、阴影、排版。没有图案、没有字。<br>每版三种状态：默认封面 · 自定义照片 · 已领取。尺寸跟聊天里那张卡一模一样（228×76）。</p>
+    <div class="chips"><i></i><i></i><i></i></div>
+    <p>Risograph 规则：四色油墨、平面实色、不上渐变；纸底永远是新闻纸 #FFFBF0；<br>双版错位投影（右下 + 左上），禁止模糊；硬边框、无圆角、等宽字。<br>尺寸跟聊天里那张卡一模一样（228×76）。</p>
   </header>
   <div class="zoom-row">
     <button id="z1" class="on" type="button">原大</button>
@@ -159,66 +182,64 @@
   </div>
 
   <section class="ver">
-    <div class="ver-head"><span class="tag">甲</span><span class="name">墨笺</span></div>
-    <p class="desc">墨底配暖白字，左边一道极细金线做立柱。投影柔而深，夜里那一点暖——照片放上去也压得住。</p>
+    <div class="ver-head"><span class="tag">甲</span><span class="name">双版叠印</span></div>
+    <p class="desc">新闻纸底、墨字。右下压一版荧光粉、左上压一版油墨蓝——两版错开，就是印刷机没对准的那一下。最干净的一版。</p>
     <div class="chat">
       <span class="state-label">默认封面 · 未领</span>
       <div class="rp rp-a">
-        <div class="post"></div>
         <div class="body"><div class="note">恭喜发财，大吉大利</div><div class="sub">星绥红包</div></div>
       </div>
       <span class="state-label">自定义照片 · 未领</span>
       <div class="rp rp-a has-photo">
-        <div class="photo"></div><div class="scrim"></div><div class="post"></div>
-        <div class="body"><div class="note">去看晚霞吧</div><div class="sub">星绥红包</div></div>
-      </div>
-      <span class="state-label">已领取</span>
-      <div class="rp rp-a claimed">
-        <div class="post"></div>
-        <div class="body"><div class="note">恭喜发财，大吉大利</div><div class="sub">他已领取</div></div>
-        <div class="veil"></div>
-      </div>
-    </div>
-  </section>
-
-  <section class="ver">
-    <div class="ver-head"><span class="tag">乙</span><span class="name">素笺</span></div>
-    <p class="desc">暖白纸配墨字，左边一道 app 粉竖签；纸影用家底那记硬偏移（3px 3px 0）。最像自家东西的一版。</p>
-    <div class="chat">
-      <span class="state-label">默认封面 · 未领</span>
-      <div class="rp rp-b">
-        <div class="bar"></div>
-        <div class="body"><div class="note">恭喜发财，大吉大利</div><div class="sub">星绥红包</div></div>
-      </div>
-      <span class="state-label">自定义照片 · 未领</span>
-      <div class="rp rp-b has-photo">
-        <div class="photo"></div><div class="scrim"></div><div class="bar"></div>
-        <div class="body"><div class="note">去看晚霞吧</div><div class="sub">星绥红包</div></div>
-      </div>
-      <span class="state-label">已领取</span>
-      <div class="rp rp-b claimed">
-        <div class="bar"></div>
-        <div class="body"><div class="note">恭喜发财，大吉大利</div><div class="sub">他已领取</div></div>
-        <div class="veil"></div>
-      </div>
-    </div>
-  </section>
-
-  <section class="ver">
-    <div class="ver-head"><span class="tag">丙</span><span class="name">粉笺</span></div>
-    <p class="desc">粉纸配莓色字，全靠排版：字级拉大、署名拉开、行距放宽，投影带一层粉晕。最轻的一版。</p>
-    <div class="chat">
-      <span class="state-label">默认封面 · 未领</span>
-      <div class="rp rp-c">
-        <div class="body"><div class="note">恭喜发财，大吉大利</div><div class="sub">星绥红包</div></div>
-      </div>
-      <span class="state-label">自定义照片 · 未领</span>
-      <div class="rp rp-c has-photo">
         <div class="photo"></div><div class="scrim"></div>
         <div class="body"><div class="note">去看晚霞吧</div><div class="sub">星绥红包</div></div>
       </div>
       <span class="state-label">已领取</span>
+      <div class="rp rp-a claimed">
+        <div class="body"><div class="note">恭喜发财，大吉大利</div><div class="sub">他已领取</div></div>
+        <div class="veil"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="ver">
+    <div class="ver-head"><span class="tag">乙</span><span class="name">实墨</span></div>
+    <p class="desc">整张通版荧光粉实底、墨字；蓝版压右下、绿版压左上。油墨是平的、不透明的——最海报、最跳的一版。</p>
+    <div class="chat">
+      <span class="state-label">默认封面 · 未领</span>
+      <div class="rp rp-b">
+        <div class="body"><div class="note">恭喜发财，大吉大利</div><div class="sub">星绥红包</div></div>
+      </div>
+      <span class="state-label">自定义照片 · 未领</span>
+      <div class="rp rp-b has-photo">
+        <div class="photo"></div><div class="scrim"></div>
+        <div class="body"><div class="note">去看晚霞吧</div><div class="sub">星绥红包</div></div>
+      </div>
+      <span class="state-label">已领取</span>
+      <div class="rp rp-b claimed">
+        <div class="body"><div class="note">恭喜发财，大吉大利</div><div class="sub">他已领取</div></div>
+        <div class="veil"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="ver">
+    <div class="ver-head"><span class="tag">丙</span><span class="name">半调</span></div>
+    <p class="desc">纸底压一层粉半调网点，墨字；右上角一枚绿套准标记，静止时错开、悬停才落位。最有印刷质感的一版。</p>
+    <div class="chat">
+      <span class="state-label">默认封面 · 未领</span>
+      <div class="rp rp-c">
+        <div class="reg"></div>
+        <div class="body"><div class="note">恭喜发财，大吉大利</div><div class="sub">星绥红包</div></div>
+      </div>
+      <span class="state-label">自定义照片 · 未领</span>
+      <div class="rp rp-c has-photo">
+        <div class="photo"></div><div class="scrim"></div><div class="reg"></div>
+        <div class="body"><div class="note">去看晚霞吧</div><div class="sub">星绥红包</div></div>
+      </div>
+      <span class="state-label">已领取</span>
       <div class="rp rp-c claimed">
+        <div class="reg"></div>
         <div class="body"><div class="note">恭喜发财，大吉大利</div><div class="sub">他已领取</div></div>
         <div class="veil"></div>
       </div>
@@ -226,7 +247,8 @@
   </section>
 
   <footer>
-    挑一版（<b>甲</b> 墨笺／<b>乙</b> 素笺／<b>丙</b> 粉笺），也可以混搭——比如「墨底 + 粉竖签」。定了我落进真正的聊天卡、开红包页和制作封面三处。
+    挑一版（<b>甲</b> 双版叠印／<b>乙</b> 实墨／<b>丙</b> 半调），也可以混搭。<br>
+    有一点要你点头：riso 规矩是圆角最大到 4px，现在真卡是 <b>11px</b> 圆角——采用这套就要把它改成 4px，卡片会一下子变「印出来的」。
   </footer>
 
   <script>
