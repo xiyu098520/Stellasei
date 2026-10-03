@@ -38,9 +38,9 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
-import { ChevronRight, Gift, Image as ImageIcon, Plus, Smile, X } from "lucide-react";
+import { ChevronRight, Image as ImageIcon, Plus, Smile, X } from "lucide-react";
 import { WALLET_MONO, WALLET_TITLE } from "./WalletSheet";
-import { AVATAR_GRADIENT, KAI, SANS, T } from "./shared";
+import { AVATAR_GRADIENT, SANS, SERIF, T } from "./shared";
 import {
   clampRedCoverPos,
   composeRedCover,
@@ -67,7 +67,7 @@ import {
 } from "@/lib/chat/red-cover-store";
 /* 红包封套的两张正脸：封面的大预览与「更多内容」里的开完样式都用它们
    （跟聊天里点开红包那一页同一张脸，形状都在那个文件里）。 */
-import { RedEnvelopeCard, RedOpenedCard } from "./RedPacketCards";
+import { RedEnvelopeCard, RedOpenedCard, RedPacketGlyph } from "./RedPacketCards";
 
 export default function MoneySendView({
   kind,
@@ -292,11 +292,7 @@ export default function MoneySendView({
                         }}
                       />
                       <span style={coverThumbBadgeStyle}>
-                        <Gift
-                          size={13}
-                          strokeWidth={1.8}
-                          color={RED_COVER_TONE.chipInk}
-                        />
+                        <RedPacketGlyph size={13} strokeWidth={1.8} />
                       </span>
                     </>
                   )}
@@ -657,14 +653,15 @@ const coverThumbStyle: CSSProperties = {
   boxSizing: "border-box",
 };
 
-/** 缩样上那枚圆底礼盒（跟聊天卡、开红包页同一枚，只是缩到合手的大小）。 */
+/** 缩样上那枚圆底红包标（跟聊天卡、开红包页同一枚，只是缩到合手的大小）。 */
 const coverThumbBadgeStyle: CSSProperties = {
   position: "relative",
   width: 20,
   height: 20,
   borderRadius: "50%",
   background: RED_COVER_TONE.chipBg,
-  border: `1px solid ${RED_COVER_TONE.chipBorder}`,
+  border: `2px solid ${RED_COVER_TONE.chipBorder}`,
+  color: RED_COVER_TONE.chipInk,
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
@@ -1440,9 +1437,30 @@ function RedCoverFramer({
             alignItems: "center",
             padding: "0 14px",
             background: bgOf("card"),
+            border: `2px solid ${RED_COVER_TONE.chipBorder}`,
             boxShadow: RED_COVER_TONE.shadow,
           }}
         >
+          {src ? (
+            <span
+              style={{
+                position: "absolute",
+                inset: 0,
+                pointerEvents: "none",
+                background: "#1A1A1A",
+                opacity: 0.34,
+              }}
+            />
+          ) : (
+            <span
+              style={{
+                position: "absolute",
+                inset: 0,
+                pointerEvents: "none",
+                background: RED_COVER_TONE.glow,
+              }}
+            />
+          )}
           <span
             style={{
               position: "relative",
@@ -1451,13 +1469,14 @@ function RedCoverFramer({
               height: 38,
               borderRadius: "50%",
               background: RED_COVER_TONE.chipBg,
-              border: `1px solid ${RED_COVER_TONE.chipBorder}`,
+              border: `2px solid ${RED_COVER_TONE.chipBorder}`,
+              color: RED_COVER_TONE.chipInk,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
             }}
           >
-            <Gift size={20} strokeWidth={1.6} color={RED_COVER_TONE.chipInk} />
+            <RedPacketGlyph size={20} strokeWidth={1.6} />
           </span>
           <span
             style={{
@@ -1471,13 +1490,14 @@ function RedCoverFramer({
           >
             <span
               style={{
-                fontFamily: KAI,
+                fontFamily: SERIF,
+                fontStyle: "italic",
                 fontSize: 14,
-                fontWeight: 500,
+                fontWeight: 600,
                 lineHeight: 1.35,
-                color: RED_COVER_TONE.ink,
+                color: src ? "#FFFFFF" : RED_COVER_TONE.ink,
                 letterSpacing: ".03em",
-                textShadow: "0 1px 0 rgba(255,255,255,.55)",
+                textShadow: src ? "0 1px 4px rgba(0,0,0,.55)" : "none",
                 whiteSpace: "nowrap",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
@@ -1488,14 +1508,16 @@ function RedCoverFramer({
             <span
               style={{
                 marginTop: 3,
-                fontFamily: KAI,
-                fontSize: 11,
+                fontFamily: SERIF,
+                fontStyle: "italic",
+                fontSize: 10,
+                fontWeight: 500,
                 lineHeight: 1.3,
-                color: RED_COVER_TONE.inkSoft,
-                letterSpacing: ".06em",
+                color: src ? "rgba(255,255,255,.9)" : RED_COVER_TONE.inkSoft,
+                letterSpacing: ".07em",
               }}
             >
-              星绥红包
+              From 我
             </span>
           </span>
         </div>
@@ -1591,7 +1613,7 @@ function coverOverflow(
 }
 
 /** 封面那一层里那张聊天卡：跟聊天里 `RedPacketCard` 同一张脸（留言写死一句吉祥话、
- *  第二行平时报「星绥红包」、领完换成状态字）——这一页只看长相，不接真消息。 */
+ *  第二行平时报「From 我」、领完换成状态字）——这一页只看长相，不接真消息。 */
 function StudioCard({
   coverBg,
   customSrc,
@@ -1614,11 +1636,30 @@ function StudioCard({
         alignItems: "center",
         padding: "0 14px",
         background: coverBg,
-        boxShadow: done
-          ? "0 6px 18px -12px rgba(20,19,24,.26)"
-          : RED_COVER_TONE.shadow,
+        border: `2px solid ${RED_COVER_TONE.chipBorder}`,
+        boxShadow: RED_COVER_TONE.shadow,
       }}
     >
+      {customSrc ? (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            pointerEvents: "none",
+            background: "#1A1A1A",
+            opacity: done ? 0 : 0.34,
+          }}
+        />
+      ) : (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            pointerEvents: "none",
+            background: RED_COVER_TONE.glow,
+          }}
+        />
+      )}
       <div
         style={{
           position: "absolute",
@@ -1628,17 +1669,6 @@ function StudioCard({
           opacity: done ? (customSrc ? 0.72 : 1) : 0,
         }}
       />
-      {!customSrc ? (
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            pointerEvents: "none",
-            background: RED_COVER_TONE.glow,
-            opacity: done ? 0 : 1,
-          }}
-        />
-      ) : null}
       <span
         style={{
           position: "relative",
@@ -1646,18 +1676,15 @@ function StudioCard({
           width: 38,
           height: 38,
           borderRadius: "50%",
-          background: done ? "rgba(215,71,48,.1)" : RED_COVER_TONE.chipBg,
-          border: `1px solid ${done ? "rgba(215,71,48,.16)" : RED_COVER_TONE.chipBorder}`,
+          background: RED_COVER_TONE.chipBg,
+          border: `2px solid ${RED_COVER_TONE.chipBorder}`,
+          color: RED_COVER_TONE.chipInk,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
         }}
       >
-        <Gift
-          size={20}
-          strokeWidth={1.6}
-          style={{ color: done ? "#D74730" : RED_COVER_TONE.chipInk }}
-        />
+        <RedPacketGlyph size={20} strokeWidth={1.6} />
       </span>
       <span
         style={{
@@ -1667,17 +1694,19 @@ function StudioCard({
           minWidth: 0,
           display: "flex",
           flexDirection: "column",
+          opacity: done ? 0.52 : 1,
         }}
       >
         <span
           style={{
-            fontFamily: KAI,
+            fontFamily: SERIF,
+            fontStyle: "italic",
             fontSize: 14,
-            fontWeight: 500,
+            fontWeight: 600,
             lineHeight: 1.35,
-            color: done ? T.ink : RED_COVER_TONE.ink,
+            color: customSrc && !done ? "#FFFFFF" : RED_COVER_TONE.ink,
             letterSpacing: ".03em",
-            textShadow: done ? "none" : "0 1px 0 rgba(255,255,255,.55)",
+            textShadow: customSrc && !done ? "0 1px 4px rgba(0,0,0,.55)" : "none",
           }}
         >
           恭喜发财
@@ -1685,14 +1714,16 @@ function StudioCard({
         <span
           style={{
             marginTop: 3,
-            fontFamily: KAI,
-            fontSize: 11,
+            fontFamily: SERIF,
+            fontStyle: "italic",
+            fontSize: 10,
+            fontWeight: 500,
             lineHeight: 1.3,
-            color: done ? T.ink3 : RED_COVER_TONE.inkSoft,
-            letterSpacing: ".06em",
+            color: customSrc && !done ? "rgba(255,255,255,.9)" : RED_COVER_TONE.inkSoft,
+            letterSpacing: ".07em",
           }}
         >
-          {done ? "已领取" : "星绥红包"}
+          {done ? "已领取" : "From 我"}
         </span>
       </span>
     </div>

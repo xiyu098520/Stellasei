@@ -22,7 +22,6 @@ import {
   Download,
   File,
   FileText,
-  Gift,
   Heart,
   Image as ImageIcon,
   Languages,
@@ -200,7 +199,7 @@ import {
 } from "@/lib/chat/red-cover-store";
 /* 红包封套的两张正脸：没开的封套（带「開」）与开完的金额卡。
    开红包那一页与发红包那页的试衣间共用同一张脸，形状都在那个文件里。 */
-import { RedEnvelopeCard, RedOpenedCard } from "./RedPacketCards";
+import { RedEnvelopeCard, RedOpenedCard, RedPacketGlyph } from "./RedPacketCards";
 /* 转账／红包的填写页（1.4.54）：恩熙要「像微信那样跳出一个整页」——不再是底下滑上来的
    面板。这里只管开关与递参数，钱怎么划走仍归 `doSendMoney`。 */
 import MoneySendView from "./MoneySendView";
@@ -4227,7 +4226,14 @@ export default function ChatWindow({
            点开照旧走 setOpenMoney——点开的是开红包页（RedPacketModal），不再是白弹窗。
            卡面渲染挪去模块级的 RedPacketCard：自定义封面要用 useMediaSrc 读仓库，
            renderBody 的 switch 里不能挂 hook。 */
-        return <RedPacketCard m={m} onOpen={() => setOpenMoney(m)} />;
+        return (
+          <RedPacketCard
+            m={m}
+            charName={charName}
+            myName={myName}
+            onOpen={() => setOpenMoney(m)}
+          />
+        );
       }
       case "transfer": {
         /* 1.4.38 跟红包同一套口径（恩熙：「我转给他，他收取也会有卡片，然后颜色会变淡」）：
@@ -8493,8 +8499,26 @@ const RP_BURST: { n: string; s: number; c: string; r: string; d: number }[] = [
  *  ——恩熙：「点击领取之后，它不会是整个变黑的，而是一个渐变的感觉……不会让整张图
  *  都变成灰掉了那种感觉」。这一版红封套**原样不动**，done 之后上面淡进一层浅色
  *  渐层（`RED_COVER_CLAIMED_VEIL`），字与图标跟着翻成深色，过渡走 opacity/color
- *  的 transition——红退成微信那种「已领取」的浅卡，而不是一张灰纸。 */
-function RedPacketCard({ m, onOpen }: { m: ChatMessage; onOpen: () => void }) {
+ *  的 transition——红退成微信那种「已领取」的浅卡，而不是一张灰纸。
+ *  【1.9.78：换成「柔和野兽派」】恩熙从四套里挑了第四套，卡面整个翻新：平灰底
+ *  ＋2px 近黑描边＋4px 平推硬投影；纹样（顶边一道粉、右几颗柔色圆点、左下一条羽化
+ *  紫斜条）挂 `RED_COVER_TONE.glow`，排在 veil 之前（领过之后被遮罩压淡）；圆标粉底
+ *  黑边，里头换成红包图标；字走衬线斜体，第二行改报来头「From 角色名／我的名字」
+ *  （落定才换回状态字）。照片封面不压纹样，改用一道深色 scrim 压底、字翻白加暗投影；
+ *  领过之后压同色系浅灰 veil、整块字降一档透明度，不洗灰。 */
+function RedPacketCard({
+  m,
+  charName,
+  myName,
+  onOpen,
+}: {
+  m: ChatMessage;
+  /** 发红包那位（TA）的名字——第二行「From …」用。 */
+  charName: string;
+  /** 我自己的名字——我发的红包第二行「From …」用。 */
+  myName: string;
+  onOpen: () => void;
+}) {
   const atMe = m.role === "assistant";
   const refunded = m.moneyRefunded === true;
   /* 过期（1.5.12）：我发出去、他一直没领，走过上下文那么多条就作废、钱退回我口袋
@@ -8513,14 +8537,20 @@ function RedPacketCard({ m, onOpen }: { m: ChatMessage; onOpen: () => void }) {
       : m.moneyClaimed === true
         ? "他已领取"
         : "等他领取";
-  /* 第二行平时报名字（微信那种），落定了才换成状态字——状态照旧看得见。 */
-  const sub = done ? foot : "星绥红包";
+  /* 第二行平时报来头（微信那种 From ＋ 名字），落定了才换成状态字——状态照旧看得见。 */
+  const sub = done ? foot : `From ${atMe ? charName : myName}`;
   /* 封面：自定义图（引用串／data URL）优先；没选过就是那张默认封套。
      挪过位置的封面尾巴上带取景后缀——读图前先剥掉（redCoverSrcRefOf 一并管了），
      铺的时候再照**这一处**的位置铺（卡面上的取景跟开红包那页、详情页各归各挪）。 */
   const customSrc = useMediaSrc(redCoverSrcRefOf(m.redCover));
   const preset = redCoverPresetOf();
   const coverBg = redCoverBgOf(customSrc, redCoverPosOf(m.redCover, "card"), preset.bg);
+  /* 字色分两路：预设灰底走深墨字；照片上翻白字＋一道暗投影。领过之后（done）
+     上面压了浅灰 veil，两路一律翻回深墨、暗投影收掉。 */
+  const onPhoto = Boolean(customSrc) && !done;
+  const noteColor = onPhoto ? "#FFFFFF" : RED_COVER_TONE.ink;
+  const subColor = onPhoto ? "rgba(255,255,255,.9)" : RED_COVER_TONE.inkSoft;
+  const noteShadow = onPhoto ? "0 1px 4px rgba(0,0,0,.55)" : "none";
   return (
     <div
       onClick={onOpen}
@@ -8536,13 +8566,37 @@ function RedPacketCard({ m, onOpen }: { m: ChatMessage; onOpen: () => void }) {
         alignItems: "center",
         padding: "0 14px",
         background: coverBg,
-        boxShadow: done
-          ? "0 6px 18px -12px rgba(20,19,24,.26)"
-          : RED_COVER_TONE.shadow,
-        transition: "box-shadow .4s ease",
+        border: `2px solid ${RED_COVER_TONE.chipBorder}`,
+        boxShadow: RED_COVER_TONE.shadow,
       }}
     >
-      {/* 领过之后淡上来的浅色渐层（1.4.94）：封面退成微信那种「已领取」的浅卡。
+      {/* 照片封面：压一道深色 scrim 让白字读得清（领过之后收掉）。
+          预设封面有自己的纹样，不压它。 */}
+      {customSrc ? (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            pointerEvents: "none",
+            background: "#1A1A1A",
+            opacity: done ? 0 : 0.34,
+            transition: "opacity .4s ease",
+          }}
+        />
+      ) : null}
+      {/* 纹样（1.9.78）：顶边一条粉＋右下三颗柔色圆点＋左下一条羽化紫斜条。
+          排在 veil 之前，领过之后被那层浅灰遮罩压淡；照片封面不压。 */}
+      {!customSrc ? (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: RED_COVER_TONE.glow,
+            pointerEvents: "none",
+          }}
+        />
+      ) : null}
+      {/* 领过之后淡上来的浅灰遮罩（1.4.94）：卡退成「已领取」的浅样子。
           自定义图不压满——低一档，图还看得见，且**不走去色**。 */}
       <div
         style={{
@@ -8554,21 +8608,7 @@ function RedPacketCard({ m, onOpen }: { m: ChatMessage; onOpen: () => void }) {
           transition: "opacity .4s ease",
         }}
       />
-      {/* 纸柔光：斜过来的一道淡高光＋边角一点收暗——纸的站立感，一层就够。
-          自定义图的封面上不压（照片自己就有光影，再压一道只会脏）；领完之后收掉。 */}
-      {!customSrc ? (
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            background: RED_COVER_TONE.glow,
-            pointerEvents: "none",
-            opacity: done ? 0 : 1,
-            transition: "opacity .4s ease",
-          }}
-        />
-      ) : null}
-      {/* 左边那枚圆图标：礼盒坐在半透明白底上（1.4.92 起不再自己描信封） */}
+      {/* 左边那枚圆标：粉底黑边，里头是红包图标（1.9.78 起不再是礼盒）。 */}
       <span
         style={{
           position: "relative",
@@ -8576,24 +8616,17 @@ function RedPacketCard({ m, onOpen }: { m: ChatMessage; onOpen: () => void }) {
           width: 38,
           height: 38,
           borderRadius: "50%",
-          background: done ? "rgba(215,71,48,.1)" : RED_COVER_TONE.chipBg,
-          border: `1px solid ${done ? "rgba(215,71,48,.16)" : RED_COVER_TONE.chipBorder}`,
+          background: RED_COVER_TONE.chipBg,
+          border: `2px solid ${RED_COVER_TONE.chipBorder}`,
+          color: RED_COVER_TONE.chipInk,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          transition: "background .4s ease, border-color .4s ease",
         }}
       >
-        <Gift
-          size={20}
-          strokeWidth={1.6}
-          style={{
-            color: done ? "#D74730" : RED_COVER_TONE.chipInk,
-            transition: "color .4s ease",
-          }}
-        />
+        <RedPacketGlyph size={20} strokeWidth={1.6} />
       </span>
-      {/* 右边两行：上面留言（大字），下面「星绥红包」（小字） */}
+      {/* 右边两行：上面留言（大字），下面报来头／状态（小字）。领过之后整块淡一档。 */}
       <span
         style={{
           position: "relative",
@@ -8602,17 +8635,20 @@ function RedPacketCard({ m, onOpen }: { m: ChatMessage; onOpen: () => void }) {
           minWidth: 0,
           display: "flex",
           flexDirection: "column",
+          opacity: done ? 0.52 : 1,
+          transition: "opacity .4s ease",
         }}
       >
         <span
           style={{
-            fontFamily: KAI,
+            fontFamily: SERIF,
+            fontStyle: "italic",
             fontSize: 14,
-            fontWeight: 500,
+            fontWeight: 600,
             lineHeight: 1.35,
-            color: done ? T.ink : RED_COVER_TONE.ink,
+            color: noteColor,
             letterSpacing: ".03em",
-            textShadow: done ? "none" : "0 1px 0 rgba(255,255,255,.55)",
+            textShadow: noteShadow,
             whiteSpace: "nowrap",
             overflow: "hidden",
             textOverflow: "ellipsis",
@@ -8624,11 +8660,13 @@ function RedPacketCard({ m, onOpen }: { m: ChatMessage; onOpen: () => void }) {
         <span
           style={{
             marginTop: 3,
-            fontFamily: KAI,
-            fontSize: 11,
+            fontFamily: SERIF,
+            fontStyle: "italic",
+            fontSize: 10,
+            fontWeight: 500,
             lineHeight: 1.3,
-            color: done ? T.ink3 : RED_COVER_TONE.inkSoft,
-            letterSpacing: ".06em",
+            color: subColor,
+            letterSpacing: ".07em",
             whiteSpace: "nowrap",
             overflow: "hidden",
             textOverflow: "ellipsis",
@@ -8918,19 +8956,22 @@ function RedPacketDetailPage({
                 height: 52,
                 borderRadius: "50%",
                 background: RED_COVER_TONE.chipBg,
-                border: `1px solid ${RED_COVER_TONE.chipBorder}`,
+                border: `2px solid ${RED_COVER_TONE.chipBorder}`,
+                color: RED_COVER_TONE.chipInk,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
               }}
             >
-              <Gift size={26} strokeWidth={1.5} color={RED_COVER_TONE.chipInk} />
+              <RedPacketGlyph size={26} strokeWidth={1.5} />
             </span>
             <div
               style={{
                 marginTop: 12,
-                fontFamily: KAI,
+                fontFamily: SERIF,
+                fontStyle: "italic",
                 fontSize: 13,
+                fontWeight: 500,
                 color: RED_COVER_TONE.inkSoft,
                 letterSpacing: ".14em",
               }}
