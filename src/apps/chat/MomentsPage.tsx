@@ -12,8 +12,13 @@
  * TA 写的原话看得见、改得动，确认了才花钱，改过的描述顺手写回那条动态。点图 → 放大预览 ＋ 保存图片。
  * 【只读】点条目不进聊天；
  * 赞／评／转三枚按钮现在是占位（点了报「还在做」），互动数据还没有存储。
- * 【通知】封面下沿挂一枚玻璃气泡，`marginTop` 28px；列表留白 40／空态 44
- * （28＋40＋40＝108，＋44＝112）。第一张卡的位置**永不动**。
+ * 【通知】**这一页现在不摆通知气泡**（2026-09-22 恩熙：「把上面这个通知气泡去删除了，
+ * 留他的逻辑在就好」）——前一版那枚挂在封面下沿的玻璃气泡是**样品**，连它那段
+ * 「按 seen-at 算新动态、推成通知」的假触发一起撤了。
+ * **逻辑留着、一个字没动**：`lib/chat/moments-notice.ts`（`MomentNotice` 类型、
+ * `getMomentNotices／getMomentsSeenAt／setMomentsSeenAt／pushMomentNotices／clearMomentNotices`
+ * 一整套仓库）原封不动；将来接真逻辑那轮（**只收「角色对你做的事」**：赞／评论／回复／艾特／转发，
+ * 角色自己发新帖不算）直接往那个仓库推，再在顶栏右上角开一个「全部通知栏」入口。
  *
  * ── 设计判据（动这一页之前先读这几条）──
  * · 参考图只借**骨架**，零件必须是我们自己的：
@@ -31,7 +36,6 @@
  */
 
 import {
-  ChevronRight,
   Download,
   Heart,
   Image as ImageIcon,
@@ -49,7 +53,7 @@ import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { AVATAR_GRADIENT, SANS, SERIF, T, momentTime } from "./shared";
+import { AVATAR_GRADIENT, SANS, SERIF, T, momentFullTime, momentTime } from "./shared";
 import type { ArchiveEntry } from "@/types/contact";
 import type { Conversation } from "@/types/chat";
 import {
@@ -64,13 +68,6 @@ import {
   setMomentImagePrompt,
   setMomentPinned,
 } from "@/lib/settings/chat";
-import {
-  getMomentNotices,
-  getMomentsSeenAt,
-  pushMomentNotices,
-  setMomentsSeenAt,
-  type MomentNotice,
-} from "@/lib/chat/moments-notice";
 import {
   getCachedMediaBlob,
   persistImageAsset,
@@ -131,14 +128,9 @@ const COVER_PILL: CSSProperties = {
   cursor: "pointer",
 };
 
-/** 相纸的微斜角：按 uid 算死（-0.5°~+0.5°）。同一条每次进来角度都一样、不会跳。
-    **一条动态的重心就是这张纸**，它稍微歪一点才像「被人随手摆上去的」；
-    幅度再大就只是歪，不是讲究。 */
-function paperTilt(uid: string): number {
-  let h = 0;
-  for (let i = 0; i < uid.length; i++) h = (h * 31 + uid.charCodeAt(i)) % 997;
-  return ((h % 21) - 10) / 20;
-}
+/* ⚠︎ 这里原本有个 `paperTilt(uid)`——按 uid 算死一个 ±0.5° 的微斜角，专给相纸用。
+   2026-09-22 恩熙说「**照片不要有倾斜，就是正常的照片就好**」，那一处用法已撤，
+   函数本身没有第二个调用者，于是**一并删掉**（留着只会变成没人认领的死代码）。 */
 
 export default function MomentsPage({
   archives,
@@ -206,49 +198,14 @@ export default function MomentsPage({
   const [, setGenTick] = useState(0);
   useEffect(() => subscribeMomentImage(() => setGenTick((n) => n + 1)), []);
 
-  /* ── 通知——数据在 `lib/chat/moments-notice`，这儿只负责「什么时候
-        算一条新通知」＋摆在哪儿（挂在封面跟动态卡片之间）。
-        进来的第一件事：拿上次看动态页的时刻，比它**新**的动态才算通知（不然每次进来
-        都把老动态重新报一遍，清空之后还会自己长回来）。
-        现在接上的真渠道只有「TA 发了新动态」这一种；赞／评论那两种等互动真做那轮
-        往同一个仓库里推就行，形（kind）已经分好了。
-        `feed` 每次渲染都是新数组，用 ref 取当下这份，不让这个 effect 跟着重跑
-        （重跑＝把 seen-at 一直往后推，通知就永远长不出来）。 */
-  const [notices, setNotices] = useState<MomentNotice[]>([]);
-  const feedRef = useRef(feed);
-  useEffect(() => {
-    feedRef.current = feed;
-  });
-  useEffect(() => {
-    let alive = true;
-    void (async () => {
-      const seenAt = await getMomentsSeenAt();
-      const here = feedRef.current;
-      await pushMomentNotices(
-        here
-          .filter((f) => f.createdAt > seenAt)
-          .slice(0, 3)
-          .map((f) => ({
-            id: `${f.uid}::post`,
-            kind: "post" as const,
-            fromName: f.name,
-            fromAvatar: f.avatar,
-            convId: f.conversationId,
-            excerpt: f.content.replace(/\s+/g, " ").trim().slice(0, 24),
-            createdAt: f.createdAt,
-          })),
-      );
-      await setMomentsSeenAt(new Date().toISOString());
-      const list = await getMomentNotices();
-      /* 朋友被假删／档案没了（已经不在这一页的 feed 里了）→ 他那条通知也不摆
-         （同「谁都不能没头没脸」那条规矩）。 */
-      const convIds = new Set(here.map((f) => f.conversationId));
-      if (alive) setNotices(list.filter((n) => convIds.has(n.convId)).slice(0, 3));
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
+  /* ── 通知气泡已撤（2026-09-22 恩熙：「去删除了，留他的逻辑在就好」）。
+        原先这儿有两样东西，现在一起没了：
+        ① 一枚 `notices` state ＋ 下面那段 effect——它按 `seen-at` 把「比上次看动态页
+           更新的动态」推成通知（**假触发，只推 `kind:"post"`**，是给那枚玻璃气泡看的样品）；
+        ② 页面里那枚气泡本身（挂在封面下沿、跟着封面滚的那一枚）。
+        留下的只有**逻辑层**：`lib/chat/moments-notice.ts` 那套仓库一个字没动（见文件头【通知】）。
+        将来接真渠道时，那条「谁对你做了什么」的通知往那个仓库推就行——**别再把这段
+        假触发贴回来**（它把动态当通知，跟「只收角色对你做的事」那条口径是反的）。 */
 
   /* 「自动生图」开着的时候，这一页不摆中间那一步：点「生成配图」直接跑。TA 发动态那一刻
      聊天那边通常已经画好了（见 ChatWindow），所以这里多半是「生成失败后重试」那条路。
@@ -309,6 +266,55 @@ export default function MomentsPage({
   const [stuck, setStuck] = useState(false);
   const coverRef = useRef<HTMLDivElement | null>(null);
 
+  /* ── 手势闸（只在动态页挂着）。
+     iOS 会把**整个文档**当橡皮筋拖：手一往下拉，Safari 原生滚动 body——这条通路是
+     留给键盘避让的（见 `globals.css` 里 `html/body` 那段，明令不许堵），而 `.phone-shell`
+     在触屏下是 `position: static`、跟着 body 走 ⇒ **整个壳子平移**，页面上所有东西
+     （封面、卡片、通知气泡）一起位移 = 她说的「通知跟着滑动跑」。
+     ⚠︎ **第一版只掐了「起手落在滚动格外面」的手势，没用**——她滑的是信息流，手指
+     就在滚动格里起手，那条手势被整条放行了；滚动格**滚到头**之后，iOS 会把这一手
+     接着往上传（scroll chaining），文档照样被拖 = 气泡照样跟着走。
+     所以第二版按**方向**判：滚动格**能往这个方向滚**才放行，**到头了就把手势掐掉**
+     （到顶还往下拉／到底还往上推）。到头那一下本来也滚不动，掐掉不损失任何滚动，
+     只是不让它去拖文档。这不是「越界拉回」的归零守卫（那条明令不许加，
+     会跟 iOS 拉锯＝整页抬起＋闪烁），是**从头就不让这个手势生效**。
+     ⚠︎ 必须 `passive: false`——React 的 `onTouchMove` 是被动监听，里面 `preventDefault` 无效。
+     ⚠︎ 只在动态页挂载期间挂：聊天页有输入框，键盘避让那条通路一个字都不许碰。 */
+  useEffect(() => {
+    /* 起手点的纵坐标：拿它跟当前手指位置比，才知这一手是往下拉还是往上推。 */
+    let startY = 0;
+    const onTouchStart = (e: TouchEvent) => {
+      startY = e.touches.length > 0 ? e.touches[0].clientY : 0;
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      const t = e.target as Element | null;
+      const box =
+        t && typeof t.closest === "function"
+          ? (t.closest("[data-mp-scroll]") as HTMLElement | null)
+          : null;
+      /* 起手落在滚动格外面的（顶栏、通知气泡本身）一律掐掉：那个手势没别的去处，
+         只能去拖文档。 */
+      if (!box) {
+        if (e.cancelable) e.preventDefault();
+        return;
+      }
+      const y = e.touches.length > 0 ? e.touches[0].clientY : startY;
+      const dy = y - startY; /* > 0＝手指往下拉 */
+      const atTop = box.scrollTop <= 0;
+      const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 1;
+      /* 到头那一手交出去＝整页橡皮筋；掐在手里才是「钉住」。 */
+      if ((atTop && dy > 0) || (atBottom && dy < 0)) {
+        if (e.cancelable) e.preventDefault();
+      }
+    };
+    document.addEventListener("touchstart", onTouchStart, { passive: true });
+    document.addEventListener("touchmove", onTouchMove, { passive: false });
+    return () => {
+      document.removeEventListener("touchstart", onTouchStart);
+      document.removeEventListener("touchmove", onTouchMove);
+    };
+  }, []);
+
   /* ── 封面图。
         存的是 `media-store://` 引用串而不是图：图进独立仓库、设定里只留一句串，
         跟聊天图片同一条规矩（见 media-asset.ts 顶上那三条）。
@@ -362,21 +368,12 @@ export default function MomentsPage({
     showToast("封面还原了");
   };
 
-  /* 气泡上那一行字——**多条用一个罩得住各种事的词，单条才说具体的事**。
-     这一枚以后装的不止「新动态」，那个词得能罩住「发了动态／评论了／点赞了」
-     三种。中文里最不别扭的就是「**新消息**」（谁做了什么，都算一条消息到你手上），
-     所以多条改成「**{名字} 等 N 条新消息**」；只有一条时不必含糊，按 `kind` 说清是哪一种。
-     现在真渠道只有 `post`（赞／评论接上真存储后，这里自动就对）。 */
-  const noticeLead = notices[0];
-  const noticeLine = !noticeLead
-    ? ""
-    : notices.length > 1
-      ? `${noticeLead.fromName} 等 ${notices.length} 条新消息`
-      : noticeLead.kind === "like"
-        ? `${noticeLead.fromName} 赞了你`
-        : noticeLead.kind === "comment"
-          ? `${noticeLead.fromName} 评论了你`
-          : `${noticeLead.fromName} 发了新动态`;
+  /* ⚠︎ 这里原本有一处 `noticeLead／noticeLine`——把仓库里的通知揉成**气泡上那一行字**
+     （多条「{名字} 等 N 条新消息」，单条按 `kind` 说具体的事）。
+     气泡撤了，这一处跟着撤（它唯一的用处就是喂那枚气泡）。将来真做「全部通知栏」时，
+     那一行字的**口径照旧**：**多条用一个罩得住「发了动态／评论了／点赞了」三种事的词**
+     （中文里最不别扭的就是「**新消息**」——谁做了什么，都算一条消息到你手上），
+     **单条才说具体的事**。 */
 
   return (
     <div
@@ -400,8 +397,13 @@ export default function MomentsPage({
         }
       `}</style>
 
-      {/* 整页一起滚：封面 → 一条条动态。 */}
+      {/* 整页一起滚：封面 → 一条条动态。
+          `data-mp-scroll` 是给上面那枚「手势闸」认的标记：**从这一格里起手、且这一格
+          还滚得动的手势照放**（页内滚动全靠它）；**到头那一手（到顶还往下拉／到底还往上推）
+          与起手落在它外面的（顶栏、通知气泡）一律掐掉**——那两种手势 iOS 都会拿去拖文档
+          （橡皮筋／scroll chaining），壳子跟着走、页面上所有东西一起位移。 */}
       <div
+        data-mp-scroll="1"
         onScroll={(e) => {
           /* 滚过封面下沿（减掉顶栏那点高度）→ 顶栏落成实底。同一个值重复塞进去
              不会重渲染，所以滚动途中不会跟着抖。 */
@@ -409,6 +411,9 @@ export default function MomentsPage({
           setStuck(e.currentTarget.scrollTop > Math.max(0, coverH - 58));
         }}
         style={{
+          /* `relative` 是**气泡的锚**：气泡挂在滚动格里面，才能跟着封面一起滚
+             （见下面「动态通知气泡」那段注释）。 */
+          position: "relative",
           width: "100%",
           height: "100%",
           overflowY: "auto",
@@ -416,10 +421,13 @@ export default function MomentsPage({
           /* 雾不只在封面那一块：从**页顶**渗下来、到半页才化掉，整页是一口气。
              `backgroundAttachment: local` 让这层雾跟着内容走（钉在**页首**，
              不是钉在屏幕上）——往下滑就是干净的页底，雾留在它该在的顶上。
-             封面自己的渐变底正好接在这层雾上面，「色块 + 白底」那道硬缝就这么没了。 */
+             封面自己的渐变底正好接在这层雾上面，「色块 + 白底」那道硬缝就这么没了。
+             ⚠️ **封面下沿往下那一段（约 300～440px）保持可见的浓度**（`.5 → .34`）：
+             封面到页底之间才是一段**柔和过渡**，不会在封面下沿切出一道硬边。
+             ⚠️ 改这里**必须同步重算封面那两处化白渐变**的终点色（见下面封面注释）。 */
           backgroundColor: T.bg,
           backgroundImage:
-            "linear-gradient(to bottom, rgba(243,220,230,.5) 0px, rgba(246,231,238,.28) 210px, rgba(255,247,249,0) 540px)",
+            "linear-gradient(to bottom, rgba(243,220,230,.5) 0px, rgba(244,220,231,.5) 300px, rgba(246,229,238,.34) 440px, rgba(255,247,249,0) 640px)",
           backgroundAttachment: "local",
         }}
       >
@@ -432,9 +440,9 @@ export default function MomentsPage({
                （不浮了，它就是从顶上压下来的一整面），高度把安全区＋状态栏一并吃进来，
                从 y=0 起，连状态栏那块也是封面。
                底边**不留缝**：最底一截化进「页底那层透粉的雾在封面下沿处的颜色」——
-               算出是 `rgba(253,243,246,1)`（页底 `T.bg` 上盖着滚动容器那层 25% 左右的
-               淡粉雾）。封面下沿那块颜色和下沿外一像素的颜色一模一样，所以是**化开**，
-               不是「切一刀」。这行数字跟着容器那层雾改的话要重算。 ── */}
+               算出是 `rgba(249,234,240,1)`（页底 `T.bg` 上盖着滚动容器那层 **约 47%**
+               的粉雾）。封面下沿那块颜色和下沿外一像素的颜色一模一样，所以是**化开**，
+               不是「切一刀」。⚠️ **这枚值跟着上面容器那层雾的浓度走**——雾一改，必须重算。 ── */}
         <div
           ref={coverRef}
           style={{
@@ -447,9 +455,9 @@ export default function MomentsPage({
             /* 通铺＝没有圆角（颗粒 svg 同步 0）。 */
             borderRadius: 0,
             background:
-              /* 最底一截**化进封面下沿外的页底**（见上面那段注释那枚 `rgba(253,243,246,1)`）：
+              /* 最底一截**化进封面下沿外的页底**（见上面那段注释那枚 `rgba(249,234,240,1)`）：
                  封面不是「贴在页面上的一块色」，而是从顶上渗下来、到自己散开。 */
-              "linear-gradient(to bottom, rgba(253,243,246,0) 44%, rgba(253,243,246,1) 100%)," +
+              "linear-gradient(to bottom, rgba(249,234,240,0) 44%, rgba(249,234,240,1) 100%)," +
               "radial-gradient(150% 110% at 82% 4%, rgba(255,255,255,.5) 0%, rgba(255,255,255,0) 58%)," +
               "linear-gradient(158deg,#F3DCE6 0%,#E7DCF0 44%,#DCE6F2 100%)",
             /* 通铺的一整面**不再「浮起来」**：三道白内边与那道深投影全撤。 */
@@ -465,7 +473,7 @@ export default function MomentsPage({
               ① 顶上一点白（`.34 → 0 @24%`）：压在封面里的顶栏图标与字是**深梅色**，
                  照片若是暗的，AD 那几个字就没了；这层白只护住最上面那一小截，
                  再往下就是照片本来的样子；
-              ② 底下化进页底：用的是跟默认渐变**同一枚** `rgba(253,243,246,1)`，
+              ② 底下化进页底：用的是跟默认渐变**同一枚** `rgba(249,234,240,1)`，
                  所以「封面到哪儿为止」是**化开**的，不会忽然切一刀。 ── */}
           {coverSrc ? (
             <>
@@ -488,7 +496,7 @@ export default function MomentsPage({
                   inset: 0,
                   background:
                     "linear-gradient(to bottom, rgba(255,255,255,.34) 0%, rgba(255,255,255,0) 24%)," +
-                    "linear-gradient(to bottom, rgba(253,243,246,0) 62%, rgba(253,243,246,1) 100%)",
+                    "linear-gradient(to bottom, rgba(249,234,240,0) 62%, rgba(249,234,240,1) 100%)",
                 }}
               />
             </>
@@ -652,171 +660,20 @@ export default function MomentsPage({
           </div>
         </div>
 
-        {/* ── **动态通知气泡**（做在封面跟动态卡片之间的那个位置）：
-               **这一格只站一个小胶囊**（一眼扫过的东西），**一条一条摆开是
-               「详情」的事，点开再说**（跟微信那个消息入口一个道理）。
-               形＝**头像 ＋「{名字} 等 {N} 条互动」＋ `›`**。
-               ① 整枚做大一号（头像 26、字 13、约 40px 高）；
-               ② 横向居中，纵向**只从封面下沿以下 28px 起**（整枚都在封面之外，
-               不压封面）；③ 有它时信息流顶部留白 `40／44`（两处相加仍是原来的
-               108／112，第一张卡位置不变）。
-               文案：**多条用一个泛词：`{名字} 等 N 条新消息`**；
-               **单条按 `kind` 说具体的事**（赞了你／评论了你／发了新动态）。
-               这一行字收到组件里一个 `noticeLine` 统管（见那段注释）。
-               底色降到半透明 ＋ `backdropFilter` 磨砂 ＋ 顶沿白内高光 ＋ 淡描边
-               （见下面 style 里那段），形与位置不动。
-               主题仍是那一枚：头像 ＋ 一行字 ＋ `›`。点它 → 详情还没做，先给提示。 ── */}
-        {notices.length > 0 ? (
-          <div
-            style={{
-              /* 纵向落点 `28px`（居中不变）；多占的从信息流留白里等量扣回
-                 （`40／44`），两处相加仍是 108／112 —— **第一张卡的位置照旧不动**。 */
-              margin: "28px 18px 0",
-              position: "relative",
-              zIndex: 1,
-              display: "flex",
-              justifyContent: "center",
-            }}
-          >
-            {/* 不在背后垫「粉晕」：这一枚占着文档流的位置，卡片永远滚不到它背后，
-                能垫的只有「伪造的背景色」——而伪造出来的东西**必然露在玻璃外**，
-                露出一点就是页底上一块脏斑。**玻璃感不靠背后，靠它自己**
-                （斜向高光 ＋ 粉蓝色散 ＋ 顶亮底淡的厚度，见下面 button 的 style）。 */}
-            <button
-              type="button"
-              className="mp-act"
-              onClick={() => showToast("通知详情还在做")}
-              style={{
-                ...COVER_PILL,
-                /* **做出「透透的」感觉**——照 iOS 那片磨砂玻璃的那一手：
-                   ① 白底**降到半透明**（`#FFFFFF` → `rgba(255,255,255,.58)`），
-                      底下的粉白页底透一点上来；
-                   ② `backdropFilter: blur(14px) saturate(1.5)`（＋`Webkit` 那份给 iOS），
-                      背后真有东西（头像／卡片滚上来时）会化成一层雾；
-                   ③ 描边从深色 `.14` 淡成 `.07`，**顶沿补一道白内高光**（`inset 0 1px 0`）
-                      —— 玻璃的「边」靠光，不靠线；
-                   ④ 底沿那道粉（纸的厚度）留下但减淡（`.4 → .26`），
-                      外投影略加重一点，让它看着是「浮」在页底上而不是切开。
-
-                   **把「玻璃」做在玻璃自己身上**：「背后垫东西」那条路走不通
-                   （见前一段注释：它必然露馅，露出来就是脏），
-                   改成**靠自身的光学**，三样加起来才是「一片玻璃」而不是「一块白」：
-                   ① **斜向高光**：左上角一团 `radial-gradient` ＋ 一路 `linear-gradient(155deg)`
-                      的明暗——这就是玻璃面上的**反光**，玻璃最好认的特征，**它自己发光，
-                      不依赖背后有没有东西**；
-                   ② **色散**：叠一层极淡的粉／蓝斜渐变（`rgba(232,106,155,.12)` →
-                      `rgba(201,222,240,.14)`）——玻璃压着光会泛出一点点色边，顺带把这一枚
-                      拉回页面的粉紫调；
-                   ③ **厚度**：顶沿一道**纯白**内高光（`inset 0 1px 0` 到 `1`）＝上棱在接光，
-                      底沿淡白 ＋ 一点粉（`inset 0 -1px / -2px`）＝下棱有厚度；外面兜
-                      `0 .5px` 白边 ＋ `1px` 极淡暗线把轮廓勾回来，两道柔投影让它浮着。
-                   `backdropFilter` 留着（`blur(14px) saturate(1.8)`）：平时背后是平页底、
-                   看不出什么，一旦有东西到它后面（往下滚时卡片经过）立刻就雾起来。 */
-                /* **把它做成「一层膜」，不是「一块白」。**
-                   —— 上面那三层里白得太重（`.62/.3/.44/.68`，还有一团 `.9` 的高光），
-                   合起来就是**一块白瓷片**：形是立住了，可它把底下那点颜色全压死了，
-                   于是「不透」。把白**撤到几乎没有**，改让**底下的东西自己说话**：
-                   ① `background` 只剩一路很薄的斜向白（`.5 → .14 → .08 → .34 → .18`，
-                      多半在 `.1~.3` 之间）＝一层**膜的厚度**，不再是白底；
-                   ② `backdropFilter` 里补上 **`saturate(2)` ＋ `brightness(1.04)`**：
-                      背后那层粉白页底（`T.bg` ＋ 顶上那层雾）被**提饱和、提亮**之后
-                      从膜里透上来，玻璃因此是**粉粉的、比周围亮一丁点**——「透」和
-                      「空气」都是这一下出来的（iOS 玻璃就是这个手感）；
-                   ③ 边：顶沿一道**纯白细高光**（上棱接光）＋ 底沿一点淡白，外面
-                      `0 .5px` 白边 ＋ `1px` 极淡暗线（`.04`）勾轮廓；
-                   ④ **最外面兜一圈白光晕**（`0 0 22px rgba(255,255,255,.55)`）＋ 一道
-                      **更散更淡**的投影（`0 14px 26px -18px .45`）——投影散、光晕亮，
-                      它才像**浮在空气里**，而不是压在页上。
-                   （物理上：这一格背后没有内容，所以「透」只能透到页底那层
-                   粉白自己；将来真有卡片滚到它背后，`blur(16px)` 会让它真雾起来。） */
-                gap: 8,
-                padding: "7px 12px 7px 7px",
-                background:
-                  "linear-gradient(152deg, rgba(255,255,255,.5) 0%, rgba(255,255,255,.14) 26%, rgba(255,255,255,.08) 48%, rgba(255,255,255,.34) 76%, rgba(255,255,255,.18) 100%)",
-                backdropFilter: "blur(16px) saturate(2) brightness(1.04)",
-                WebkitBackdropFilter: "blur(16px) saturate(2) brightness(1.04)",
-                border: "1px solid rgba(255,255,255,.85)",
-                color: COVER_INK,
-                boxShadow:
-                  "inset 0 1px 0 rgba(255,255,255,.95), inset 0 -1px 0 rgba(255,255,255,.35), 0 0 0 .5px rgba(255,255,255,.6), 0 0 0 1px rgba(20,19,24,.04), 0 14px 26px -18px rgba(96,62,84,.45), 0 0 22px rgba(255,255,255,.55)",
-              }}
-            >
-              {/* 谁在互动：第一个人的头像（没图就用名字首字兜住）。 */}
-              {notices[0].fromAvatar ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={notices[0].fromAvatar}
-                  alt=""
-                  style={{
-                    flex: "none",
-                    width: 26,
-                    height: 26,
-                    borderRadius: 999,
-                    objectFit: "cover",
-                  }}
-                />
-              ) : (
-                <span
-                  style={{
-                    flex: "none",
-                    width: 26,
-                    height: 26,
-                    borderRadius: 999,
-                    background: AVATAR_GRADIENT,
-                    color: "#FFFFFF",
-                    /* 用宋体（黑体太方）。 */
-                    fontFamily: SERIF,
-                    fontSize: 11,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  {notices[0].fromName.slice(0, 1)}
-                </span>
-              )}
-              {/* 这一行字由上面 `noticeLine` 一处统管（多条「等 N 条新消息」、
-                  单条按 `kind` 说具体的事）。
-                  **字体跟下面那些动态正文一支**：`COVER_PILL` 带来的 `SANS`
-                  （黑体）太方，换成 `SERIF`（宋体，
-                  与卡片正文／下面那行名字同一支）＋ `fontWeight: 500`
-                  （正文那支是 400；**宋体在这个小字号上不加一点粗会发飘**，
-                  气泡里字小、又压在玻璃上，需要这一点分量）。 */}
-              <span
-                style={{
-                  fontFamily: SERIF,
-                  fontWeight: 500,
-                  fontSize: 13,
-                  letterSpacing: ".01em",
-                }}
-              >
-                {noticeLine}
-              </span>
-              <ChevronRight
-                size={15}
-                strokeWidth={1.9}
-                style={{ flex: "none", opacity: 0.45 }}
-              />
-            </button>
-          </div>
-        ) : null}
-
         {/* ── 信息流：**一条一张方卡**（每一条＝**一张白纸方卡**，深色细线框住）。
                ① 「第一则跟第二则怎么分清」靠**卡自己那条边**——不用页上的栏线；
                ② 一页扫下去是**一个一个**，不是一片——就是那种「游戏选择页面」的
                   「每块都被安排过」的排法；
                ③ 形状变了，逻辑没变。
                条目间距 22px：卡自带边界，不用再靠大留白硬撑。
-               顶部留 108px 给封面下沿那枚骑边的头像与它下面那列名字／签名让位
-               （头像嵌进封面 8px，留白同步补到 `108`）。
-               ⚠︎ 上面那段缝里站了**通知气泡**的时候，这几处留白跟着收
-               （**胶囊占多少，就从这里扣多少，两处相加恒是 108／112**）：
-               列表 `40px`／空态 `44px`。
-               两处（空态／列表）都得跟着改，不然有通知的时候会白撑一大段。 ── */}
+               顶部留白固定 `108／112`：只让开封面下沿那枚骑边头像
+               与它下面那列名字／签名。上面那枚通知气泡已经**钉在视口上、
+               不在流里**，不占高度，所以这里**不再给它另留**——
+               第一张卡永远落在封面下 `108／112`，位置不随有没有通知变。 ── */}
         {feed.length === 0 ? (
           <div
             style={{
-              padding: notices.length > 0 ? "44px 24px 64px" : "112px 24px 64px",
+              padding: "112px 24px 64px",
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
@@ -834,9 +691,7 @@ export default function MomentsPage({
         ) : (
           <div
             style={{
-              padding: notices.length > 0
-                ? "40px 0 calc(var(--safe-area-bottom, 0px) + 34px)"
-                : "108px 0 calc(var(--safe-area-bottom, 0px) + 34px)",
+              padding: "108px 0 calc(var(--safe-area-bottom, 0px) + 34px)",
               display: "flex",
               flexDirection: "column",
               gap: 22,
@@ -860,6 +715,30 @@ export default function MomentsPage({
             ))}
           </div>
         )}
+
+      {/* ⚠︎ **这里原本是那枚「动态通知气泡」**（挂在封面下沿、跟着封面一起滚、
+             头像 ＋ 一行字 ＋ `›` 的一枚玻璃胶囊）。2026-09-22 恩熙：「把上面这个通知气泡
+             去删除了，留他的逻辑在就好」——**展示撤了，逻辑留在数据层**
+             （`lib/chat/moments-notice.ts` 一个字没动，见文件头【通知】）。
+             留给以后接真逻辑的几条备忘（都是那一版踩出来的，别重踩）：
+             ① 位置的口径：**它属于封面那一块**——挂在滚动格里面、`top` 钉死在
+                `calc(safe-area-top + sim-status-h + 272px + 32px)`（封面高 `272`），
+                这样**永远在封面下面**，往下滑就跟封面一起滚走；
+                ⚠️ **别改 `fixed`**（1.3.75 试过，更糟）：真机上 iOS 会把整个壳子连文档
+                一起拖（键盘避让那条通路 ＋ 顶页橡皮筋），`fixed` 相对**视口**、壳子一挪
+                它就脱开页面 ⇒ 相对页面看反而更飘。治「整页被拖走」的是上面那枚**手势闸**。
+                ⚠️ 走 `fixed` 的前提：祖先链上不许留 transform（`.animate-app-rise` 的
+                收尾已改成 `transform: none`、填充模式 `backwards`）。
+             ② 它在流外、**不占高度**：所以信息流顶部留白仍按 `108／112` 给，
+                第一张卡一开始就落在它斜下方。
+             ③ 材质：玻璃的**薄纱档**（`--glass-bg-veil`，定义在 `globals.css`）——
+                薄雾白底 ＋ 小半径模糊（**别照抄底栏那 20px**，会把上方紧邻的封面化白吸进来）、
+                不用 `saturate`、不用白顶棱；`iOS 的 `WebkitBackdropFilter` 必须同值，
+                外加 `translateZ(0)` ＋ `willChange` 才会真进独立合成层。
+             ④ 文案口径：多条一个泛词「{名字} 等 N 条新消息」，单条按 `kind` 说具体的事。 */}
+      {/* ⚠︎ 上面那条注释里说的那一枚「动态通知气泡」，**整块撤掉了**
+             （注释留着＝以后接真逻辑时的口径）。撤的时候顺手带走的还有：
+             一枚 `notices` state、喂它的那段假触发 effect、`noticeLine` 那段文案、`ChevronRight` 的引用。 */}
       </div>
 
       {/* ── 顶栏：压在封面里时**不显形**（全透明、深梅色图标与字），滚过封面下沿才落成
@@ -1170,6 +1049,38 @@ export default function MomentsPage({
    定宽列**撤回名字后面**（那截空白像表格，就是「怪」的来源）。高级不是加上去的，
    是减出来的。
    -------------------------------------------------------------------------- */
+/* 动态的那枚时间戳（微信那一套，2026-09-22 恩熙定的）：
+   默认说相对话——「刚刚／5分钟前／3小时前／昨天／前天」；**点一下**换成确切时间
+   （`M月D日 时:分`），再点一下换回去。
+   为什么是个组件：它自带一枚「展开了没有」的开关，静态函数给不了。
+   为什么只有相对档可点：更早的那些本来就写着确切日期，点了没有第二个样子可给。
+   时间口径（哪档说相对、哪档说日期）在 `shared.ts` 的 `momentTime`。 */
+function MomentStamp({ iso }: { iso: string }) {
+  const [full, setFull] = useState(false);
+  const rel = momentTime(iso);
+  const abs = momentFullTime(iso);
+  const toggleable = rel !== abs;
+  const base: CSSProperties = {
+    /* `inherit`：这行小字以前是个 `<span>`，字体是从卡上继承来的；
+       换成 `<button>` 之后**按钮不继承字体**，不写这句会变成系统 UI 字。 */
+    fontFamily: "inherit",
+    fontSize: 10,
+    letterSpacing: ".08em",
+    color: T.ink3,
+    fontVariantNumeric: "tabular-nums",
+  };
+  if (!toggleable) return <span style={base}>{rel}</span>;
+  return (
+    <button
+      type="button"
+      onClick={() => setFull((v) => !v)}
+      style={{ ...base, background: "none", border: 0, padding: 0, cursor: "pointer" }}
+    >
+      {full ? abs : rel}
+    </button>
+  );
+}
+
 function MomentItem({
   item,
   generating,
@@ -1270,6 +1181,19 @@ function MomentItem({
               来由说得出来。
               ⚠︎ **往右下错开一块实色**那种垫子不算「用别种方式」，只换颜色也不行；
               现在整块垫子已撤，立体感改做「纸的厚度」（见下面 `boxShadow` 那段）。 ── */
+        /* ── **卡里分两列**（2026-09-22 恩熙定的版）：左列＝**头像自己一列**，
+             右列＝名字 → 时间（以后的「分组」也排这儿）→ 正文 → 配图，
+             **全在头像右边的下方**（不再有东西落在头像底下）。
+             用 `grid` 而不是「把内容套进一个 flex 右列」：这样**每个块都留在原地**，
+             只需各自标一个 `gridColumn: 2`（一行的事，不用把整段往里缩一层）。
+             `minmax(0, 1fr)` 的那个 `0` 是**收缩许可**——写成 `1fr`，长名字／长正文
+             会把列顶宽、把卡撑破。
+             块与块的间距仍由各自的 `marginTop` 给（9／16／15／12），这里**不加 `rowGap`**；
+             底下的**分割线 ＋ 互动行**跨两列（`1 / -1`），还是一条**卡宽**的署名行。 ── */
+        display: "grid",
+        gridTemplateColumns: "44px minmax(0, 1fr)",
+        columnGap: 11,
+        alignItems: "start",
         margin: "0 16px",
         padding: "13px 15px 13px",
         borderRadius: 3,
@@ -1300,33 +1224,108 @@ function MomentItem({
           "inset 0 -3px 0 rgba(201,222,240,.9), 0 1px 2px rgba(20,19,24,.04), 0 14px 24px -18px rgba(58,96,140,.42)",
       }}
     >
-      {/* ── 第一行＝**头像 ＋ 这一条的标签 ＋ 右下脚注**（头像也收进这一行）。
-             一页扫下去是一张一张**完整的卡**，不再是「左边一列头像 ＋ 右边一列内容」。
-             头像 42px 正圆：一圈白边把它从卡上托起来，再垫一点点淡影；标了「重要」的
-             那条，白圈外再补一环主粉——比挂个「★ 重要」的字样更打眼，也不占地方。
-             名字＝**一行宋体粉字**：**不能做成「实心粉标签条」**——
-             名字的重靠**颜色与字体**（主粉 ＋ 宋体），不靠一块贴上去的底。
-             时间贴在这一行的**最右**（参考图右下角那枚小字的位置）。
-
-           ── **每个地方都差不多重，就会找不到重点**，重点是**主次**。
-              名字 `13`、时间退到 ink3，字号差拉开，层级才立得起来。 ── */}
-      <div
+      {/* ── 右上角那枚**小书签**：表示「这条标了重要」（标了的那条永远原文留在 TA 的记忆里）。
+             恩熙 2026-09-22 定的：「**然后我觉得这个重要应该要放在卡片的右上角，
+             然后给它做成像一种 小书签的那种感觉吧。**」
+             ⇒ 原先压在互动行右端的那枚「重要」标签条**搬到这儿**，并做成书签形：
+             **下缘咬掉一个 V 口**（`clipPath`，真书签就是那个样子）。
+             ── **颜色（恩熙 2026-09-22：「可不可以改成粉色的？也是淡淡的粉，
+                或是淡淡的蓝这种」）**：整片的调子跟卡走**淡**的那一套——
+                **没标＝淡蓝**（跟卡底下那道淡蓝的纸边同族，安静、不出声），
+                **标了＝淡粉**（粉是这页唯一的「重要」色）。
+                两档都淡，靠**色相**分状态，不靠深浅硬碰。 ──
+             标了＝淡粉底 ＋ 实心主粉星；没标＝淡蓝底 ＋ 淡蓝空心星，
+             位置却始终在这——所以它**既是显示、也是开关**（点一下标／取消标），
+             **不必再来第二处**替它说话。
+             ⚠︎ **整片夹在卡里、不探出卡外**：卡与卡挨得近，探出去会压到上一张。
+             ⚠︎ 影子挂在**外层**：`filter` 在 `clipPath` **之前**生效，
+             同一层写会被剪掉（V 口那儿会缺一块影）。 ── */}
+      <button
+        type="button"
+        aria-label={item.pinnedByUser ? "取消重要" : "标为重要"}
+        aria-pressed={item.pinnedByUser ? true : false}
+        onClick={() => onTogglePin(item)}
         style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
+          position: "absolute",
+          top: 0,
+          /* `15`＝卡的左右内边距，书签右缘跟正文右缘站在同一条竖线上。 */
+          right: 15,
+          width: 19,
+          height: 27,
+          padding: 0,
+          border: 0,
+          background: "none",
+          cursor: "pointer",
+          /* 影也跟着走淡的那一套：粉的用粉影，蓝的用蓝影。 */
+          filter: item.pinnedByUser
+            ? "drop-shadow(0 3px 5px rgba(232,106,155,.30))"
+            : "drop-shadow(0 2px 3px rgba(120,150,180,.28))",
         }}
       >
+        <span
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: "100%",
+            height: "100%",
+            clipPath: "polygon(0 0, 100% 0, 100% 100%, 50% 74%, 0 100%)",
+            /* 淡粉／淡蓝（见上面那条注释：色相分状态，两档都淡）。 */
+            background: item.pinnedByUser ? "#F8D7E5" : "#DCEAF8",
+            color: item.pinnedByUser ? T.pink : "#9DBBD6",
+          }}
+        >
+          {/* `translateY(-3)`：星往 V 口上面挪一点，才落在书签的「正身」里，不压到那个缺口。
+              标了＝实心（`fill` 跟着 `color` 走），没标＝空心（只留那圈淡蓝描边）。 */}
+          <Star
+            size={11}
+            strokeWidth={1.9}
+            fill={item.pinnedByUser ? T.pink : "none"}
+            style={{ transform: "translateY(-3px)" }}
+          />
+        </span>
+      </button>
+      {/* ── 左列＝**头像自己一列**（这一格只装头像这一件事）。
+             ⚠︎ 2026-09-22 恩熙定的版：头像**自成左列**，名字、时间、正文、配图
+             **全在它右边的下方**——不再有东西落在头像**底下**，头像也不再跟名字挤一行。
+             头像 42px 正圆：一圈白边把它从卡上托起来，再垫一点点淡影；标了「重要」的
+             那条，白圈外再补一环主粉——比挂个「★ 重要」的字样更打眼，也不占地方。
+             （层级：名字 `13` 宋体 ＋ 主粉，时间 `10` 退到 ink3，字号差拉开。） ── */}
+      {/* 44 的槽：头像 42 正圆坐在里面，四周各留 1px 给那圈框线。
+          **槽里只有头像这一样东西**——曾经在右上角点过一颗 5px 小粉珠，
+          恩熙读成了「**在线状态**」，已撤（见日志第 376 条）。
+          层次**全靠那一叠「环 ＋ 影」**，不靠任何小圆点。
+
+          ⚠︎ **故意不给这个槽写 `height`**（2026-09-22，恩熙：「**正文是不是变得很下面……
+          应该稍微贴齐名字，留出一点点的空位就好**」）：
+          槽和名字同在第 1 行，**写死 `height: 44` 就等于把这一行的行高定成 44**——
+          名字本身才十几像素，于是从第 2 行起头的正文只能从 44 底下才开口，
+          **看着就像跟名字隔了一整个头像**。
+          头像自己是 `position: absolute`（不占布局），槽多高都不影响它 ⇒ **把高度摘掉**，
+          第 1 行的行高交给名字决定，正文自然贴到名字底下，只余它自己那点 `marginTop`。 */}
+      <div style={{ position: "relative", width: 44 }}>
         <div
           style={{
-            flex: "none",
+            position: "absolute",
+            /* ⚠︎ 这里**不能写 `inset: 1`**（2026-09-22 踩过）：槽不写高度之后是 0 高，
+               `inset` 是靠父级尺寸算出来的 ⇒ 头像跟着变成 0 高，**整个头像就没了**。
+               改成写死 42×42 ＋ `top/left: 1`——槽的 44 里四周各留 1px，
+               头像照样不占布局（槽多矮都不影响它）。 */
+            top: 1,
+            left: 1,
             width: 42,
             height: 42,
             borderRadius: "50%",
             background: AVATAR_GRADIENT,
+            /* **框是一叠环 ＋ 一道影**（层次就从这儿来，别再挂小圆点）：
+               `1.5px #FFF` 里圈白（把头像从卡上托起来）
+               → `2.5px` 细粉（框线）
+               → `5px` 一圈更宽的淡粉晕（框往外散出去，头像因此「坐」进去）
+               → 底下一道柔影（往右下走一点，头像才离得开卡面）。
+               标了「重要」的那条，外圈换成实心主粉，比挂「★ 重要」字样更打眼。 */
             boxShadow: item.pinnedByUser
-              ? `0 0 0 1.5px #FFF, 0 0 0 3px ${T.pink}`
-              : "0 0 0 1.5px #FFF, 0 2px 8px -5px rgba(20,19,24,.38)",
+              ? `0 0 0 1.5px #FFF, 0 0 0 3px ${T.pink}, 0 0 0 5px rgba(232,106,155,.16), 0 3px 8px -4px rgba(232,106,155,.45)`
+              : "0 0 0 1.5px #FFF, 0 0 0 2.5px rgba(232,106,155,.42), 0 0 0 5px rgba(232,106,155,.12), 0 3px 8px -4px rgba(20,19,24,.32)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -1347,9 +1346,32 @@ function MomentItem({
             item.name.charAt(0)
           )}
         </div>
+      </div>
+      {/* ── 右列（`gridColumn: 2`）：**名字打头**，往下是正文、配图／描述框、时间，
+             全在头像右边的下方。
+             这一格留成 `flex` 竖列，是给**以后的「分组」**备的位子（恩熙：「名字下方应该是
+             发布时间，或者是之后要做的分组」）——分组来了就摆在名字底下，不用再动结构。
+             ⚠︎ 时间**已经不在这列了**：2026-09-22 恩熙要的是微信那种摆法——落在**内容底下**
+             （纯文字在文字下、有图在图下），见卡末那枚 `MomentStamp`。
+             ⚠︎ 这里**不再有 `top` 那种微调**：名字原先是跟头像同一行、垂直居中，
+             才需要抬一点点；现在它是右列的**第一行**，位子由列自己的对齐定。 ── */}
+      <div
+        style={{
+          gridColumn: 2,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "flex-start",
+          gap: 2,
+          minWidth: 0,
+        }}
+      >
         <span
           style={{
-            minWidth: 0,
+            /* `maxWidth`：名字要能在列宽里**省略号收尾**，
+               宁可截断，也不能把右列顶宽、把卡撑破。
+               ── **减去的 26px 是给右上角那枚小书签让的位**（书签宽 19 ＋ 一点点缝）：
+                  名字是右列第一行，跟书签同处卡顶，不留位的话长名字会从书签底下穿过去。 ── */
+            maxWidth: "calc(100% - 26px)",
             /* ── **那块实心粉方块撤了**。
                    那是从参考图的「粉标签条」上**搬来的零件**：印刷品里「标签用方块、正文用宋」
                    是公用的语法，但在星绥这儿它只是**一张硬邦邦贴上去的纸**，
@@ -1371,32 +1393,27 @@ function MomentItem({
         >
           {item.name}
         </span>
-        <span
-          style={{
-            /* 时间顶到这一行的最右（头像放进来之后，标签往右缩了，
-               靠 `auto` 把时间重新推回右边，不跟头像一起挤在左边）。 */
-            marginLeft: "auto",
-            flex: "none",
-            fontSize: 10,
-            letterSpacing: ".08em",
-            color: T.ink3,
-            fontVariantNumeric: "tabular-nums",
-          }}
-        >
-          {momentTime(item.createdAt)}
-        </span>
+        {/* ⚠︎ 名字底下**暂时是空的**：时间搬去内容底下了（见卡末那枚 `MomentStamp`，
+             恩熙 2026-09-22：「**像微信那样……纯文字就在纯文字底下，有图片就在图片底下**」）。
+             这一列留着，是给**以后的「分组」**排的（她的原话：「名字下方应该是发布时间，
+             或者是之后要做的分组」）——分组来了就摆这儿，不用再动结构。 */}
       </div>
 
       {/* 正文文字＝整页的**大标题**：字是全页最大，**换成宋体**——那张卡
           一半的「印刷品感」就在这儿。
           （名字用宋、正文用无衬线是对调过来的：正文升成大标题，名字降下来。层级没变，气质变了。）
-          **字号收了一档**：`15.5`。卡里多了一层「垫在下面的
-          粉纸」、顶上也染了一点粉，字再站 17px 就顶得慌——**纸变厚了，字就该收。**
+          **字号又收了一档**：`14.5`。卡里多了一层「垫在下面的
+          粉纸」、顶上也染了一点粉，字再站 15.5px 就顶得慌——**纸变厚了，字就该收。**
           行距 1.85。 ── */}
       <div
         style={{
-          marginTop: 9,
-          fontSize: 15.5,
+          /* 正文在**右列**（头像右边的下方）——不再从卡左沿起，才不会落到头像底下。 */
+          gridColumn: 2,
+          /* ── 正文往上提了一点点（恩熙：「**发布内容文字的部分应该要再往上一点点。**」）。
+               这里原本是 `9`，**减 3 → 6**——跟名字那次「往上一点点」同档，
+               「一点点」就用 3 这个数当旋钮。嫌不够／多了，**只改这一个数**。 ── */
+          marginTop: 6,
+          fontSize: 14.5,
           fontFamily: SERIF,
           lineHeight: 1.85,
           letterSpacing: ".01em",
@@ -1411,20 +1428,33 @@ function MomentItem({
           imagePrompt 有但无图 → 摊一个「文字框」，点一下才去画 */}
       {item.imageRef && resolvedSrc ? (
         /* ── 相纸（星绥自己的造型）：一条动态的**重心**就是这张纸。厚一点的白边
-             （7px）、深一点的投影、**微微歪一点点**（`paperTilt`，±0.5°）——一页里
-             只有这张小照片歪着，才像「被人随手摆上去的」。
+             （7px）、深一点的投影——**但不再歪**。
+             恩熙 2026-09-22：「**你是不是给它做成一个照片？但是不要有倾斜，
+             就是正常的照片就好。**」⇒ 原先那点按 uid 算死的微斜角（`paperTilt`，±0.5°）
+             **整条撤掉**：照片就正正地摆着。白边、圆角、投影全都照旧——
+             「是张照片」这个感觉靠白边和影就够，不必靠歪。
              圆角 3（跟卡同一套）；描边留着——白照片压白纸，光靠投影分不开，
              那圈 `.06` 只到「看得见纸边」为止。 */
         <div
           style={{
+            /* 相纸在**右列**（跟正文同一条线起），但**不吃满整列**了。
+               恩熙 2026-09-22：「**照片有一点太大了，可以稍微缩小一点，
+               比例再小一点点。**」
+               原先靠 `justifySelf: stretch` ＋ `marginRight: -10` 撑到**比右列还宽 10px**
+               （往卡外探出去一点）；现在改成**写死宽度** `calc(100% - 20px)`——
+               整张纸缩到右列宽的**约 93%**，右缘落在离右列右沿 20px 的地方，
+               左缘仍跟名字、正文同一条竖线（**整页的东西都是靠左站队的**，所以缩也从右边缩）。
+               ⚠︎ 写了 `width` 之后，`stretch` 等价于靠左对齐，**原先那行 `marginRight: -10`
+               就成了废码**，一并删掉（留着只会让人以为还探着）。
+               「**再大一点／再小一点**」＝只改这一个 `20`（想放大就写成 `calc(100% - 6px)` 这种更小的数）。 */
+            gridColumn: 2,
             marginTop: 16,
-            marginRight: -10,
+            width: "calc(100% - 20px)",
             padding: 7,
             borderRadius: 3,
             background: "#FFF",
             boxShadow:
               "0 0 0 1px rgba(20,19,24,.06), 0 1px 0 rgba(20,19,24,.045), 0 14px 28px -16px rgba(20,19,24,.38)",
-            transform: `rotate(${paperTilt(item.uid)}deg)`,
           }}
         >
           <button
@@ -1459,7 +1489,10 @@ function MomentItem({
               alt="配图"
               style={{
                 width: "100%",
-                maxHeight: 300,
+                /* `300 → 270`：跟上面那处宽度一起收，是**同一次「缩小一点」的另一半**。
+                   竖图（比纸还高的那种）靠这个数封顶；方图／横图都够不到它，
+                   所以这一改**只影响竖图**——把它按同一个比例收下来，两张摆一起才是一个尺寸感。 */
+                maxHeight: 270,
                 objectFit: "cover",
                 display: "block",
               }}
@@ -1497,7 +1530,7 @@ function MomentItem({
               虚线仍是**中性**的（粉虚线压在透粉的页底上会发脏）。
               圆角 3（跟卡同一套），底仍是那支**粉白**——卡本身已经是纯白，
               粉白压白，框还是框。 ── */
-        <div style={{ marginTop: 16 }}>
+        <div style={{ gridColumn: 2, marginTop: 16 }}>
           <button
             type="button"
             className="mp-act"
@@ -1550,19 +1583,32 @@ function MomentItem({
         </div>
       ) : null}
 
+      {/* ── 时间戳：**落在内容的末尾**（微信那种摆法，恩熙 2026-09-22 定的）——
+             纯文字那条就在正文底下；有图的那条落在图（或画面描述框）底下；
+             总之它是「这条内容」的最后一行，**不再待在名字底下**。
+             `gridColumn: 2`：跟正文、相纸同一条竖线起（还在头像右边那一列里）；
+             它自己**不占卡宽**——底下那条分割线与互动行，才是全宽的署名行。 ── */}
+      <div style={{ gridColumn: 2, marginTop: 12 }}>
+        <MomentStamp iso={item.createdAt} />
+      </div>
+
       {/* ── 细分割线：照那张卡——正文（或图／描述框）与「署名行」之间压一条
             极淡的线（`T.line` = `rgba(20,19,24,.09)`）。它跟卡边（`.42`）**差了四倍多**，
              一眼就分得清「框」和「里面的线」——**不要**那种「两条一样粗一样色」的线。
              这一条只干一件事：把**上面（TA 说的话）**和**下面（这一行的功能）**断开。 ── */}
-      <div style={{ marginTop: 15, height: 1, background: T.line }} />
+      <div style={{ gridColumn: "1 / -1", marginTop: 15, height: 1, background: T.line }} />
 
-      {/* ── 互动行＝这张卡的**署名行**：左边三枚极简图标（赞／评／转发），右边一枚「重要」
-             标签条（标了的那条变实心主粉——那条永远原文留在 TA 的记忆里）。
-             四个都得在（前三个暂时还是占位，点了报「还在做」）。
-             「重要」是**直角标签条**（跟名字那条同一个语法）——一页里
-             「贴上去的东西」都该是方的，就它一个圆的，会显得没编排过。 ── */}
+      {/* ── 互动行＝这张卡的**署名行**：三枚极简图标（赞／评／转发；暂时都是占位，
+             点了报「还在做」）。
+             ⚠︎ 这一行**原先还有第四样**——右端那枚「重要」标签条。
+             2026-09-22 恩熙把它**搬到卡的右上角、做成了小书签**（见卡顶那枚，
+             点它就是标／取消标）⇒ 它在这儿**撤掉**，同一件事不再说两遍。 ── */}
       <div
         style={{
+          /* **跨两列**（`1 / -1`）：署名行是**卡宽**的，不跟正文一起缩进——
+             上面是「TA 说的话」（右列、跟着头像缩进），下面是「卡自己的功能」，
+             两者靠这条全宽的线 ＋ 全宽的行分开。 */
+          gridColumn: "1 / -1",
           marginTop: 12,
           display: "flex",
           alignItems: "center",
@@ -1598,31 +1644,6 @@ function MomentItem({
             <Share2 size={16} strokeWidth={1.7} />
           </button>
         </div>
-
-        <button
-          type="button"
-          className="mp-act"
-          aria-label={item.pinnedByUser ? "取消重要" : "标为重要"}
-          aria-pressed={item.pinnedByUser ? true : false}
-          onClick={() => onTogglePin(item)}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 5,
-            padding: "5px 10px 5px 8px",
-            borderRadius: 2,
-            border: `1px solid ${item.pinnedByUser ? T.pink : T.line}`,
-            background: item.pinnedByUser ? T.pinkSoft : "transparent",
-            color: item.pinnedByUser ? T.pink : T.ink3,
-            fontFamily: SANS,
-            fontSize: 10.5,
-            letterSpacing: ".08em",
-            cursor: "pointer",
-          }}
-        >
-          <Star size={12} strokeWidth={1.8} fill={item.pinnedByUser ? T.pink : "none"} />
-          {item.pinnedByUser ? "已标记" : "重要"}
-        </button>
       </div>
     </article>
   );

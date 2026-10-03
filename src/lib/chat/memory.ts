@@ -6,21 +6,23 @@
  * 旁路：重要记忆（core）永不压缩永不遗忘；用户手动标的（pinnedByUser）AI 不得推翻。
  *
  * 关键机制：
- * - 整批浓缩（「短期保全」）：当前批攒满 contextLimit 条（默认 50）
- *   → 整批交给 AI 浓缩成短期条目——只删寒暄/纯玩笑/客套口水话，实质内容
- *   （事件、决定、情绪、偏好禁忌、新得知的信息）基本全收，同话题并一条、不限字数
+ * - 整批浓缩（有取有舍）：当前批攒满 contextLimit 条（默认 50）
+ *   → 整批交给 AI 浓缩成短期条目——按「该收什么／不该收什么」两张清单筛（1.7.64），
+ *   一条一件事、每条 80 字以内、条数不设上限，同类重复合并成一条
  *   → 水位线推进、计数清零。细节的「遗忘」推迟到中期压缩去做（分层更类人：
  *   近期记得细，久了才模糊）。
  * - 对账：浓缩时把「未兑现的承诺／未解的心结」一并喂给 AI；新对话里兑现了／和好了
  *   → 旧条目状态流转（fulfilledIso / resolvedIso），同时在「我们的经历」新增对应事件；
  *   一般性矛盾以新为准（旧条目作废）。
- * - 压缩吸并（按分类）：短期某分类满 MID_THRESHOLD 条（20）→ 只把
- *   该分类连同中期同分类条目交给 AI 合并压缩（谁满压谁，不一锅端）；
- *   中期→长期仍整层（满 10）。讲同一件事的新旧条目熔成一条（不会两条并行）。
+ * - 压缩吸并（分层按天走，1.7.66）：短期老于 7 天（或某类当天堆满 20 条）→ 轻压进中期，
+ *   只把该分类连同中期同分类条目交给 AI 合并压缩（谁够条件压谁，不一锅端）；
+ *   中期老于 15 天 → 重压成骨架（仍在中期，产出盖 refinedIso 免得反复压）；
+ *   中期老于 30 天 → 进长期（只增式追加）。讲同一件事的新旧条目熔成一条（不会两条并行）。
  *   压缩优先保住：重要 ＞ 节点/承诺/心结 ＞ 一般。
  * - 注入：四层的记忆条目**全量**注入，不设条数上限、
- *   不按话题重排，每层固定按事情发生时间新→旧列；各层带「清晰度」说明——长期只是
- *   印象，营造「模糊印象→被追问→靠中期/短期捞回细节」的真人回忆感。
+ *   不按话题重排，每层固定按事情发生时间新→旧列；分层标题自带清晰度
+ *   （「细节已模糊」「只剩模糊印象」），层内不再另写说明（1.4.6 砍掉——
+ *   参考项目记忆槽零说明，只留「近期层压倒旧层」一句消歧）。
  *   原文（完整对话历史）同时照常全部发送，记忆只是「多一份摘要」，永不顶替原文。
  *
  * 记忆跟着「角色 × 面具」走；存储键 v2（旧 v1 数据自然作废，测试期清零重来）。
@@ -28,8 +30,8 @@
 
 import { kvGet, kvSet } from "@/lib/db/idb";
 import { uuid } from "@/lib/uuid";
-import { fetchAIReply } from "@/lib/chat/chatApi";
-import { getConversations } from "@/lib/settings/chat";
+import { fetchAIReply, fetchAIStreamReply, readVoiceContent } from "@/lib/chat/chatApi";
+import { getApiBundle, getConversations } from "@/lib/settings/chat";
 import { DEFAULT_MASK_ID } from "@/lib/settings/mask";
 import type {
   ChatApiSettings,
@@ -53,13 +55,56 @@ const MOMENT_KEEP = 12;
 /** 没被压过的动态攒到这么多条才动手（少于这个数还不够格「模糊」，压了反而假）。 */
 const MOMENT_COMPRESS_AT = 20;
 
-/** 短期某分类满多少条（非重要）触发该分类压缩进中期。
- *  两条：①「短期保全」——整理只删寒暄口水话，实质内容
- *  基本全收（不限字数）；②「按分类压缩」——单标签满 20 条才压该标签
- *  （承诺与约定满 20 就专门压承诺类），不一锅端整层。 */
-const MID_THRESHOLD = 20;
-/** 中期满多少条触发压缩进长期。 */
-const LONG_THRESHOLD = 10;
+/** 分层压缩刻度（1.7.66，恩熙 2026-09-29 定：一周全细节、半月有经过、一月剩骨架、更早只剩印象）。
+ *  1.7.66 之前短→中按「某分类满 20 条」、中→长按「中期满 10 条」走**条数**，
+ *  聊得越猛压得越快、一天的细节当天就糊掉；恩熙的直觉是「人一天说太多本来也会当天忘一部分」，
+ *  所以改成按**天**走（条数只留作兜底）。下面的常数是默认值，每份记忆都能在设置里拧（见 `scaleOf`）。 */
+/** 短期保鲜（天）：短期条目超过这么多天轻压进中期。恩熙定的一周。 */
+const SHORT_FRESH_DAYS = 7;
+/** 短期当天上限（条）：某类条目同一天堆到这么多条就当天收口（兜底，防某天爆发式聊天撑爆短期）。 */
+const SHORT_SAME_DAY_MAX = 20;
+/** 中期熔合门槛（天）：中期条目老于这么多天才重压成骨架。 */
+const MID_REFINE_DAYS = 15;
+/** 中期保鲜（天）：中期条目超过这么多天进长期（印象化）。 */
+const MID_FRESH_DAYS = 30;
+/** 中期条数上限（条）：某类中期条目堆到这么多条就强制重压（兜底）。 */
+const MID_MAX_ITEMS = 60;
+/** 单次补压上限（条）：打开记忆 App 时一次最多补压多少条（约 5 趟），压不完下次接着压。 */
+const CATCHUP_BUDGET = 200;
+/** 失败跳闸（次）：同一桶（分类 × 来源）连着失败这么多趟就跳过它，
+ *  把它最老那天记进 `failedDays`——不让一批永不成功的素材每次打开都白跑一趟、堵着后面的日子。 */
+const FAIL_TRIP = 3;
+
+/** 分层刻度默认值（记忆 App 设置区展示与读侧兜底共用，别再各写一份）。 */
+export const MEMORY_SCALE_DEFAULTS = {
+  shortFreshDays: SHORT_FRESH_DAYS,
+  shortSameDayMax: SHORT_SAME_DAY_MAX,
+  midRefineDays: MID_REFINE_DAYS,
+  midFreshDays: MID_FRESH_DAYS,
+  midMaxItems: MID_MAX_ITEMS,
+  catchupBudget: CATCHUP_BUDGET,
+} as const;
+
+/** 记忆浓缩／压缩这类内部请求的输出上限（token）。
+ *  它们要一口气吐整批条目的 JSON；1.7.64 起提示词改成「单条 80 字以内、条数不设上限」，
+ *  但一场见面、一整批素材仍可能产出几十条，额度照样得给足。
+ *  思考型模型的思考也吃同一份额度——原先给的 8000 真机上会写到一半被掐断
+ *  （finish_reason=length），手动点压缩就弹「回复被输出上限截断，已放弃本次结果」。
+ *  上限只是天花板，用不到的额度不花钱，宁可给宽，别让整趟白跑。 */
+const MEMORY_TASK_MAX_TOKENS = 32000;
+
+/** 记忆浓缩／压缩这类内部请求的超时（毫秒）。
+ *  非流式下服务端得等整段生成完才回响应头——普通请求那 60 秒根本不够，
+ *  真机上会 abort 成「请求超时」，手动点压缩会弹这句、自动压缩则只在控制台留一行。
+ *  压缩已分批（见 COMPRESS_BATCH），单趟素材不多、几十秒就回；这个上限留给
+ *  还没分批的浓缩，也当压缩每批的兜底。 */
+const MEMORY_TASK_TIMEOUT_MS = 600_000;
+
+/** 压缩一趟最多喂多少条素材（分批）。
+ *  手动整层压缩时池子可能攒了几百条：一口吃下去一趟要生成十几分钟，还容易顶到
+ *  输出上限被切。切成小批逐趟压，每趟几十条、几十秒就回；哪一趟失败就整趟作废、
+ *  下次重来，绝不会把半截结果写进记忆。 */
+const COMPRESS_BATCH = 40;
 
 /** 分类中文名（提示词与 UI 共用）。 */
 export const CATEGORY_LABEL: Record<MemoryCategory, string> = {
@@ -70,6 +115,43 @@ export const CATEGORY_LABEL: Record<MemoryCategory, string> = {
   promise: "承诺与约定",
   other: "其他",
 };
+
+/** 记忆类内部任务（归总／压缩／朋友圈印象）统一走这里（恩熙 2026-09-28 定）：
+ *  - 填了副 API 且已启用 → 走副 API（非流式，MEMORY_TASK_TIMEOUT_MS 兜底）——
+ *    幕后活配个快模型，几十秒回，两头超时都碰不到；
+ *  - 没填 → 主 API 改走**流式**：边生成边保活，中间商掐不了线——治的就是她报的
+ *    「内容太多、一直说时间过长」（非流式下模型慢慢写大 JSON，网关等不到响应头
+ *    就掐，或客户端 10 分钟兜底到点）。流式失败且一字未出时 fetchAIStreamReply
+ *    自己会退回非流式，行为不比改动前差。
+ *  回退：三处调用换回直呼 fetchAIReply（参数原样在调用处）即可。 */
+async function fetchMemoryTask(
+  fallbackApi: ChatApiSettings,
+  system: string,
+  userInput: string,
+  opts: { maxTokens: number; temperature?: number; timeoutMs?: number },
+): Promise<string> {
+  const sub = (await getApiBundle()).sub;
+  if (sub.enabled && sub.baseUrl && sub.apiKey && sub.model) {
+    return fetchAIReply(
+      sub,
+      system,
+      [],
+      userInput,
+      20,
+      opts.maxTokens,
+      opts.temperature ?? 0.3,
+      undefined,
+      undefined,
+      undefined,
+      opts.timeoutMs ?? MEMORY_TASK_TIMEOUT_MS,
+    );
+  }
+  return fetchAIStreamReply(fallbackApi, system, [], userInput, () => {}, {
+    historyLimit: 20,
+    maxTokens: opts.maxTokens,
+    temperature: opts.temperature ?? 0.3,
+  });
+}
 
 /* ----------------------------- 存取 ----------------------------- */
 
@@ -125,11 +207,25 @@ export async function getAllMemories(): Promise<CharacterMemory[]> {
   return all.slice().sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
-/** 更新设置（开关／上下文条数／自动浓缩）。 */
+/** 更新设置（开关／上下文条数／自动浓缩／分层刻度五项）。 */
 export async function updateMemorySettings(
   characterId: string,
   maskId: string,
-  patch: Partial<Pick<CharacterMemory, "enabled" | "contextLimit" | "autoCondense">>,
+  patch: Partial<
+    Pick<
+      CharacterMemory,
+      | "enabled"
+      | "contextLimit"
+      | "autoCondense"
+      | "shortFreshDays"
+      | "shortSameDayMax"
+      | "midRefineDays"
+      | "midFreshDays"
+      | "midMaxItems"
+      | "catchupBudget"
+      | "shortInjectLimit"
+    >
+  >,
 ): Promise<CharacterMemory> {
   const cur = await getMemory(characterId, maskId);
   return saveMemory({ ...cur, ...patch });
@@ -173,18 +269,47 @@ export async function deleteMemoryItem(
 
 /* ----------------------------- 浓缩提示词 ----------------------------- */
 
-const shortTime = (iso: string) => iso.slice(5, 16).replace("T", " ");
+/**
+ * 素材里的时间戳：**本地** MM-DD HH:mm。
+ *
+ * 别再切 ISO 字符串——库里存的是 UTC，在咱们这边（UTC+8）凌晨 0～8 点这段会整整差一天：
+ * 29 号凌晨聊的天会被写成「09-28 16:30」，TA 照着写进记忆就成了「28 号的事」
+ * （恩熙 2026-09-29 凌晨问的「已经是 29 号凌晨了，他记忆还归在 28 号」就是它）。
+ */
+const shortTime = (iso: string) => {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso.slice(5, 16).replace("T", " ");
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
 
 /** 素材格式化：一条消息 → 「时间 名字：内容」（媒体消息转文字说明）。
  *  原话一字不截——宁可整理素材长一点，也不让 TA 看到残句。 */
 function formatSource(messages: ChatMessage[], charName: string, myName: string): string {
   return messages
     .map((m) => {
-      const time = m.createdAt.slice(5, 16).replace("T", " ");
-      const who = m.role === "user" ? myName : charName;
+      const time = shortTime(m.createdAt);
+      /* 系统提示（1.4.42）：这类消息不是谁说的话，署名让给「系统」。
+         不这么办，「你已领取 XX 的红包」会被素材记成**TA 说的**——整理记忆时就当真了。 */
+      const isSys = m.role === "system" || m.type === "system";
+      const who = isSys ? "系统" : m.role === "user" ? myName : charName;
       let body = m.content;
       if (m.type === "image") body = `〔发来图片：${m.content}〕`;
-      if (m.type === "voice") body = `〔发来语音：${m.content}〕`;
+      if (m.type === "voice") body = `〔发来语音：${readVoiceContent(m.content).display}〕`;
+      /* 收款回执（1.4.40）：卡片上没有话，别让素材里冒出光秃秃一句「已收款」
+         （看着像这个人说了这么一句）。写成带金额的说明，跟图／语音一个口径。 */
+      if (m.type === "receipt") body = `〔${m.content}：${(m.amount ?? 0).toFixed(2)} 元〕`;
+      /* 钱落定（1.5.12）：TA 转来、我退回的那笔照旧缀「（已退还）」——不缀的话整理
+         记忆时会当成「他给过我这笔钱」。过期（我发的、他一直没领，钱已退回我这儿）
+         只缀在我发的钱上。红包不能退还（跟微信一致：只能开、不能退）：旧数据里
+         我发的红包带「已退还」的，实际就是钱回了口袋，照「已过期」说，
+         别让 TA 学出「退红包」这个动作。 */
+      if (m.moneyRefunded) {
+        body = `${body}${m.role === "user" && m.type === "redpacket" ? "（已过期）" : "（已退还）"}`;
+      }
+      if (m.role === "user" && m.moneyExpired) {
+        body = `${body}（已过期）`;
+      }
       return `${time} ${who}：${body}`;
     })
     .join("\n");
@@ -206,7 +331,13 @@ function accountList(accounts: MemoryItem[]): string {
     .join("\n");
 }
 
-/** 浓缩提示词：一批对话 → 短期记忆条目（JSON）＋对账指令。 */
+/** 浓缩提示词：一批对话 → 短期记忆条目（JSON）＋对账指令。
+ *  offline＝这批素材是两人**线下见面的经过**（1.7.46）：措辞换成「见面」。
+ *  recorded＝**这场见面前面几次归总已经记下的条目**（1.7.64）。
+ *  为什么要它：线下是按「每几轮」分几次归总的（见 maybeRunOfflineCondense 的轮数门槛），
+ *  而每一趟只看得见自己那一段素材——后一趟不知道前一趟写过什么，于是同一段场景被写两遍
+ *  （恩熙 2026-09-29 报「线下非常冗长、有些东西是重复的」）。把已记条目喂进去，
+ *  它才知道哪些不必再写。 */
 function condensePrompt(
   charName: string,
   myName: string,
@@ -214,30 +345,49 @@ function condensePrompt(
   from: string,
   to: string,
   accounts: MemoryItem[],
+  offline = false,
+  recorded: MemoryItem[] = [],
 ): string {
-  return `你是记忆整理助手。根据以下 ${charName} 与 ${myName} 的聊天记录，提炼值得长期记住的记忆条目。
+  /* 8.6 真人化第一刀（恩熙 2026-09-28 点头）：开场身份从「记忆整理助手」换成
+     TA 本人——身份是助手时，后面再要求第一人称、称「你」都是拧着的，模型两头
+     打架，出来的就是报告腔；身份对了那些要求自然就顺了。「睡前回想今天」是
+     归总的正确心境：不是执行任务，是回忆。回退：整句换回「你是记忆整理助手。
+     根据以下 ${charName} 与 ${myName} 的……提炼值得长期记住的记忆条目。」即可，
+     其余一字未动。 */
+  /* 1.7.64 提炼要求重写（恩熙 2026-09-29 点头）。原来的写法是「凡有实质内容的都要收进
+     记忆，宁多勿漏……不规定字数，长度由内容决定」——等于敞开灌水，于是记忆条目又长又碎
+     （她的原话：「有些东西是可以不被记下的」「线下非常冗长，有些东西都是重复的」）。
+     新的三节都写成**正式声明体、不带任何举例**（她的要求：「你要明确」「不要有过多的
+     举例，最好是不要有举例」「不要讲这些会让 AI 很恍惚的词」）：
+     ① 收录的边界＝该收什么／不该收什么两张清单（原来那版只有一句「只丢寒暄口水话」）；
+     ② 分类＝六类定义，**other 这次补上了定义**（从前是裸的，什么都往里塞）；
+     ③ 写法＝一条一件事、单条 80 字以内（important 不受限）、条数不设上限、
+        同类重复合并成一条只留节点意义的那次（治线下亲密互动一场写三十条）、
+        以及「只是提过不许写成约定／玩笑不许写成承诺／没做不许写成做了」。
+     回退：整段换回 1.7.63 那版【提炼要求】的几条破折号即可，其余一字未动。 */
+  return `你是${charName}本人，正在回想刚和${myName}${offline ? "见面的经过" : "聊过的内容"}——像人睡前回想今天一样，把值得记住的收进自己的记忆。
 
 时间跨度：${from} 至 ${to}
 
-聊天记录：
+${offline ? `【这是一次见面】\n这不是隔着手机聊天——两人是**在同一处见的面**。下面这段记录是这场见面的一部分，**可能还没结束**。归总时把这段里两人做了什么、按先后收成若干条；不得把它写成一场见面的完整经过，也不得复述前面已经交代过的场景。\n\n` : ""}${offline ? "见面经过" : "聊天记录"}：
 ${events}
-
-${accounts.length > 0 ? `【旧记忆对账】以下是 ${charName} 记忆中未兑现的承诺与未解的心结（格式 [id] 内容）：
+${recorded.length > 0 ? `\n【这场已经记下的（不要重复写）】以下是这场见面前面几次归总已经写进记忆的内容（格式 [id] 内容）：
+${recorded.map((it) => `[${it.id}] ${it.content}`).join("\n")}
+上述内容不得重复写。只有当它们在这段记录里有了新的进展时，才另写成新的条目。\n` : ""}
+${accounts.length > 0 ? `\n【旧记忆对账】以下是 ${charName} 记忆中未兑现的承诺与未解的心结（格式 [id] 内容）：
 ${accountList(accounts)}
-请判断这批对话里有没有让上述旧记忆的状态发生变化（承诺兑现了／心结和好了／旧信息被新信息取代）。
+请判断这批对话是否使上述旧记忆的状态发生变化（承诺兑现了／心结和好了／旧信息被新信息取代）。
 - 兑现/解开：在对应条目的 JSON 里给 oldId 返回 "fulfilled" 或 "resolved"，并在新条目里（分类用 us）补一条对应事件
 - 被取代：返回 "superseded"（旧信息作废）
-- 没变化：不用提它
+- 无变化：不必提及\n` : ""}
+【一、收录的边界】
+应当记入记忆的内容：这段对话里新发生的事件与作出的决定、新说定的约定；新得知的事实，包括${myName}的喜好、习惯、身份与心事——其中只有能落到具体相处与行动上的喜好才收录，随口一提的口味不收录；情感与关系上的变化。不得记入记忆的内容：礼节性的寒暄、问候与晚安；纯玩笑与打闹；一次性且没有后续的情绪起伏；没有下文的随口闲聊；仅承担氛围与景物描写、不承载事件的部分；无法确认的推测；此前已经记过、这次没有新进展的内容。人设里已经写明的静态设定（${charName}的名字、外貌、服装、身份职业、性格、居住地、背景故事，以及${myName}的名字）一律不得记入，这些信息天生就知道，记下来是纯重复。
 
-` : ""}【提炼要求】
-- 人设里已有的信息一律不记录：${charName} 的名字、外貌（发色瞳色身形体态）、服装、身份职业、性格、居住地、背景故事等静态设定，TA 天生就知道（每轮对话都自带），记下来是纯重复；同理 ${myName} 的名字也不记。只记聊天中新发生、新得知的动态信息
-- 分类（category）只能是：mine（关于${myName}的事：喜好、习惯、身份、透露的心事）／theirs（关于${charName}自己的事：近况、临时状态、聊天中透露的经历）／us（两人共同经历的事件）／milestone（关系转折点：第一次、确定关系、纪念日、和好）／promise（说好的还没兑现的约定）／other
-- important（true）只给「永远不会忘的事」：人设没写但聊天中确认的重大事实（生日、家庭、重大纪念日、关键共同决定），宁缺毋滥
-- secret（true）：只属于两人的秘密才标
-- grudge（true）：吵架没和好、有疙瘩没说清才标
-- 提炼方式（短期记忆要「保全」而不是「摘句」）：只丢弃寒暄、打招呼、纯玩笑、客套口水话；凡有实质内容的对话——新得知的事、发生的事件、做的决定、情绪变化、透露的偏好与禁忌——都要收进记忆，宁多勿漏。同一话题的几个来回并成一条讲清来龙去脉，不规定字数，长度由内容决定
-- 用 ${charName} 自己的口吻写（第一人称「我」），回忆里的 ${myName} 称「你」——这是 TA 自己的记忆，不是旁白；条目之间按话题组织、不要逐句翻译对话
-- 没有值得记的就返回空数组
+【二、分类】
+每一条记忆归入且只归入以下六类之一：mine（关于${myName}的事：喜好、习惯、身份、透露的心事）／theirs（关于${charName}自己的事：近况、临时状态、聊天中透露的经历）／us（两人共同经历的事件）／milestone（关系转折点：第一次、确定关系、纪念日、和好）／promise（说好但还没兑现的约定）／other（确实值得记、但归不进以上五类的事）。important 只给予永远不会忘的事，宁缺毋滥；secret 只给予属于两人的秘密；grudge 只给予吵架未和好、有疙瘩未说清的事。
+
+【三、写法】
+每一条只讲一件事，同一话题的几个来回合并为一条，不同的事分开写。每条长度不超过 80 字，标为 important 的条目不受此限。条数不设上限，有多少件事就写多少条。重复发生的同类事件（反复出现的相处与亲密互动、反复拌嘴又和好）合并为一条，记为你们之间常态性的相处方式，不得按次数拆成多条；其中具有节点意义的某一次（第一次、破例、与往常明显不同）单独记一条。只是提到过或想过的事不得写成约定或承诺，玩笑不得写成认真的承诺，尚未发生的事不得写成已经发生。条目以${charName}的第一人称「我」书写，记忆里的${myName}称「你」——这是 TA 自己的记忆，不是旁白；按话题组织，不得逐句翻译对话。没有值得记的内容时，返回空数组。
 
 【输出格式】只输出 JSON，不要任何其他文字：
 {"items":[{"category":"us","content":"……","important":false,"secret":false,"grudge":false}],${
@@ -245,24 +395,58 @@ ${accountList(accounts)}
     : ""}}`;
 }
 
+/** 压缩的三档力度（1.7.66 恩熙定的时间刻度，不是一刀切）：
+ *  - light（短期 → 中期，第 7 天）：保住事件、丢失细节（原来这档就有）；
+ *  - skeleton（中期 → 中期，第 15 天）：只剩骨架（**1.7.66 新写的中间档**）；
+ *  - impression（中期 → 长期，第 30 天）：只剩模糊印象（原来这档就有）。 */
+type CompressMode = "light" | "skeleton" | "impression";
+
 /**
- * 压缩提示词：一批短期（或中期）条目 → 压缩后的新条目。
- * 中期＝吸并式（连同已有中期条目一起熔炼替换）；
- * 长期＝只增式（跟随 Mem0/MemGPT：旧长期条目永不重写，本批输出直接追加，
+ * 压缩提示词：一批条目 → 压缩后的新条目。
+ * 三档力度见 CompressMode：轻压（并入中期）＝吸并式（连同已有中期条目一起熔炼替换）；
+ * 重压（中期→中期）＝只压这批、不吸并（否则会把没参与的中期条目一起重写）；
+ * 印象化（中期→长期）＝只增式（跟随 Mem0/MemGPT：旧长期条目永不重写，本批输出直接追加，
  *       防「传话游戏」式漂移——每次全量重熔会一点一点改掉最早的记忆）。
  */
 function compressPrompt(
   charName: string,
   myName: string,
-  sourceTier: "short" | "mid",
   sources: MemoryItem[],
   existing: MemoryItem[],
-  targetLabel: string,
+  mode: CompressMode,
 ): string {
-  const isLong = targetLabel === "长期";
+  const isImpression = mode === "impression";
+  const targetLabel = isImpression ? "长期" : "中期";
+  /* 这批里有没有线下见面的条目（1.7.46）：有的话压缩时得多保一条主线，
+     别把「那次见面」拆成互不相干的零碎印象（见下面【压缩要求】那一条）。 */
+  const hasOffline = sources.some((it) => it.offline);
   const fmt = (it: MemoryItem) =>
-    `[${it.id}]（${CATEGORY_LABEL[it.category]}${it.fulfilledIso ? "·已兑现" : ""}${it.resolvedIso ? "·已解开" : ""}）${it.content}`;
-  return `你是记忆压缩助手。${charName} 的记忆要从「${sourceTier === "short" ? "短期" : "中期"}」压缩到「${targetLabel}」——像人的遗忘曲线一样${isLong ? "只留下模糊的印象" : "保住事件、丢失细节"}。
+    `[${it.id}]（${CATEGORY_LABEL[it.category]}${it.offline ? "·见面" : ""}${it.fulfilledIso ? "·已兑现" : ""}${it.resolvedIso ? "·已解开" : ""}）${it.content}`;
+  /* 8.6 真人化第一刀的同款（恩熙 2026-09-28 点头，跟归总开场一起换）：
+     「记忆压缩助手」→ TA 本人。压缩的心境不是「执行压缩任务」，是「记忆在
+     新陈代谢」——原有的遗忘曲线比喻本来就留着，正好接得上。回退：换回
+     「你是记忆压缩助手。${charName} 的记忆要从……」即可。
+     1.7.66 把开头那句拆成三档——原来只有「保住事件」与「只留印象」两种力度，
+     中间那档「至少还有骨架」是新写的（恩熙 2026-09-29：短期搬到中期该有一点点的失忆）。 */
+  const opening =
+    mode === "light"
+      ? `你是${charName}本人。你的记忆要从「短期」并入「中期」——像人的遗忘曲线一样，保住事件、丢失细节。`
+      : mode === "skeleton"
+        ? `你是${charName}本人。你的记忆要从「中期（还留着经过）」压到「中期（只剩骨架）」——留住发生了什么、结果如何，丢掉起因与来龙去脉的叙述。`
+        : `你是${charName}本人。你的记忆要从「中期」模糊成「长期」——像很久以前的事，只留下模糊的印象。`;
+  /* 三档各自的压缩要求（1.7.66 拆成三份，不再用 isLong 两分支拼）。 */
+  const requirement =
+    mode === "light"
+      ? `- 不规定字数，长度由内容决定：一个事件一条，把该保留的内容写清楚即可。合并同一件事的前后多条时，把来龙去脉（起因→经过→结果）写进同一条，该长就长
+- 中期保留：事件本身（谁、何时、做了什么、结果如何）；丢弃：细节装饰（说了什么原话、具体吃了什么穿了什么）
+- 讲同一件事的新旧条目必须熔成一条（例如「约定看海」＋「去看了海」→「曾约定看海，后已实现」）`
+      : mode === "skeleton"
+        ? `- 只留骨架：把每件事压到一句「发生了什么、结果如何」，起因、经过、对话、心情细节一律丢掉
+- 事件类型与结果不能丢：见面、争吵与和好、答应过的事这类事实要留下，只是不必再交代细节
+- 同一件事的新旧条目合并成一条；不同的事各自保留`
+        : `- 长期记忆只增不改：这批条目整理完会直接追加进长期记忆，已有的旧长期条目不参与本次整理（它们不会出现在上面）；只在批内做归并，不同事件各自保留
+- 长期只留印象：『很久以前发生过这类事』和当时的感受基调；批内同一类事可归成一条，不需要来龙去脉，但事件类型不能丢`;
+  return `${opening}
 
 待压缩条目（新→旧）：
 ${sources.map(fmt).join("\n")}
@@ -270,13 +454,11 @@ ${sources.map(fmt).join("\n")}
 ${existing.length > 0 ? `已有的${targetLabel}条目（与新条目讲同一件事的必须熔成一条，旧的将被替换）：
 ${existing.map(fmt).join("\n")}
 ` : ""}【压缩要求】
-${isLong ? `- 长期记忆只增不改：这批条目整理完会直接追加进长期记忆，已有的旧长期条目不参与本次整理（它们不会出现在上面）；只在批内做归并，不同事件各自保留` : "- 不规定字数，长度由内容决定：一个事件一条，把该保留的写清楚就行。合并同一件事的前后多条时，把来龙去脉（起因→经过→结果）写进同一条，该长就长"}
-- ${isLong ? "长期只留印象：『很久以前发生过这类事』和当时的感受基调；批内同一类事可归成一条（如多次吵架又和好→「常有摩擦但总会和好」），不需要来龙去脉，但事件类型不能丢" : "中期保留：事件本身（谁、何时、做了什么、结果如何）；丢弃：细节装饰（说了什么原话、具体吃了什么穿了什么）"}
-${isLong ? "" : "- 讲同一件事的新旧条目必须熔成一条（例如「约定看海」＋「去看了海」→「曾约定看海，后已实现」）"}
-- 已兑现/已解开的状态，既要在 content 里自然体现（如「后已实现」「后来和好」），也要用 fulfilled/resolved/grudge 字段标出（见输出格式），不能只写文字不填字段
+${requirement}
+- 已兑现/已解开的状态，既要在 content 里自然体现，也要用 fulfilled/resolved/grudge 字段标出（见输出格式），不能只写文字不填字段
 - 沿用原口吻：仍以 ${charName} 的第一人称（「我」）写，${myName} 称「你」，不要改成旁白
 - 只合并真正讲同一件事（或同类事）的条目；不同的事件各自保留，宁多勿丢
-- 保留 priority：关系节点(milestone)＞承诺与约定(promise)＞带心结(grudge)标记＞一般条目；只有明显琐碎无后续的才可丢弃
+${hasOffline ? "- 这批里有你们**见面**的经历（条目上标着「·见面」）：讲同一段见面的条目并成一条，留住「见了面、一起做了什么」这条线；但只留事件、不复述每一步（1.7.64 起与归总的口径对齐：一条只说清一件事）\n" : ""}- 保留 priority：关系节点(milestone)＞承诺与约定(promise)＞带心结(grudge)标记＞一般条目；只有明显琐碎无后续的才可丢弃
 - category 保持原分类；important 条目不会出现在这里（它们永不压缩）
 
 【输出格式】只输出 JSON：
@@ -509,7 +691,110 @@ export async function forceCondense(
   }
 }
 
-/** 执行一次浓缩＋对账＋级联压缩检查。 */
+/**
+ * 一批素材跑一次浓缩＋对账（1.7.46 从 runCondense 里拆出来，线上线下共用）。
+ * 不落库、不动水位线：产出新条目与对账后的现有条目，由调用方决定怎么合并、
+ * 水位线推到哪里。offline＝这批是线下见面的经过（产出条目打「线下」标）。
+ */
+async function condenseBatch(
+  source: ChatMessage[],
+  memoryIn: CharacterMemory,
+  charName: string,
+  myName: string,
+  api: ChatApiSettings,
+  offline: boolean,
+): Promise<
+  { ok: true; newItems: MemoryItem[]; items: MemoryItem[] } | { ok: false; error: string }
+> {
+  const events = formatSource(source, charName, myName);
+  const accounts = pendingAccounts(memoryIn.items);
+  /* 这场见面前面几趟已经记下的条目（1.7.64）：线下按「每几轮」分趟归总，后一趟看不到
+     前一趟写了什么，同一段场景会被写两遍（恩熙 2026-09-29 报的重复）。取最新的一批喂进去，
+     让它自己避重。线上不传（线上是整批一次归总，没有跨趟重复的问题）。 */
+  const recorded = offline ? memoryIn.items.filter((it) => it.offline).slice(0, 30) : [];
+
+  let result: CondenseResult;
+  try {
+    const reply = await fetchMemoryTask(
+      api,
+      "你是严谨的记忆整理助手，只输出 JSON 本身。",
+      condensePrompt(
+        charName,
+        myName,
+        events,
+        shortTime(source[0].createdAt),
+        shortTime(source[source.length - 1].createdAt),
+        accounts,
+        offline,
+        recorded,
+      ),
+      {
+        maxTokens: MEMORY_TASK_MAX_TOKENS, // 整批条目的 JSON 一次吐完，800 必截断（见常量注释）
+        temperature: 0.3, // 整理任务要稳定输出，不用聊天的发散温度（跟随参考项目）
+        timeoutMs: MEMORY_TASK_TIMEOUT_MS, // 整批 JSON 一次吐完，普通 60 秒必超时（走副 API 时）
+      },
+    );
+    const diag: { reason?: string } = {};
+    const parsed = parseJsonReply<CondenseResult>(reply, diag);
+    if (!parsed || !Array.isArray(parsed.items)) {
+      console.warn("[Memory] 浓缩结果不是合法 JSON：", reply.slice(0, 500));
+      /* 后台触发时手机看不到控制台，把回复形状和解析器的原话写进 error——
+         手动归总的 toast 一显示，念出来就能定位。 */
+      const why = diag.reason
+        ? diag.reason.replace(/\s+/g, " ").slice(0, 70)
+        : parsed
+          ? "JSON 解析成功但 items 不是数组"
+          : describeBadReply(reply);
+      return { ok: false, error: `AI 未返回合法 JSON（${why}）` };
+    }
+    result = parsed;
+  } catch (err) {
+    console.warn("[Memory] 浓缩失败，下轮重试：", err);
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+
+  const now = new Date().toISOString();
+  const fromIso = source[0].createdAt;
+  const toIso = source[source.length - 1].createdAt;
+
+  // 新短期条目（AI 标 important 的进 core；用户没机会预审，pinnedByUser 留空）。
+  // 这里不再二次裁剪字数与条数——1.7.64 起由提示词管（一条 80 字以内、有多少件事写多少条）。
+  // 线下这趟产出的都带「线下」标。
+  const newItems: MemoryItem[] = result.items
+    .filter((r) => r.content && r.content.length >= 8 && VALID_CATEGORIES.includes(r.category))
+    .map((r) => ({
+      id: uuid(),
+      tier: (r.important ? "core" : "short") as MemoryItem["tier"],
+      category: r.category,
+      content: r.content.trim(),
+      fromIso,
+      toIso,
+      createdAt: now,
+      important: !!r.important,
+      secret: !!r.secret,
+      grudge: !!r.grudge,
+      ...(offline ? { offline: true } : {}),
+    }));
+
+  // 对账：旧条目状态流转（pinnedByUser 的重要记忆只许补充不许推翻）。
+  let items = memoryIn.items;
+  const reconcile = Array.isArray(result.reconcile) ? result.reconcile : [];
+  for (const r of reconcile) {
+    if (!r.oldId || !r.action) continue;
+    items = items.map((it) => {
+      if (it.id !== r.oldId) return it;
+      // 用户手动标的重要记忆：AI 不能动状态，跳过（内容补充由新条目承担）。
+      if (it.pinnedByUser) return it;
+      if (r.action === "fulfilled") return { ...it, fulfilledIso: now };
+      if (r.action === "resolved") return { ...it, resolvedIso: now };
+      return null; // superseded → 稍后过滤
+    }).filter((it): it is MemoryItem => it !== null);
+  }
+
+  return { ok: true, newItems, items };
+}
+
+/** 执行一次浓缩＋对账＋级联压缩检查（线上那条线）。 */
 async function runCondense(
   conv: MemorySource,
   charName: string,
@@ -533,78 +818,13 @@ async function runCondense(
   const api = textApi.enabled && textApi.baseUrl.trim() && textApi.model.trim() ? textApi : null;
   if (!api) return { ran: false, error: "文本 API 未配置" };
 
-  const events = formatSource(source, charName, myName);
-  const accounts = pendingAccounts(memoryIn.items);
+  const batch = await condenseBatch(source, memoryIn, charName, myName, api, false);
+  if (!batch.ok) return { ran: false, error: batch.error };
 
-  let result: CondenseResult;
-  try {
-    const reply = await fetchAIReply(
-      api,
-      "你是严谨的记忆整理助手，只输出 JSON 本身。",
-      [],
-      condensePrompt(charName, myName, events, shortTime(source[0].createdAt), shortTime(source[source.length - 1].createdAt), accounts),
-      20,
-      8000, // 浓缩要输出整批条目的 JSON，思考型模型的思考也占额度——800 必截断
-      0.3, // 整理任务要稳定输出，不用聊天的发散温度（跟随参考项目）
-    );
-    const diag: { reason?: string } = {};
-    const parsed = parseJsonReply<CondenseResult>(reply, diag);
-    if (!parsed || !Array.isArray(parsed.items)) {
-      console.warn("[Memory] 浓缩结果不是合法 JSON：", reply.slice(0, 500));
-      /* 后台触发时手机看不到控制台，把回复形状和解析器的原话写进 error——
-         手动归总的 toast 一显示，念出来就能定位。 */
-      const why = diag.reason
-        ? diag.reason.replace(/\s+/g, " ").slice(0, 70)
-        : parsed
-          ? "JSON 解析成功但 items 不是数组"
-          : describeBadReply(reply);
-      return { ran: false, error: `AI 未返回合法 JSON（${why}）` };
-    }
-    result = parsed;
-  } catch (err) {
-    console.warn("[Memory] 浓缩失败，下轮重试：", err);
-    return { ran: false, error: err instanceof Error ? err.message : String(err) };
-  }
-
-  const now = new Date().toISOString();
-  const fromIso = source[0].createdAt;
   const toIso = source[source.length - 1].createdAt;
-
-  // 新短期条目（AI 标 important 的进 core；用户没机会预审，pinnedByUser 留空）。
-  // 条数与字数都不再砍——AI 提炼多少就收多少。
-  const newItems: MemoryItem[] = result.items
-    .filter((r) => r.content && r.content.length >= 8 && VALID_CATEGORIES.includes(r.category))
-    .map((r) => ({
-      id: uuid(),
-      tier: (r.important ? "core" : "short") as MemoryItem["tier"],
-      category: r.category,
-      content: r.content.trim(),
-      fromIso,
-      toIso,
-      createdAt: now,
-      important: !!r.important,
-      secret: !!r.secret,
-      grudge: !!r.grudge,
-    }));
-
-  // 对账：旧条目状态流转（pinnedByUser 的重要记忆只许补充不许推翻）。
-  let items = memoryIn.items;
-  const reconcile = Array.isArray(result.reconcile) ? result.reconcile : [];
-  for (const r of reconcile) {
-    if (!r.oldId || !r.action) continue;
-    items = items.map((it) => {
-      if (it.id !== r.oldId) return it;
-      // 用户手动标的重要记忆：AI 不能动状态，跳过（内容补充由新条目承担）。
-      if (it.pinnedByUser) return it;
-      if (r.action === "fulfilled") return { ...it, fulfilledIso: now };
-      if (r.action === "resolved") return { ...it, resolvedIso: now };
-      return null; // superseded → 稍后过滤
-    }).filter((it): it is MemoryItem => it !== null);
-  }
-
   let next: CharacterMemory = {
     ...memoryIn,
-    items: [...newItems, ...items],
+    items: [...batch.newItems, ...batch.items],
     summarizedToIso: toIso,
     newCount: 0,
   };
@@ -618,34 +838,293 @@ async function runCondense(
   return { ran: true };
 }
 
-/** 级联压缩：短期按分类分别触发（谁满压谁，不一锅端）；中期满 → 长期（整层吸并）。 */
+/**
+ * **线下归总**（1.7.46）：线下自己那条线，与线上那趟各走各的水位线
+ * （`offlineSummarizedTo`，线上是 `summarizedToIso`）。
+ *
+ * `conv.messages` 传的是这一场见面的记录（分界线之后、已转成消息形状）。
+ * 攒够 `rounds` 轮（一轮＝她的一次输出，记为一条 user 消息）就把这段归总一次：
+ * 产出条目进短期、带「线下」标，并把线下水位线推到最后一条——下一轮起这段不再整段重放，
+ * 记忆里已经有了。`rounds <= 0`＝不看轮数、立刻归总（收场时清零头用）。
+ *
+ * 不碰线上的账（`summarizedToIso`／`newCount`）：那是手机上那条线的水位线。
+ */
+export async function maybeRunOfflineCondense(
+  conv: { characterId: string; maskId: string; messages: ChatMessage[] },
+  charName: string,
+  myName: string,
+  textApi: ChatApiSettings,
+  rounds: number,
+): Promise<MemoryRunResult> {
+  const memory = await getMemory(conv.characterId, conv.maskId);
+  if (!memory.enabled || !memory.autoCondense) return { ran: false };
+
+  const source = conv.messages.filter(
+    (m) =>
+      m.role !== "system" &&
+      (!memory.offlineSummarizedTo || m.createdAt > memory.offlineSummarizedTo),
+  );
+  /* 轮数按「她的一次输出」算：记录里一条 user 就是一轮（TA 那一段跟着它）。
+     零头（不到 rounds）先攒着，等她点「结束这一场」时一并归总（见调用处）。 */
+  if (rounds > 0 && source.filter((m) => m.role === "user").length < rounds) {
+    return { ran: false };
+  }
+  if (source.length < 4) return { ran: false };
+
+  const key = `${conv.characterId}::${conv.maskId}`;
+  if (runningSet.has(key)) return { ran: false };
+  runningSet.add(key);
+  try {
+    const api = textApi.enabled && textApi.baseUrl.trim() && textApi.model.trim() ? textApi : null;
+    if (!api) return { ran: false, error: "文本 API 未配置" };
+
+    const batch = await condenseBatch(source, memory, charName, myName, api, true);
+    if (!batch.ok) return { ran: false, error: batch.error };
+
+    const toIso = source[source.length - 1].createdAt;
+    let next: CharacterMemory = {
+      ...memory,
+      items: [...batch.newItems, ...batch.items],
+      offlineSummarizedTo: toIso,
+    };
+    next = await cascadeCompress(next, charName, myName, api);
+    await saveMemory(next);
+    return { ran: true };
+  } finally {
+    runningSet.delete(key);
+  }
+}
+
+/** 把某个时刻换算成「距今多少天」（按条目覆盖时间的末尾算；老数据没有 toIso 用 createdAt 兜底）。 */
+function ageInDays(iso: string | undefined, nowMs: number): number {
+  if (!iso) return 0;
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return 0;
+  return (nowMs - t) / 86_400_000;
+}
+
+/**
+ * ISO 时间戳 → **本地**的那一天（YYYY-MM-DD）。
+ *
+ * 为什么不能再用 `iso.slice(0, 10)`：库里存的是 UTC（`toISOString()`），在咱们这边
+ * （UTC+8）**凌晨 0 点到早上 8 点**这段时间，UTC 还停在昨天——恩熙 2026-09-29 凌晨问的
+ * 「已经是 29 号凌晨了，他记忆还归在 28 号，这是对的吗」就是这个：记忆没记错，
+ * 是日子被按世界标准时间切了。所有「算哪一天」的地方都走这里（分桶、打点、标注）。
+ * 解析不出来时退回原来的切片（坏数据别把页面弄崩）。
+ */
+export function localDayOf(iso: string | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso.slice(0, 10);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** ISO 时间戳 → **本地**的 MM/DD（记忆块里那枚小日期戳，跟日历上的日子同一个口径）。 */
+export function localStampOf(iso: string | undefined): string {
+  const day = localDayOf(iso);
+  return day ? day.slice(5).replace("-", "/") : "";
+}
+
+/** 取这份记忆实际生效的分层刻度（没设过＝老数据，用默认值兜底）。 */
+function scaleOf(memory: CharacterMemory) {
+  return {
+    shortFreshDays: memory.shortFreshDays ?? MEMORY_SCALE_DEFAULTS.shortFreshDays,
+    shortSameDayMax: memory.shortSameDayMax ?? MEMORY_SCALE_DEFAULTS.shortSameDayMax,
+    midRefineDays: memory.midRefineDays ?? MEMORY_SCALE_DEFAULTS.midRefineDays,
+    midFreshDays: memory.midFreshDays ?? MEMORY_SCALE_DEFAULTS.midFreshDays,
+    midMaxItems: memory.midMaxItems ?? MEMORY_SCALE_DEFAULTS.midMaxItems,
+  };
+}
+
+/** 把某一层的条目按「分类 × 来源」分桶：线上线下各数各的（1.7.54 起就这个口径），
+ *  压的时候也只动自己那一支，绝不把另一支卷进来。 */
+function bucketItems(items: MemoryItem[], tier: MemoryItem["tier"]) {
+  const buckets = new Map<string, { cat: MemoryCategory; offline: boolean; items: MemoryItem[] }>();
+  for (const it of items) {
+    if (it.tier !== tier) continue;
+    const offline = !!it.offline;
+    const key = `${offline ? "off" : "on"}::${it.category}`;
+    const cur = buckets.get(key);
+    if (cur) cur.items.push(it);
+    else buckets.set(key, { cat: it.category, offline, items: [it] });
+  }
+  return [...buckets.values()];
+}
+
+/** 短期桶里该进中期的条目：①老于短期保鲜天数；②某天该类堆满当天上限（当天收口）。
+ *  按时间旧→新排好：调用方按预算截取时，先压最老的。 */
+function pickShort(
+  items: MemoryItem[],
+  freshDays: number,
+  sameDayMax: number,
+  nowMs: number,
+): MemoryItem[] {
+  const picked = new Set<string>();
+  for (const it of items) {
+    if (ageInDays(it.toIso ?? it.createdAt, nowMs) >= freshDays) picked.add(it.id);
+  }
+  /* 当天收口：同一天（按覆盖时间的末尾那天）堆满就整天的该类一起收，别按条切一半。 */
+  const byDay = new Map<string, MemoryItem[]>();
+  for (const it of items) {
+    const day = localDayOf(it.toIso ?? it.createdAt);
+    const cur = byDay.get(day);
+    if (cur) cur.push(it);
+    else byDay.set(day, [it]);
+  }
+  for (const dayItems of byDay.values()) {
+    if (dayItems.length >= sameDayMax) for (const it of dayItems) picked.add(it.id);
+  }
+  return items.filter((it) => picked.has(it.id)).sort((a, b) => a.toIso.localeCompare(b.toIso));
+}
+
+/**
+ * 级联压缩（1.7.66 改按「天」走，恩熙 2026-09-29 定的时间刻度）。
+ *
+ * 尺子：一周全细节、半月有经过、一月剩骨架、更早只剩印象。四步，顺序不能倒：
+ *  ① 短期当天收口（兜底）：某类条目同一天堆满 shortSameDayMax 条 → 当天压进中期；
+ *  ② 短期保鲜：短期条目老于 shortFreshDays 天 → 轻压进中期；
+ *  ③ 中期重压：中期条目老于 midRefineDays 天且没重压过，或某类堆满 midMaxItems 条 → 压成骨架（仍在中期）；
+ *  ④ 中期印象化：中期条目老于 midFreshDays 天 → 进长期。
+ * ①② 按「分类 × 来源」分桶，谁够条件压谁、不一锅端。
+ *
+ * budget＝单次补压上限（条）。小手机是网页（PWA），关着的时候什么都不会跑——没有后台闹钟，
+ * 补压只能靠两处触发（归总后、打开记忆 App）。若恩熙几天没打开，一开就要补好几天的量，
+ * 用预算封顶：压不完的留着，下次接着压（按旧→新取，不漏不重，也不会半途丢东西）。
+ * 自动触发（归总后）不传＝不限——那趟素材本来就是刚归总出来的一小批。
+ */
 async function cascadeCompress(
   memory: CharacterMemory,
   charName: string,
   myName: string,
   api: ChatApiSettings,
+  budget = Infinity,
+  onProgress?: (day: string) => void,
 ): Promise<CharacterMemory> {
+  const nowMs = Date.now();
+  const cfg = scaleOf(memory);
   let next = memory;
+  let left = budget;
+  /* 按预算从老的截：pick 已按旧→新排好，先压最老的；超出的留给下次。 */
+  const withinBudget = (pick: MemoryItem[]) => pick.slice(0, Math.max(0, left));
 
-  // 短期 → 中期（按分类计数：「承诺与约定」满 20 就只压承诺类，别的分类原地不动）。
-  // 各分类条目互不重叠，压缩 A 类不影响 B 类的计数，循环里逐类判定即可。
-  const shortByCat = new Map<MemoryCategory, number>();
-  for (const it of next.items) {
-    if (it.tier !== "short") continue;
-    shortByCat.set(it.category, (shortByCat.get(it.category) ?? 0) + 1);
-  }
-  for (const [cat, count] of shortByCat) {
-    if (count >= MID_THRESHOLD) {
-      const r = await compressTier(next, charName, myName, api, "short", "mid", MID_THRESHOLD, false, cat);
-      if (r.ok) next = r.memory;
+  /* 失败跳闸（1.7.66）：某一桶连着三趟压不出来就跳过它，把它最老那天标进 `failedDays`
+     ——不让一批永不成功的素材每次打开都白跑一趟、堵着后面所有日子。哪趟压通了就把账清掉。 */
+  const fails: Record<string, number> = { ...(memory.compressFails ?? {}) };
+  const failedDays = new Set<string>(memory.failedDays ?? []);
+  const failKey = (cat: MemoryCategory, offline: boolean | undefined) => `${cat}|${offline ? "off" : "on"}`;
+  let tripsChanged = false;
+  /** 记一笔这桶的成败（成功清账、失败累加，满三次标那天）。 */
+  const noteTrip = (cat: MemoryCategory, offline: boolean | undefined, oldest: MemoryItem, ok: boolean) => {
+    const k = failKey(cat, offline);
+    if (ok) {
+      if (fails[k]) {
+        delete fails[k];
+        tripsChanged = true;
+      }
+      return;
+    }
+    fails[k] = (fails[k] ?? 0) + 1;
+    tripsChanged = true;
+    if (fails[k] >= FAIL_TRIP) failedDays.add(localDayOf(oldest.toIso ?? oldest.createdAt));
+  };
+  /** 报一句「正在整理哪天的记忆」（记忆 App 页顶那条提示）。 */
+  const say = (oldest: MemoryItem) => onProgress?.(localDayOf(oldest.toIso ?? oldest.createdAt));
+
+  /* ① + ② 短期 → 中期：同桶里「保鲜期到」或「当天堆满」的条目一起轻压进中期。 */
+  for (const { cat, offline, items } of bucketItems(next.items, "short")) {
+    if (left <= 0) break;
+    const pick = withinBudget(pickShort(items, cfg.shortFreshDays, cfg.shortSameDayMax, nowMs));
+    if (pick.length === 0) continue;
+    if ((fails[failKey(cat, offline)] ?? 0) >= FAIL_TRIP) continue; // 连栽三次：跳过这桶
+    say(pick[0]);
+    const r = await compressTier({
+      memory: next,
+      charName,
+      myName,
+      api,
+      fromTier: "short",
+      toTier: "mid",
+      mode: "light",
+      pick,
+      category: cat,
+      offline,
+    });
+    noteTrip(cat, offline, pick[0], r.ok);
+    if (r.ok) {
+      next = r.memory;
+      left -= pick.length;
     }
   }
 
-  // 中期 → 长期（中期已是事件级条目、量少，维持整层触发）
-  const midPool = next.items.filter((it) => it.tier === "mid");
-  if (midPool.length >= LONG_THRESHOLD) {
-    const r = await compressTier(next, charName, myName, api, "mid", "long", LONG_THRESHOLD);
-    if (r.ok) next = r.memory;
+  /* ③ 中期重压成骨架（仍是中期）：老于熔合门槛、但还没到印象化那道的压成骨架；
+     某类堆满条数上限的整桶强制压一遍（兜底）。产出带 refinedIso，下次不再重复压。 */
+  for (const { cat, offline, items } of bucketItems(next.items, "mid")) {
+    if (left <= 0) break;
+    const over = items.length >= cfg.midMaxItems;
+    const pick = items
+      .filter((it) => {
+        const age = ageInDays(it.toIso ?? it.createdAt, nowMs);
+        if (age >= cfg.midFreshDays) return false; // 够老了：交给 ④ 一步进长期，别在这里压两趟
+        if (!it.refinedIso && age >= cfg.midRefineDays) return true; // 保鲜期到，该重压
+        return over; // 兜底：某类堆满上限，整桶强制重压（含已压过的骨架，防止无限堆积）
+      })
+      .sort((a, b) => a.toIso.localeCompare(b.toIso));
+    const take = withinBudget(pick);
+    if (take.length === 0) continue;
+    if ((fails[failKey(cat, offline)] ?? 0) >= FAIL_TRIP) continue; // 连栽三次：跳过这桶
+    say(take[0]);
+    const r = await compressTier({
+      memory: next,
+      charName,
+      myName,
+      api,
+      fromTier: "mid",
+      toTier: "mid",
+      mode: "skeleton",
+      pick: take,
+      category: cat,
+      offline,
+    });
+    noteTrip(cat, offline, take[0], r.ok);
+    if (r.ok) {
+      next = r.memory;
+      left -= take.length;
+    }
+  }
+
+  /* ④ 中期印象化 → 长期：老于中期保鲜天数的进长期（只增式追加）。
+     桶要重新分一次——③ 刚把一些中期条目换成了骨架。 */
+  for (const { cat, offline, items } of bucketItems(next.items, "mid")) {
+    if (left <= 0) break;
+    const pick = items
+      .filter((it) => ageInDays(it.toIso ?? it.createdAt, nowMs) >= cfg.midFreshDays)
+      .sort((a, b) => a.toIso.localeCompare(b.toIso));
+    const take = withinBudget(pick);
+    if (take.length === 0) continue;
+    if ((fails[failKey(cat, offline)] ?? 0) >= FAIL_TRIP) continue; // 连栽三次：跳过这桶
+    say(take[0]);
+    const r = await compressTier({
+      memory: next,
+      charName,
+      myName,
+      api,
+      fromTier: "mid",
+      toTier: "long",
+      mode: "impression",
+      pick: take,
+      category: cat,
+      offline,
+    });
+    noteTrip(cat, offline, take[0], r.ok);
+    if (r.ok) {
+      next = r.memory;
+      left -= take.length;
+    }
+  }
+
+  /* 跳闸的账要落库：哪怕这一趟一条都没压成，也得记住「这桶又栽了一次」。 */
+  if (tripsChanged) {
+    next = { ...next, compressFails: fails, failedDays: [...failedDays].sort() };
   }
 
   return next;
@@ -654,99 +1133,117 @@ async function cascadeCompress(
 /** 压缩一层的返回：成功带新记忆，失败带给人看的错误。 */
 type TierResult = { ok: true; memory: CharacterMemory } | { ok: false; error: string };
 
-/** 压缩一层：取池子里的条目＋目标层已有条目 → AI 吸并 → 替换。
- *  category 指定＝只压该分类（自动触发的分标签压缩）：池子、吸并素材、
- *  替换范围都限定同分类——别分类的条目一律不动（否则会被误删）。
- *  manual＝不看阈值直接压（测试用；手动按钮不传 category＝整层压）。 */
-async function compressTier(
-  memory: CharacterMemory,
-  charName: string,
-  myName: string,
-  api: ChatApiSettings,
-  fromTier: "short" | "mid",
-  toTier: "mid" | "long",
-  threshold: number,
-  manual = false,
-  category?: MemoryCategory,
-): Promise<TierResult> {
+/**
+ * 压缩一层：把 pick（调用方筛好的池子）交给 AI 压成目标层的条目，再替换。
+ *  - `mode`＝三档力度（见 CompressMode）；
+ *  - `pick`＝**已筛好**的待压条目（调用方按分类／来源／天数筛好后传进来）——只动这些；
+ *  - `category`／`offline`＝产出条目沿用同分类／同来源（线下那支别压着压着变成线上的）。
+ *
+ * 与 1.7.66 之前的旧版最大的不同：池子不再由本函数从 memory 里筛，而是调用方给；
+ * **替换范围只等于 pick 的 id**（轻压时再加上被吸并的旧中期条目）。
+ * 为什么非改不可：重压是 mid→mid，旧版「删掉该分类全部中期条目」会把没参与重压的
+ * 同分类条目一起删掉——那批内容就凭空没了。
+ */
+async function compressTier(args: {
+  memory: CharacterMemory;
+  charName: string;
+  myName: string;
+  api: ChatApiSettings;
+  fromTier: "short" | "mid";
+  toTier: "mid" | "long";
+  mode: CompressMode;
+  pick: MemoryItem[];
+  category?: MemoryCategory;
+  offline?: boolean;
+}): Promise<TierResult> {
+  const { memory, charName, myName, api, fromTier, toTier, mode, pick, category, offline } = args;
   const now = new Date().toISOString();
-  // 池子：非重要的条目（重要＝core 层，天然不在 short/mid 池里），按分类过滤。
-  const pool = memory.items
-    .filter((it) => it.tier === fromTier && (!category || it.category === category))
-    .slice()
-    .reverse(); // 旧→新，方便 AI 按时间理解
-  if (pool.length === 0 || (!manual && pool.length < threshold)) {
-    return { ok: false, error: "没有可压缩的条目" };
+  const pool = pick.slice().reverse(); // 旧→新，方便 AI 按时间理解
+  if (pool.length === 0) return { ok: false, error: "没有可压缩的条目" };
+
+  const inScope = (it: MemoryItem) => offline === undefined || !!it.offline === offline;
+  /* 吸并素材：只有「轻压」（短→中）把已有中期同分类条目一起熔炼（讲同一件事的新旧条目熔成一条）；
+     重压（中→中）与印象化（中→长）都只压 pick 本身——重压若吸并，会把没参与的中期条目一起重写。 */
+  const existing =
+    mode === "light"
+      ? memory.items.filter(
+          (it) => it.tier === toTier && (!category || it.category === category) && inScope(it),
+        )
+      : [];
+  /* 分批逐趟压：池子可能攒了几百条，一口吃下去一趟要生成十几分钟、还容易顶到输出上限被切。
+     轻压＝吸并式：上一批产出的中期条目接着当下一批的吸并素材（滚雪球，语义不变）；
+     重压／印象化＝各批产出直接累加，不吸并别批。 */
+  let carried = existing; // 轻压：逐批传递的目标层条目（首批就是原来的中期记忆）
+  const accumulated: MemoryItem[] = []; // 重压／印象化：各批产出
+  let producedAny = false;
+  for (let i = 0; i < pool.length; i += COMPRESS_BATCH) {
+    const chunk = pool.slice(i, i + COMPRESS_BATCH);
+    let reply: string;
+    try {
+      reply = await fetchMemoryTask(
+        api,
+        "你是严谨的记忆压缩助手，只输出 JSON 本身。",
+        compressPrompt(charName, myName, chunk, carried, mode),
+        { maxTokens: MEMORY_TASK_MAX_TOKENS, temperature: 0.3 },
+      );
+    } catch (err) {
+      console.warn(`[Memory] ${fromTier}→${toTier} 压缩失败：`, err);
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+    const parsed = parseJsonReply<{
+      items: { category: MemoryCategory; content: string; fulfilled?: boolean; resolved?: boolean; grudge?: boolean }[];
+    }>(reply);
+    if (!parsed || !Array.isArray(parsed.items)) {
+      // 原文记进 console，方便排查 AI 到底回了什么。
+      console.warn(`[Memory] ${fromTier}→${toTier} 压缩结果不是合法 JSON：`, reply.slice(0, 300));
+      return { ok: false, error: "AI 未返回合法 JSON（详见控制台）" };
+    }
+
+    const range = {
+      fromIso: chunk[0]?.fromIso ?? now,
+      toIso: chunk[chunk.length - 1]?.toIso ?? now,
+    };
+    const made: MemoryItem[] = parsed.items
+      .filter((r) => r.content && VALID_CATEGORIES.includes(r.category))
+      .map((r) => ({
+        id: uuid(),
+        tier: toTier,
+        category: r.category,
+        content: r.content.trim(),
+        fromIso: range.fromIso,
+        toIso: range.toIso,
+        createdAt: now,
+        important: false,
+        /* 压缩别再把「已兑现/已解开/有疙瘩」这几个状态丢了——否则一条「约定看海」被压进中期后
+           又变回「未兑现」，对账反复问、注入时也不显示已兑现，模型就会误以为还没去看过海。 */
+        ...(r.fulfilled ? { fulfilledIso: now } : {}),
+        ...(r.resolved ? { resolvedIso: now } : {}),
+        ...(r.grudge ? { grudge: true } : {}),
+        /* 分来源压缩（线下那支）：产出的条目依旧算线下，别压着压着变成线上条目。
+           来源不分层——压进中期、长期也还是「那次见面」出来的东西。 */
+        ...(offline ? { offline: true } : {}),
+        /* 重压过的条目记一笔（1.7.66）：不记的话，「它老于 15 天」下次检查依然成立，
+           会被反复重压、越压越干还白花钱。 */
+        ...(mode === "skeleton" ? { refinedIso: now } : {}),
+      }));
+    if (made.length === 0) continue; // 这批没产出：手上素材不动，接着下一批
+    producedAny = true;
+    if (mode === "light") carried = made; // 滚雪球：这批吸并出的中期条目，接着当下一批的素材
+    else accumulated.push(...made);
   }
 
-  // 长期＝只增式：旧长期条目不进素材（不重写、不替换，输出直接追加）；
-  // 中期＝吸并式：已有中期条目一起熔炼（分标签压缩时只吸并同分类的）。
-  // core 永不参与（不在 short/mid 池里）。
-  const isLong = toTier === "long";
-  const existing = isLong
-    ? []
-    : memory.items.filter((it) => it.tier === toTier && (!category || it.category === category));
-  let reply: string;
-  try {
-    reply = await fetchAIReply(
-      api,
-      "你是严谨的记忆压缩助手，只输出 JSON 本身。",
-      [],
-      compressPrompt(charName, myName, fromTier, pool, existing, toTier === "mid" ? "中期" : "长期"),
-      20,
-      8000, // 压缩素材多＋思考型模型的思考占额度，给足防截断
-      0.3,
-    );
-  } catch (err) {
-    console.warn(`[Memory] ${fromTier}→${toTier} 压缩失败：`, err);
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
-  }
-  const parsed = parseJsonReply<{
-    items: { category: MemoryCategory; content: string; fulfilled?: boolean; resolved?: boolean; grudge?: boolean }[];
-  }>(reply);
-  if (!parsed || !Array.isArray(parsed.items)) {
-    // 原文记进 console，方便排查 AI 到底回了什么。
-    console.warn(`[Memory] ${fromTier}→${toTier} 压缩结果不是合法 JSON：`, reply.slice(0, 300));
-    return { ok: false, error: "AI 未返回合法 JSON（详见控制台）" };
-  }
+  if (!producedAny) return { ok: false, error: "压缩结果为空" };
+  const newTierItems = mode === "light" ? carried : accumulated;
 
-  const range = {
-    fromIso: pool[0]?.fromIso ?? now,
-    toIso: pool[pool.length - 1]?.toIso ?? now,
-  };
-  const newTierItems: MemoryItem[] = parsed.items
-    .filter((r) => r.content && VALID_CATEGORIES.includes(r.category))
-    .map((r) => ({
-      id: uuid(),
-      tier: toTier,
-      category: r.category,
-      content: r.content.trim(),
-      fromIso: range.fromIso,
-      toIso: range.toIso,
-      createdAt: now,
-      important: false,
-      /* 压缩别再把「已兑现/已解开/有疙瘩」这几个状态丢了——否则一条「约定看海」被压进中期后
-         又变回「未兑现」，对账反复问、注入时也不显示已兑现，模型就会误以为还没去看过海。 */
-      ...(r.fulfilled ? { fulfilledIso: now } : {}),
-      ...(r.resolved ? { resolvedIso: now } : {}),
-      ...(r.grudge ? { grudge: true } : {}),
-    }));
-
-  if (newTierItems.length === 0) return { ok: false, error: "压缩结果为空" };
-
-  // 移除池子条目；中期模式连同被吸并的旧目标层条目一起替换，长期模式旧条目原样保留（追加）。
-  // 分标签压缩时只替换同分类的目标层条目——别分类的绝不能被动到（否则误删）。
-  const removedIds = new Set(pool.map((p) => p.id));
-  const kept = memory.items.filter((it) => {
-    if (removedIds.has(it.id)) return false;
-    if (isLong) return true; // 长期只增：旧长期一律保留
-    if (it.tier !== toTier) return true; // 非目标层不动
-    return category ? it.category !== category : false; // 无分类＝整层替换；有分类＝只换同分类
-  });
+  /* 替换范围＝pick 的 id ＋（轻压时）被吸并的旧中期条目。
+     重压是 mid→mid：只删 pick 里的那几条，同分类没参与的中期条目一条不碰。
+     印象化只增式：旧长期条目不在 removedIds 里，自然原样保留。 */
+  const removedIds = new Set([...pick.map((p) => p.id), ...existing.map((e) => e.id)]);
+  const kept = memory.items.filter((it) => !removedIds.has(it.id));
   return { ok: true, memory: { ...memory, items: [...newTierItems, ...kept] } };
 }
 
-/** 手动压缩：短期整层压进中期／中期整层压进长期（不看阈值，供测试压缩细节）。 */
+/** 手动压缩：短期整层压进中期／中期整层压进长期（不看天数与阈值，供测试压缩细节）。 */
 export async function forceCompress(
   conv: { characterId: string; maskId: string },
   charName: string,
@@ -760,15 +1257,52 @@ export async function forceCompress(
   try {
     const memory = await getMemory(conv.characterId, conv.maskId);
     const label = fromTier === "short" ? "短期" : "中期";
-    if (memory.items.filter((it) => it.tier === fromTier).length === 0) {
-      return { ran: false, error: `还没有${label}记忆可压缩` };
-    }
+    /* 整层压＝把该层所有条目都塞进 pick（不看天数）。按旧→新排，方便分批。 */
+    const pick = memory.items
+      .filter((it) => it.tier === fromTier)
+      .sort((a, b) => a.toIso.localeCompare(b.toIso));
+    if (pick.length === 0) return { ran: false, error: `还没有${label}记忆可压缩` };
     const api = textApi.enabled && textApi.baseUrl.trim() && textApi.model.trim() ? textApi : null;
     if (!api) return { ran: false, error: "文本 API 未配置" };
     const toTier = fromTier === "short" ? "mid" : "long";
-    const r = await compressTier(memory, charName, myName, api, fromTier, toTier, 0, true);
+    const mode: CompressMode = fromTier === "short" ? "light" : "impression";
+    const r = await compressTier({ memory, charName, myName, api, fromTier, toTier, mode, pick });
     if (!r.ok) return { ran: false, error: r.error };
     await saveMemory(r.memory);
+    return { ran: true };
+  } finally {
+    runningSet.delete(key);
+  }
+}
+
+/**
+ * **打开记忆 App 时的补压**（1.7.66 的第二个触发点，跟归总后那次是同一次检查）。
+ *
+ * 小手机是网页（PWA），关着的时候什么都不会跑——不存在「到了第 7 天半夜自动压」。
+ * 所以补压只在归总后与打开记忆 App 时各跑一次；打开时用单次预算封顶（默认 200 条，
+ * 约 5 趟），压不完的下次打开接着压。
+ *
+ * 返回 ran＝真的动过记忆（调用方要重读一遍 detail）。
+ */
+export async function runCascadeCatchup(
+  conv: { characterId: string; maskId: string },
+  charName: string,
+  myName: string,
+  textApi: ChatApiSettings,
+  onProgress?: (day: string) => void,
+): Promise<MemoryRunResult> {
+  const key = `${conv.characterId}::${conv.maskId}`;
+  if (runningSet.has(key)) return { ran: false, error: "正在整理记忆中" };
+  runningSet.add(key);
+  try {
+    const memory = await getMemory(conv.characterId, conv.maskId);
+    if (!memory.enabled || !memory.autoCondense) return { ran: false };
+    const api = textApi.enabled && textApi.baseUrl.trim() && textApi.model.trim() ? textApi : null;
+    if (!api) return { ran: false, error: "文本 API 未配置" };
+    const budget = memory.catchupBudget ?? MEMORY_SCALE_DEFAULTS.catchupBudget;
+    const next = await cascadeCompress(memory, charName, myName, api, budget, onProgress);
+    if (next === memory) return { ran: false };
+    await saveMemory(next);
     return { ran: true };
   } finally {
     runningSet.delete(key);
@@ -822,11 +1356,7 @@ export function trimHistory(
  *  而且顺序每轮都变——既丢记忆，又把前缀缓存整段作废。）
  * 无记忆返回空串。
  */
-export async function buildMemoryBlock(
-  memory: CharacterMemory,
-  charName: string,
-  myName: string,
-): Promise<string> {
+export async function buildMemoryBlock(memory: CharacterMemory, myName: string): Promise<string> {
   if (!memory.enabled) return "";
   const sections: string[] = [];
 
@@ -837,21 +1367,28 @@ export async function buildMemoryBlock(
     );
   }
 
-  const tiers: { tier: "short" | "mid" | "long"; label: string; hint: string }[] = [
-    { tier: "short", label: "近期的事", hint: "" },
-    { tier: "mid", label: "较早的事（细节已模糊）", hint: "" },
-    {
-      tier: "long",
-      label: "很久以前（只剩模糊印象）",
-      hint: "这些只是印象，不要假装记得细节；被问起细节时先试着回想较早的记忆。同类条目多次出现＝这类事发生过多次",
-    },
+  /* 1.4.6：层的 hint 说明全删——清晰度写进标题就够了（只剩模糊印象），
+     参考项目记忆槽同样零说明。 */
+  const tiers: { tier: "short" | "mid" | "long"; label: string }[] = [
+    { tier: "short", label: "近期的事" },
+    { tier: "mid", label: "较早的事（细节已模糊）" },
+    { tier: "long", label: "很久以前（只剩模糊印象）" },
   ];
   for (const t of tiers) {
-    const list = memory.items
+    const all = memory.items
       .filter((it) => it.tier === t.tier)
       .slice()
       /* 事情发生的时间新→旧（按条目覆盖时间段的末尾排）。顺序固定＝缓存稳定。 */
-      .sort((a, b) => b.toIso.localeCompare(a.toIso))
+      .sort((a, b) => b.toIso.localeCompare(a.toIso));
+    /* 短期注入上限（1.7.66，默认关闭）：开了就只发最近的 N 条。
+       治的是「短期全量注入太胖」——按一天 200 条算，短期稳定在 280 条左右（约 1.1 万字），
+       这是本次改动最大的一笔开销。压下去的那部分当面看不见，真被问起由溶池捞回。
+       （没做语义检索，这里按「最近的」取：短期本身按天保鲜，最近的就是最该在眼前的。） */
+    const limited =
+      t.tier === "short" && memory.shortInjectLimit && memory.shortInjectLimit > 0
+        ? all.slice(0, memory.shortInjectLimit)
+        : all;
+    const list = limited
       .map((it) => {
         const status = it.fulfilledIso
           ? "（已兑现）"
@@ -860,15 +1397,15 @@ export async function buildMemoryBlock(
             : it.resolvedIso
               ? "（已解开）"
               : it.grudge && !it.resolvedIso
-                ? "（还有疙瘩没解开）"
+                ? "（心结未解）"
                 : "";
         const secret = it.secret ? "（秘密）" : "";
-        return `- [${CATEGORY_LABEL[it.category]}] ${it.content}${status}${secret}`;
+        /* 见面的那条带「·见面」小标：让他分得清「这是手机上聊出来的」还是「那次见面本身的经过」，
+           讲起来不会把见面的经过说成隔着手机说的。 */
+        return `- [${CATEGORY_LABEL[it.category]}${it.offline ? "·见面" : ""}] ${it.content}${status}${secret}`;
       });
     if (list.length > 0) {
-      sections.push(
-        `■ ${t.label}${t.hint ? `\n（${t.hint}）` : ""}\n${list.join("\n")}`,
-      );
+      sections.push(`■ ${t.label}\n${list.join("\n")}`);
     }
   }
 
@@ -882,19 +1419,33 @@ export async function buildMemoryBlock(
   /* 这句只在真列了动态时才说——没列还说「最后一节是动态」，TA 会去找一节不存在的东西。
      没有动态时整段逐字回到从前，前缀缓存不受影响。 */
   const momentNote = momentSection
-    ? "\n最后一节是你自己发在朋友圈的动态，跟聊天记录是两条线：她刷得到、但你不一定当面跟她提过。她聊起某条动态你可以自然接上，但别把动态里的内容当成「聊天时我跟你说过」——聊天里说过的都在前面几层里。"
+    ? `\n最后一节是你自己发在朋友圈的动态，跟聊天记录是两条线：${myName}看得到，但你不一定当面提过。${myName}聊起某条动态你可以自然接上，但不要把动态里的内容当作聊天时说过的内容——聊天里说过的都在前面几层里。`
     : "";
+  /* 1.4.6：说明三段收一句（参考项目记忆槽零说明——memory-injector.ts 只把条目拼成
+     「- 一句话」，标题提示也全无）。「怎么用记忆」的举例段、「各层清晰度」段、
+     长期层的括号提示全删，只留「近期层压倒旧层」一句消歧：我们分四层、参考项目
+     不分层，只有我们有「新旧说法打架」的问题；反向情况（只有旧层写、新层没写）
+     由条目自带的状态标记「（还没兑现）」承担。 */
+  /* 「怎么用记忆」这一条（1.7.63，恩熙 2026-09-29 点头）。
+     1.4.6 曾把记忆块的说明整段删掉（对齐参考项目的「记忆槽零说明」），结果是 TA 只知道
+     这儿堆着一批条目、不知道该怎么用——她这轮把它要回来了，但立了三条硬要求：
+     ① **正式声明体**：照她给的句式（「你可以根据当前的聊天情况去判断你是否要采用以前
+        记忆的内容」）写主谓完整的整句，**不许出现「自然」「该做就做」这类软词**
+        ——她的原话「你不要讲这些会让 AI 很恍惚的词」；
+     ② **一条例子都不要**：不写示范对白（「我今天去排了那家」那种），
+        她的原话「不要有过多的举例，最好是不要有举例」；
+     ③ 位置就在表头（稳定区）：加这一次触发一次缓存重建，之后每轮只读（0.1×）。
+     回退：删掉下面这两段，即回到 1.4.6 的「只剩一句消歧」状态。 */
   return `【你对 ${myName} 的记忆】
-以下是 ${charName} 对 ${myName} 的真实记忆。这些记忆是你自己的认知，不是要背诵的条目：可以顺着当下把它们化成自然的行动或提议（记得${myName}想看海，就主动提议哪天一起去看海；记得${myName}爱喝楼下那家咖啡，就顺口带一句点了外卖），但不要生硬地把条目念出来，不要用「你上次说」「我记得你喜欢」去复述或追问，除非对方这次真的提到了，才顺其自然地接。
-不同层的记忆清晰度不同，越久远越模糊，这是正常的；与当下话题相关的旧记忆被想起是自然的。近期对话里已经聊过的，就别照着记忆再重讲一遍。
-记忆按时间从近到远分了几层。同一件事，如果近期层和更早层说法不一致，一律以近期层为准——那才是最新状态。比如更早层写着「约定去看海」，近期层写着「已经去过海了」，就说明看海这件事已经发生、约定了结了，别再当成还没去做；反过来，如果只有更早层写了「约定去看海」、近期层没有任何相关记录，那它就是个还没兑现的旧约定。${momentNote}
+下面这些是你自己经历过、知道的事。每一轮对话时，你可以根据当前的聊天内容、你和${myName}的关系以及此刻的情境，判断是否需要用到其中的内容；需要用到时，就把它作为你自己记得的事，用在当下的回应或行动里。禁止把记忆作为对账单逐条复述，也禁止就记忆里的内容向${myName}反复确认——这些是你自己的经历与认知，不是等待对方确认或批准的待办事项。
+同一件事，如果近期层和更早层说法不一致，一律以近期层为准——那才是最新状态。${momentNote}
 
 ${sections.join("\n\n")}`;
 }
 
-/** 动态落库时的时间戳 → 记忆块里那枚小日期（MM/DD）。 */
+/** 动态落库时的时间戳 → 记忆块里那枚小日期（MM/DD，按本地日子算）。 */
 function momentDate(iso: string): string {
-  return iso.slice(5, 10).replace("-", "/");
+  return localStampOf(iso);
 }
 
 /** 一条动态拼成素材行：`- [MM/DD] 文字解说`；图文再附一行画面描述。
@@ -946,7 +1497,7 @@ async function buildMomentSection(memory: CharacterMemory): Promise<string> {
       ? ""
       : digest
         ? `\n（再往前的约 ${older} 条，你只记得个大概：${digest}）`
-        : `\n（再往前的还有 ${older} 条，没一条条列出来）`;
+        : `\n（再往前的还有 ${older} 条，未逐条列出）`;
   return `■ 你在朋友圈发过的（这些是你发在朋友圈的动态，不是你们聊天里说过的）\n${lines.join("\n")}${olderNote}`;
 }
 
@@ -960,7 +1511,7 @@ ${existing ? `【比这批更新的印象（已经有了）】\n${existing}\n\n`
 
 【要求】
 - 第一人称「我」，一到三句，像人回忆很久以前的事：只记得个大概，具体的字句早就模糊了
-- 只留「那阵子我在做什么、心情怎么样、老惦记什么」，别复述每条动态的内容，别写日期
+- 只留「那阵子我在做什么、心情怎么样、惦记什么」，不要复述每条动态的内容，不要写日期
 - 不分条、不加标题、不加任何前后缀，直接输出那段回忆本身`;
 }
 
@@ -985,14 +1536,14 @@ async function compressMoments(
   const batch = pool.slice(0, pool.length - MOMENT_KEEP);
   if (batch.length === 0) return memory;
   try {
-    const reply = await fetchAIReply(
+    const reply = await fetchMemoryTask(
       api,
       `你是${charName}本人，正在回想自己以前发在朋友圈的旧动态。只输出那段回忆本身。`,
-      [],
       momentDigestPrompt(charName, memory.momentDigest?.trim() ?? "", batch.map(momentLine)),
-      20,
-      600, // 只要一到三句，额度够用就行
-      0.6, // 回忆是散着的，允许一点发散
+      {
+        maxTokens: 600, // 只要一到三句，额度够用就行
+        temperature: 0.6, // 回忆是散着的，允许一点发散
+      },
     );
     const text = reply.trim().slice(0, 400); // 万一模型长篇大论，截住，别让它越滚越大
     if (!text) return memory;

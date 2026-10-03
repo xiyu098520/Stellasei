@@ -16,6 +16,40 @@
 
   /* 模拟状态栏高度：真机 10px 最小余量（系统有自己的状态栏），宽屏预览 46px。 */
   --sim-status-h: 10px;
+
+  /* ── 全局玻璃材质（以桌面底栏的质感为准）──
+     一处定值、各处 `var()` 引用，别再各写各的底色与模糊。
+     玻璃读得成「一片玻璃」，靠三样：**又白又薄的半透底**（背后的颜色透得上来）、
+     `blur`（把背后的细节糊开）、`saturate`（把透上来的颜色推艳）。
+     ⚠️ **底必须是白**（一偏冷灰，落在星绥的粉色页底上就成一块发脏的灰片）。
+     ⚠️ **一套材质分两种落地，看它背后是什么**：
+     背后是**照片／有图案的东西**（桌面底栏，背后是壁纸）→ 走 `--glass-bg`，
+     0.35 那层膜感正合适；
+     背后是**近白或浅色**（如朋友圈那一页的页底）→ 走 **`--glass-bg-veil`（薄纱档）**：
+     它是一层**看得见、但很薄**的膜——**「雾雾的」和「透透的」就是它给的**，
+     少了它只剩一圈投影、读成一个空洞，厚了又把背后的颜色冲白、读成实心。
+     另：这类小件**模糊半径要取小、别提饱和**（`--glass-blur`／`--glass-saturate`
+     那两档是给底栏那种背后有大片图案的件用的：半径一大，会把旁边紧邻的白也吸进来；
+     一提饱和，透上来的颜色会被推成**另一支**颜色，跟周围对不上）。
+     （范例见 `MomentsPage.tsx` 那枚通知气泡。）
+     ⚠️ 同一枚上别再叠整片白底或径向高光：高光由 `--glass-shadow` 的顶棱那道白承担。
+     ⚠️ iOS 上 `backdrop-filter` 只在元素进了**独立合成层**才执行——用它的元素要带
+     `transform: translateZ(0)`；`WebkitBackdropFilter` 必须与 `backdropFilter` 同值成对。
+     ⚠️ 开销与**面积**成正比：小件随便用，**别铺到大面积或一屏多枚**。 */
+  --glass-bg: rgba(255, 255, 255, 0.35);
+  /* 薄纱档：专给**落在近白／浅色背景上**的玻璃用（见上面那条「两种落地」）。
+     它比 `--glass-bg` 薄一半多——留住雾、又让背后的颜色透得上来。 */
+  --glass-bg-veil: rgba(255, 255, 255, 0.18);
+  /* 薄纱档的**包边**（内描边）：比页底深一档的粉，沿右下描出轮廓——
+     它顶替了厚膜上那道白顶棱（白顶棱落在没底的薄纱上，会成一条孤零零的白描边）。
+     只描右边与下边（光从左上来的口径），不是整圈。 */
+  --glass-ring: rgba(183, 116, 149, 0.30);
+  --glass-blur: 20px;
+  --glass-saturate: 200%;
+  --glass-border: none;
+  --glass-shadow: 0 2px 10px rgba(0, 0, 0, 0.10),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.04);
 }
 
 /* 桌面形态＝宽屏＋有鼠标（能力信号，防横屏手机误判，照抄 ai-virtual-phone 思路）。 */
@@ -159,6 +193,10 @@ textarea,
 * {
   scrollbar-width: none; /* Firefox */
   -ms-overflow-style: none; /* 旧 Edge */
+  /* 按键点下去闪的那块灰色方框也要铺到 *：-webkit-tap-highlight-color
+     在 iOS Safari **不继承**——只写在 body 上到不了按钮，
+     按爱心／发送那一下仍会闪一块方形灰影（1.5.15 补）。 */
+  -webkit-tap-highlight-color: transparent;
 }
 *::-webkit-scrollbar {
   display: none; /* Chrome / Safari */
@@ -214,7 +252,9 @@ textarea,
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    /* 收尾落回 none，不留一条「看起来等于没动」的 transform，
+       交给下面的 `backwards` 去彻底了结（见 .animate-app-rise 那条）。 */
+    transform: none;
   }
 }
 
@@ -268,7 +308,14 @@ textarea,
 }
 
 .animate-app-rise {
-  animation: app-rise 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+  /* 填充模式必须是 `backwards`、**不能是 `both`**：
+     `both` 会把最后一帧永远钉在元素上——chrome 把这条「填充保留的 transform」
+     算成 `matrix(1,0,0,1,0,0)`（不是 `none`），于是 AppWindow 这一层就永久
+     成了一个包含块，页内所有 `position: fixed` 的参照系都被换到它身上
+     （动态页那枚钉在视口上的通知气泡就会跟着壳子一起漂、跟着页面滚）。
+     实测过：光把关键帧收尾写成 `transform: none` 不够，必须让动画结束即交还。
+     `backwards` 只在延迟期间起作用，这个动画没延迟，等于「跑完就撒手」。 */
+  animation: app-rise 0.28s cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
 /* 美化 · 样板屋：换一身皮时迷你屏「弹」出来——中段过冲到 1.03 再落回 1，
@@ -427,4 +474,103 @@ textarea,
 
 .home-swipe-track.swiping {
   transition: none;
+}
+
+/* ── 红包开启动画（1.4.89，ChatWindow 的 RedPacketModal 用）──────────────
+   盖口那张「瓣」绕顶边翻起、飞出去（rp-flap）；金屑从「開」那儿向三个方向
+   迸出去（rp-burst-a/b/c——粒子多、方向各只设三组，粒子按大小/颜色/延迟错开，
+   不必每颗一条 keyframes）；金额揭晓那一块从下面浮起来（rp-rise）。 */
+@keyframes rp-flap {
+  0% {
+    transform: rotateX(0) translateY(0);
+    opacity: 1;
+  }
+  55% {
+    transform: rotateX(-95deg) translateY(-26px);
+    opacity: 1;
+  }
+  100% {
+    transform: rotateX(-160deg) translateY(-130px);
+    opacity: 0;
+  }
+}
+
+@keyframes rp-burst-a {
+  0% {
+    transform: translate(0, 0) scale(0.3);
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-44px, -74px) scale(1);
+    opacity: 0;
+  }
+}
+
+@keyframes rp-burst-b {
+  0% {
+    transform: translate(0, 0) scale(0.3);
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(48px, -68px) scale(1);
+    opacity: 0;
+  }
+}
+
+@keyframes rp-burst-c {
+  0% {
+    transform: translate(0, 0) scale(0.3);
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-6px, -94px) scale(1);
+    opacity: 0;
+  }
+}
+
+@keyframes rp-rise {
+  0% {
+    transform: translateY(24px) scale(0.94);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+/* ── 流畅模式（1.9.6）────────────────────────────────────────────────
+   恩熙在设置里手动开的「救急总闸」：手机发热、点一下要等半天时打开它，
+   全局把**动画、过渡、毛玻璃、大块阴影**一律停掉，只留最朴素的一层皮。
+   为什么不做成默认：动效与玻璃是「星绥」的样子的一部分，只在扛不住时才该让位。
+   落点：`html.smooth-mode`——由 page.tsx 按 chat-prefs 的 smoothMode 挂上／摘掉。
+   ⚠️ 一律带 `!important`：要压得住 inline style（如开屏那几处）与 utility class。 */
+html.smooth-mode *,
+html.smooth-mode *::before,
+html.smooth-mode *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
+/* 毛玻璃是手机上最贵的一样：开销与面积成正比，还得为它单开一层合成层。
+   模糊一关，玻璃就只剩那层半透白底——落在近白／浅色页底上仍读得成一块干净的膜，
+   所以不必另换材质。 */
+html.smooth-mode * {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+/* 大块阴影与滤镜也是逐帧要命的活，一并收掉；描边留着，皮不至于散架。 */
+html.smooth-mode {
+  --glass-blur: 0px;
+  --glass-shadow: none;
 }

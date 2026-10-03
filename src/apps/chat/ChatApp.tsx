@@ -25,6 +25,7 @@ import ChatWindow from "./ChatWindow";
 import ContactList from "./ContactList";
 import MomentsPage from "./MomentsPage";
 import MinePage, { SIGNATURE_FALLBACK } from "./MinePage";
+import WalletView from "./WalletView";
 import { AVATAR_GRADIENT, EN, SANS, T } from "./shared";
 import type { ArchiveEntry } from "@/types/contact";
 import type { ChatApiSettings, Conversation } from "@/types/chat";
@@ -46,8 +47,8 @@ export default function ChatApp() {
      返回只是把这间屋子藏起来，TA 那一轮回复／配图／记忆照跑，回来接着看）。
      彻底不要了（删好友）才从这张表里剔掉。 */
   const [visitedChats, setVisitedChats] = useState<{ characterId: string; maskId: string }[]>([]);
-  /** 应用内视图：消息列表 ⇄ 通讯人 ⇄ 动态 ⇄ 我的（侧边栏进入）。 */
-  const [view, setView] = useState<"list" | "contacts" | "moments" | "mine">("list");
+  /** 应用内视图：消息列表 ⇄ 通讯人 ⇄ 动态 ⇄ 我的 ⇄ 钱包（侧边栏进入）。 */
+  const [view, setView] = useState<"list" | "contacts" | "moments" | "mine" | "wallet">("list");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [failed, setFailed] = useState(false);
   const [toast, setToast] = useState("");
@@ -239,6 +240,15 @@ export default function ChatApp() {
             onBack={() => setView("list")}
             showToast={showToast}
           />
+        ) : view === "wallet" ? (
+          /* 钱包跟面具走：账本主人就是当前使用中面具（无面具则记在默认面具名下）。 */
+          <WalletView
+            ownerId={scopeMaskId}
+            ownerName={effectiveName}
+            ownerAvatar={currentMask?.avatar ?? ""}
+            onBack={() => setView("list")}
+            showToast={showToast}
+          />
         ) : (
           <MessageList
             archives={archives}
@@ -370,7 +380,7 @@ function ChatSidebar({
   showToast,
 }: {
   open: boolean;
-  activeView: "list" | "contacts" | "moments" | "mine";
+  activeView: "list" | "contacts" | "moments" | "mine" | "wallet";
   /** 名字（使用中的面具决定）；空串以「我」展示。 */
   mineName: string;
   /** 头像（使用中的面具；空串用渐变底＋首字）。 */
@@ -378,7 +388,7 @@ function ChatSidebar({
   /** 签名（「我的」页设定）；空串用预设文案。 */
   mineSignature: string;
   onClose: () => void;
-  onNavigate: (view: "list" | "contacts" | "moments" | "mine") => void;
+  onNavigate: (view: "list" | "contacts" | "moments" | "mine" | "wallet") => void;
   onExit: () => void;
   showToast: (msg: string) => void;
 }) {
@@ -389,7 +399,7 @@ function ChatSidebar({
     { name: "通讯人", icon: Users, action: () => onNavigate("contacts"), active: activeView === "contacts" },
     { name: "动态", icon: Clock, action: () => onNavigate("moments"), active: activeView === "moments" },
     { name: "我的收藏", icon: Bookmark, action: () => { onClose(); showToast("我的收藏 · 预览"); } },
-    { name: "我的钱包", icon: Wallet, action: () => { onClose(); showToast("我的钱包 · 预览"); } },
+    { name: "我的钱包", icon: Wallet, action: () => onNavigate("wallet"), active: activeView === "wallet" },
     { name: "聊天全局设定", icon: Settings, action: () => { onClose(); showToast("聊天全局设定 · 打造中"); } },
     /* iOS 主屏幕 App 从快照复活、不重新加载页面，改版后可能一直跑旧代码；
        这里给一个手动重载入口兜底。 */

@@ -4,19 +4,23 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:https": "next dev -H 0.0.0.0 --experimental-https-key certificates/stellasei-server.key --experimental-https-cert certificates/stellasei-server.crt",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
+    "jsqr": "^1.4.0",
     "lucide-react": "^1.45.0",
     "next": "16.3.5",
+    "qrcode": "^1.5.4",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",

@@ -14,6 +14,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
   ChevronDown,
+  Cog,
   Image as ImageIcon,
   Pencil,
   Plus,
@@ -65,11 +66,12 @@ import type {
 } from "@/types/chat";
 import { DEFAULT_IMAGE_EXTRAS, DEFAULT_VOICE_EXTRAS } from "@/types/chat";
 
-/** 分类撞色：文本＝蓝、图文＝橙、语音＝紫。 */
+/** 分类撞色：文本＝蓝、图文＝橙、语音＝紫、副＝薄荷（幕后的活，省的那一路）。 */
 const CATEGORY_TONE: Record<ApiCategory, PopTone> = {
   text: "blue",
   image: "orange",
   voice: "purple",
+  sub: "mint",
 };
 
 /** 状态徽章底色：已启用＝薄荷、未启用＝柠檬黄、未配置＝浅灰。 */
@@ -110,16 +112,18 @@ export const API_CATEGORY_META: Record<
   text: { title: "文本 API", titleEn: "TEXT API", desc: "聊天回复 · 对话模型", icon: Type },
   image: { title: "图文 API", titleEn: "IMAGE API", desc: "图片生成 · TA 发的图", icon: ImageIcon },
   voice: { title: "语音 API", titleEn: "VOICE API", desc: "语音合成 · TA 的声音", icon: Volume2 },
+  sub: { title: "副 API", titleEn: "SUB API", desc: "幕后专用 · 归总压缩、查手机账本", icon: Cog },
 };
 
 /** 分类顺序（列表展示用）。 */
-export const API_CATEGORY_ORDER: ApiCategory[] = ["text", "image", "voice"];
+export const API_CATEGORY_ORDER: ApiCategory[] = ["text", "image", "voice", "sub"];
 
 /** 分类表单顶部说明。 */
 const CATEGORY_INTRO: Record<ApiCategory, string> = {
   text: "OpenAI 兼容接口。填好并启用后 TA 才会真正回应；未配置时发消息只会得到系统提示。Key 只存在本机，不会写入任何文件。",
   image: "图片生成接口（OpenAI 兼容 /images/generations，或 NovelAI 官方接口）。填好并启用后，聊天中的图片功能才能生成真正的图片。Key 只存在本机，不会写入任何文件。",
   voice: "OpenAI 兼容语音合成接口。填好并启用后，TA 的语音消息才能转成真实的声音播放。Key 只存在本机，不会写入任何文件。",
+  sub: "幕后的活专用（记忆归总／压缩、查手机时给 TA 开的账本）。配一个更便宜、更快的模型，这些活就从主聊天上挪走——不抢聊天的道，也不花聊天那份钱。不填也不坏：这些活自动退回主文本接口。Key 只存在本机，不会写入任何文件。",
 };
 
 /** 模型名占位示例。 */
@@ -127,6 +131,7 @@ const MODEL_PLACEHOLDER: Record<ApiCategory, string> = {
   text: "deepseek-chat",
   image: "gpt-image-1",
   voice: "gpt-4o-mini-tts",
+  sub: "deepseek-chat",
 };
 
 /** 启用开关旁的文字。 */
@@ -134,6 +139,7 @@ const ENABLE_LABEL: Record<ApiCategory, string> = {
   text: "启用文本接口",
   image: "启用图文接口",
   voice: "启用语音接口",
+  sub: "启用副接口",
 };
 
 /** 常见音色快捷选择（OpenAI 标准＋国内常见；也可在输入框手填服务商的音色名）。 */
@@ -270,7 +276,7 @@ function matchPresetId(
       return false;
     }
     if (category === "voice" && p.voiceExtras && form.voiceExtras) {
-      if (JSON.stringify(p.voiceExtras) !== JSON.stringify(form.voiceExtras)) return false;
+      if (!sameVoiceExtras(p.voiceExtras, form.voiceExtras)) return false;
     }
     if (category === "image" && p.imageExtras && form.imageExtras) {
       if (!sameImageExtras(p.imageExtras, form.imageExtras)) return false;
@@ -295,8 +301,16 @@ function sameImageExtras(a: ImageApiExtras, b: ImageApiExtras): boolean {
   return (Object.keys(x) as (keyof ImageApiExtras)[]).every((k) => x[k] === y[k]);
 }
 
+/** 语音参数同理：老方案缺 stability／style（1.9.87 才加的），先补默认值再逐项比，
+ *  否则每次进页面当前配置都跟老方案差一截，方案列表的勾永远不出来。 */
+function sameVoiceExtras(a: VoiceApiExtras, b: VoiceApiExtras): boolean {
+  const x: VoiceApiExtras = { ...DEFAULT_VOICE_EXTRAS, ...a };
+  const y: VoiceApiExtras = { ...DEFAULT_VOICE_EXTRAS, ...b };
+  return (Object.keys(x) as (keyof VoiceApiExtras)[]).every((k) => x[k] === y[k]);
+}
+
 /**
- * API 设定主页：三大分类列表（文本／图文／语音）。
+ * API 设定主页：四大分类列表（文本／图文／语音／副）。
  * 点某一类进入对应配置表单。
  */
 export function ApiSettingsPanel({
@@ -319,7 +333,8 @@ export function ApiSettingsPanel({
   return (
     <div className="space-y-4">
       <p className={POP_HINT}>
-        星绥通讯的接口分三类，各自独立配置：文本负责 TA 的回复，图文负责图片生成，语音负责 TA 的声音。
+        星绥通讯的接口分四类，各自独立配置：文本负责 TA 的回复，图文负责图片生成，语音负责 TA 的声音，
+        副 API 负责幕后的活（记忆归总／压缩、查手机时给 TA 开的账本）——不填也不坏，那些活自动退回文本接口。
       </p>
 
       <div className={POP_CARD + " overflow-hidden"}>
@@ -383,17 +398,19 @@ export function ApiCategoryForm({ category }: { category: ApiCategory }) {
   const [model, setModel] = useState("");
   const [groupId, setGroupId] = useState("");
   const [enabled, setEnabled] = useState(false);
-  /* 流式输出（仅文本 API）：不填视为开启。 */
+  /* 流式输出（文本／副 API）：不填视为开启。 */
   const [streamOn, setStreamOn] = useState(true);
-  /* 采样参数（仅文本 API）：默认一律不发，走服务商自己的默认。
+  /* 采样参数（文本／副 API）：温度默认不发，走服务商自己的默认。
+     ⚠️ 1.6.2：两个惩罚**默认按内置温和值 0.3 发**（治复读，见 chatApi 里的
+     DEFAULT_FREQUENCY_PENALTY）；面板里关掉＝明确存 0＝彻底不发。
      温度多一档「不发」——有的接口（开了思考的代理）带上 temperature 就 400，
      那一档存 null，等于明确告诉请求层「这个接口不吃温度」。 */
   const [temperatureMode, setTemperatureMode] = useState<"default" | "custom" | "off">("default");
   const [temperature, setTemperature] = useState(0.8);
-  const [frequencyPenaltyOn, setFrequencyPenaltyOn] = useState(false);
-  const [frequencyPenalty, setFrequencyPenalty] = useState(0);
-  const [presencePenaltyOn, setPresencePenaltyOn] = useState(false);
-  const [presencePenalty, setPresencePenalty] = useState(0);
+  const [frequencyPenaltyOn, setFrequencyPenaltyOn] = useState(true);
+  const [frequencyPenalty, setFrequencyPenalty] = useState(0.3);
+  const [presencePenaltyOn, setPresencePenaltyOn] = useState(true);
+  const [presencePenalty, setPresencePenalty] = useState(0.3);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [providerId, setProviderId] = useState("custom");
@@ -434,6 +451,9 @@ export function ApiCategoryForm({ category }: { category: ApiCategory }) {
 
   /* 当前是否 MiniMax（国内／国际版）：语音接口走专用格式，表单多一个团队 ID。 */
   const isMiniMax = /api\.minimax(i)?\.chat/i.test(baseUrl);
+  /* 当前是否 ElevenLabs 官方：走它自己的接口（xi-api-key），
+     音色填 voice id、语速只认 0.7–1.2、音调它没有——这三处要跟别家分开说。 */
+  const isEleven = category === "voice" && /elevenlabs\.io/i.test(baseUrl);
   /* 地址是 NovelAI：图文面板要单独给一栏（画幅档位 ＋ Steps/CFG/采样器/Seed），
      密钥的填法也跟 OpenAI 那套不一样（见下面各处的 isNovelAI）。 */
   const isNovelAI = category === "image" && /novelai\.net/i.test(baseUrl);
@@ -483,10 +503,12 @@ export function ApiCategoryForm({ category }: { category: ApiCategory }) {
         s.temperature === null ? "off" : s.temperature === undefined ? "default" : "custom",
       );
       setTemperature(s.temperature ?? 0.8);
-      setFrequencyPenaltyOn(s.frequencyPenalty !== undefined);
-      setFrequencyPenalty(s.frequencyPenalty ?? 0);
-      setPresencePenaltyOn(s.presencePenalty !== undefined);
-      setPresencePenalty(s.presencePenalty ?? 0);
+      /* 1.6.2：留空＝按内置温和值 0.3 发，所以「没配过」在面板上显示为「开 0.30」；
+         存 0 ＝ 关掉（彻底不发）。判据因此是 !== 0，不是 !== undefined。 */
+      setFrequencyPenaltyOn(s.frequencyPenalty !== 0);
+      setFrequencyPenalty(s.frequencyPenalty ?? 0.3);
+      setPresencePenaltyOn(s.presencePenalty !== 0);
+      setPresencePenalty(s.presencePenalty ?? 0.3);
       /* 完全没配置过：默认选中 OpenAI 预设，地址／模型预填，Key 留空给用户填。 */
       const blank =
         !s.baseUrl.trim() && !s.model.trim() && !s.apiKey.trim() && !s.enabled;
@@ -582,6 +604,13 @@ export function ApiCategoryForm({ category }: { category: ApiCategory }) {
           : prev,
       );
     }
+    /* 切到 ElevenLabs：它的音色是各账号的 voice id，OpenAI 那套名字（alloy 等）
+       送过去只会 400。清空并提示去填，比让人拿着 alloy 撞一次墙强。 */
+    if (/elevenlabs\.io/i.test(preset.baseUrl)) {
+      setVoiceExtras((prev) =>
+        VOICE_PRESETS.some((v) => v.value === prev.voice) ? { ...prev, voice: "" } : prev,
+      );
+    }
   };
 
   const markEdited = () => {
@@ -600,7 +629,11 @@ export function ApiCategoryForm({ category }: { category: ApiCategory }) {
     setModelDropdownOpen(false);
     setSaved(false);
     setTestResult(null);
-    if (category === "voice" && p.voiceExtras) setVoiceExtras({ ...p.voiceExtras });
+    /* 旧方案可能缺后加的字段（stability／style 是 1.9.87 才有的）：先铺一层默认值再覆盖，
+       否则那份 voiceExtras.stability 是 undefined，下面滑杆 .toFixed 会直接把整页打崩。 */
+    if (category === "voice" && p.voiceExtras) {
+      setVoiceExtras({ ...DEFAULT_VOICE_EXTRAS, ...p.voiceExtras });
+    }
     /* 旧方案可能缺后加的字段（画风预设／采样参数等）：先铺一层默认值再覆盖。 */
     if (category === "image" && p.imageExtras) {
       setImgExtras({ ...DEFAULT_IMAGE_EXTRAS, ...p.imageExtras });
@@ -657,7 +690,7 @@ export function ApiCategoryForm({ category }: { category: ApiCategory }) {
       apiKey,
       model,
       enabled,
-      ...(category === "text"
+      ...(category === "text" || category === "sub"
         ? {
             stream: streamOn,
             /* 温度：默认＝不填（请求层按 0.8 发）；自定义＝按滑条；不发＝null。 */
@@ -667,8 +700,10 @@ export function ApiCategoryForm({ category }: { category: ApiCategory }) {
                 : temperatureMode === "custom"
                   ? temperature
                   : undefined,
-            frequencyPenalty: frequencyPenaltyOn ? frequencyPenalty : undefined,
-            presencePenalty: presencePenaltyOn ? presencePenalty : undefined,
+            /* 1.6.2：关掉＝明确存 0（彻底不发），不再存 undefined——undefined 现在等于
+               「按内置温和值 0.3 发」，存它这个开关就形同虚设。 */
+            frequencyPenalty: frequencyPenaltyOn ? frequencyPenalty : 0,
+            presencePenalty: presencePenaltyOn ? presencePenalty : 0,
           }
         : {}),
       ...(isMiniMax ? { groupId: groupId.trim() } : {}),
@@ -780,6 +815,10 @@ export function ApiCategoryForm({ category }: { category: ApiCategory }) {
     }
     if (isMiniMax && !groupId.trim()) {
       setTestResult({ ok: false, msg: "MiniMax 需要填写团队 ID（在 MiniMax 平台「账户管理」页可以看到）" });
+      return;
+    }
+    if (isEleven && !voiceExtras.voice.trim()) {
+      setTestResult({ ok: false, msg: "ElevenLabs 需要音色 ID：官网 Voices 页点开一个音色，复制那串 ID" });
       return;
     }
     setTesting(true);
@@ -957,13 +996,21 @@ export function ApiCategoryForm({ category }: { category: ApiCategory }) {
                 ? "pst-…（NovelAI 持久令牌）"
                 : isMiniMax
                   ? "MiniMax 平台的 API Key"
-                  : "sk-…"
+                  : isEleven
+                    ? "ElevenLabs 的 API Key"
+                    : "sk-…"
             }
             className={POP_FIELD}
           />
           {isNovelAI ? (
             <span className={POP_HINT}>
               NovelAI 账号的 API Token：官网 → 账户 → Get Persistent API Token（pst- 开头那串）
+            </span>
+          ) : null}
+          {isEleven ? (
+            <span className={POP_HINT}>
+              ElevenLabs 官网 → 左下头像 → API Keys 里新建一把。它走 xi-api-key 这个头认证，
+              跟 OpenAI 那套不是一回事，代码已经替你换好了。
             </span>
           ) : null}
         </label>
@@ -993,6 +1040,8 @@ export function ApiCategoryForm({ category }: { category: ApiCategory }) {
         <div className="flex flex-col">
           <div className="mb-1.5 flex items-center justify-between">
             <span className={POP_LABEL}>模型名称</span>
+            {/* ElevenLabs 也摆上：它虽然不认 Bearer，但有自己的模型清单接口
+                （GET /v1/models + xi-api-key），点一下就能确认 eleven_v4 到底在不在、能不能用。 */}
             <button
               type="button"
               disabled={fetchingModels}
@@ -1402,9 +1451,17 @@ export function ApiCategoryForm({ category }: { category: ApiCategory }) {
                     setVoiceExtras((prev) => ({ ...prev, voice: e.target.value }));
                     setSaved(false);
                   }}
-                  placeholder={isMiniMax ? "MiniMax 音色 ID，如 male-qn-qingse" : "服务商的音色名，如 alloy"}
+                  placeholder={
+                    isEleven
+                      ? "ElevenLabs 音色 ID（Voices 页点开一个音色，复制那串 ID）"
+                      : isMiniMax
+                        ? "MiniMax 音色 ID，如 male-qn-qingse"
+                        : "服务商的音色名，如 alloy"
+                  }
                   className={POP_FIELD}
                 />
+                {/* ElevenLabs 的音色是各账号自己的 voice id，没有通用目录，所以不给快捷按钮。 */}
+                {!isEleven ? (
                 <div className="mt-0.5 flex flex-wrap gap-2">
                   {(isMiniMax ? MINIMAX_VOICES : VOICE_PRESETS).map((v) => (
                     <button
@@ -1424,9 +1481,10 @@ export function ApiCategoryForm({ category }: { category: ApiCategory }) {
                     </button>
                   ))}
                 </div>
+                ) : null}
               </div>
 
-              {/* 语速：0.25–4.0 滑杆 */}
+              {/* 语速：OpenAI 那套 0.25–4.0；ElevenLabs 只认 0.7–1.2 */}
               <label className="flex flex-col gap-1.5">
                 <span className={POP_LABEL}>
                   语速
@@ -1436,8 +1494,8 @@ export function ApiCategoryForm({ category }: { category: ApiCategory }) {
                 </span>
                 <input
                   type="range"
-                  min={0.25}
-                  max={4}
+                  min={isEleven ? 0.7 : 0.25}
+                  max={isEleven ? 1.2 : 4}
                   step={0.05}
                   value={voiceExtras.speed}
                   onChange={(e) => {
@@ -1448,40 +1506,109 @@ export function ApiCategoryForm({ category }: { category: ApiCategory }) {
                 />
               </label>
 
-              {/* 音调：-1 到 1 滑杆 */}
-              <label className="flex flex-col gap-1.5">
-                <span className={POP_LABEL}>
-                  音调
-                  <span className="ml-2 text-[11px] font-extrabold text-[#141414]">
-                    {voiceExtras.pitch > 0
-                      ? `+${voiceExtras.pitch.toFixed(2)}`
-                      : voiceExtras.pitch.toFixed(2)}
+              {/* 音调：-1 到 1 滑杆。ElevenLabs 没有这个参数，索性不摆——
+                  摆着能拖却不起作用，比不摆更让人犯迷糊。 */}
+              {isEleven ? (
+                <>
+                  {/* 稳定度／风格：ElevenLabs 独有的两个「表现力」档（1.9.87 起默认恒发，
+                      给默认语音一点基本语气）。二者只调**整体**味道，逐句的语气靠台词里
+                      的方括号标签（见「语音提示词」），所以这里摆的是默认基线。 */}
+                  <label className="flex flex-col gap-1.5">
+                    <span className={POP_LABEL}>
+                      情绪起伏
+                      <span className="ml-2 text-[11px] font-extrabold text-[#141414]">
+                        {voiceExtras.stability.toFixed(2)}
+                      </span>
+                    </span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      value={voiceExtras.stability}
+                      onChange={(e) => {
+                        setVoiceExtras((prev) => ({
+                          ...prev,
+                          stability: Number(e.target.value),
+                        }));
+                        setSaved(false);
+                      }}
+                      style={{ accentColor: POP_TONE.purple }}
+                    />
+                    <span className={`mt-1 flex justify-between ${POP_HINT}`}>
+                      <span>有起伏</span>
+                      <span>中性 0.5</span>
+                      <span>平稳</span>
+                    </span>
+                    <span className={POP_HINT}>
+                      越低越有情绪起伏、越像在跟人说话；越高越平。默认 0.4。
+                    </span>
+                  </label>
+                  <label className="flex flex-col gap-1.5">
+                    <span className={POP_LABEL}>
+                      风格夸张
+                      <span className="ml-2 text-[11px] font-extrabold text-[#141414]">
+                        {voiceExtras.style.toFixed(2)}
+                      </span>
+                    </span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      value={voiceExtras.style}
+                      onChange={(e) => {
+                        setVoiceExtras((prev) => ({ ...prev, style: Number(e.target.value) }));
+                        setSaved(false);
+                      }}
+                      style={{ accentColor: POP_TONE.purple }}
+                    />
+                    <span className={`mt-1 flex justify-between ${POP_HINT}`}>
+                      <span>自然</span>
+                      <span>入戏</span>
+                      <span>夸张</span>
+                    </span>
+                    <span className={POP_HINT}>
+                      越高越入戏、越放得开；0＝照本念。默认 0.4。
+                    </span>
+                  </label>
+                  <span className={POP_HINT}>ElevenLabs 不支持音调（pitch），这一项略过。</span>
+                </>
+              ) : (
+                <label className="flex flex-col gap-1.5">
+                  <span className={POP_LABEL}>
+                    音调
+                    <span className="ml-2 text-[11px] font-extrabold text-[#141414]">
+                      {voiceExtras.pitch > 0
+                        ? `+${voiceExtras.pitch.toFixed(2)}`
+                        : voiceExtras.pitch.toFixed(2)}
+                    </span>
                   </span>
-                </span>
-                <input
-                  type="range"
-                  min={-1}
-                  max={1}
-                  step={0.05}
-                  value={voiceExtras.pitch}
-                  onChange={(e) => {
-                    setVoiceExtras((prev) => ({ ...prev, pitch: Number(e.target.value) }));
-                    setSaved(false);
-                  }}
-                  style={{ accentColor: POP_TONE.purple }}
-                />
-                <span className={`mt-1 flex justify-between ${POP_HINT}`}>
-                  <span>低沉</span>
-                  <span>正常</span>
-                  <span>高亢</span>
-                </span>
-              </label>
+                  <input
+                    type="range"
+                    min={-1}
+                    max={1}
+                    step={0.05}
+                    value={voiceExtras.pitch}
+                    onChange={(e) => {
+                      setVoiceExtras((prev) => ({ ...prev, pitch: Number(e.target.value) }));
+                      setSaved(false);
+                    }}
+                    style={{ accentColor: POP_TONE.purple }}
+                  />
+                  <span className={`mt-1 flex justify-between ${POP_HINT}`}>
+                    <span>低沉</span>
+                    <span>正常</span>
+                    <span>高亢</span>
+                  </span>
+                </label>
+              )}
             </div>
           </div>
         ) : null}
 
-        {/* 流式输出（仅文本 API）：边生成边显示 vs 等整段写完一次显示 */}
-        {category === "text" ? (
+        {/* 流式输出（文本／副 API）：边生成边显示 vs 等整段写完一次显示 */}
+        {category === "text" || category === "sub" ? (
           <div className="flex items-center justify-between gap-3 border-t-2 border-dashed border-[#EDEAE2] pt-4">
             <div className="min-w-0">
               <div className="text-[12.5px] font-bold text-[#141414]">流式输出</div>
@@ -1499,8 +1626,8 @@ export function ApiCategoryForm({ category }: { category: ApiCategory }) {
           </div>
         ) : null}
 
-        {/* 采样参数（仅文本 API）：默认全不发，想调再逐个打开 */}
-        {category === "text" ? (
+        {/* 采样参数（文本／副 API）：默认全不发，想调再逐个打开 */}
+        {category === "text" || category === "sub" ? (
           <div className="space-y-3 border-t-2 border-dashed border-[#EDEAE2] pt-4">
             <div>
               <div className="text-[12.5px] font-bold text-[#141414]">采样参数</div>
@@ -1575,7 +1702,7 @@ export function ApiCategoryForm({ category }: { category: ApiCategory }) {
 
             <SampleRow
               label="频率惩罚"
-              hint="同一个词出现得越多越压它，治复读"
+              hint="同一个词出现得越多越压它，防复读（留空＝+0.30，关掉＝不发）"
               on={frequencyPenaltyOn}
               onToggle={() => {
                 setFrequencyPenaltyOn((v) => !v);
@@ -1594,7 +1721,7 @@ export function ApiCategoryForm({ category }: { category: ApiCategory }) {
 
             <SampleRow
               label="存在惩罚"
-              hint="已经说过的词就少提，治绕圈"
+              hint="已经说过的词就少提，防绕圈（留空＝+0.30，关掉＝不发）"
               on={presencePenaltyOn}
               onToggle={() => {
                 setPresencePenaltyOn((v) => !v);
@@ -1671,7 +1798,7 @@ export function ApiCategoryForm({ category }: { category: ApiCategory }) {
       ) : null}
 
       <div className="flex gap-3 pt-1">
-        {category === "text" ? (
+        {category === "text" || category === "sub" ? (
           <button
             type="button"
             disabled={testing}

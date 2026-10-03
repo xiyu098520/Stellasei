@@ -12,6 +12,15 @@ const nextConfig: NextConfig = {
         source: "/",
         headers: [{ key: "Cache-Control", value: "no-store, must-revalidate" }],
       },
+      {
+        // 本地 CA 证书（手机装描述文件用）。必须是这个 MIME，iOS 才会弹「安装描述文件」，
+        // 给成 octet-stream 只会下到「文件」App 里、装不了。
+        source: "/stellasei-ca.crt",
+        headers: [
+          { key: "Content-Type", value: "application/x-x509-ca-cert" },
+          { key: "Cache-Control", value: "no-store" },
+        ],
+      },
     ];
   },
 };

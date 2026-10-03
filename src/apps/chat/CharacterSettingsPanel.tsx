@@ -112,7 +112,9 @@ export default function CharacterSettingsPanel({
         image: overrides.image ?? b.image,
         voice: overrides.voice ?? b.voice,
       });
-      setVoiceDraft(conv.voiceOverride ?? b.voiceExtras);
+      /* 角色级 voiceOverride 是**整份替换**（不是合并）：老存档那份里没有 stability／style
+         这两格（1.9.87 才加），先铺一层默认再盖上存档，缺的格子才有值、滑杆不会显示 NaN。 */
+      setVoiceDraft({ ...DEFAULT_VOICE_EXTRAS, ...(conv.voiceOverride ?? b.voiceExtras) });
       setVpDraft(conv.voicePromptOverride?.text ?? "");
     });
     void Promise.all([

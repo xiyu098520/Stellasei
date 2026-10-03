@@ -13,6 +13,7 @@ import type {
   InnerSnapshot,
   VoiceApiExtras,
 } from "@/types/chat";
+import { DEFAULT_VOICE_EXTRAS } from "@/types/chat";
 import { redCoverNoteOf } from "@/apps/chat/redpacket";
 
 /**
@@ -44,8 +45,13 @@ interface ApiMessage {
   content: string | ApiBlock[];
 }
 
-/* 缓存断点开关：给 system 的稳定段与最近几条历史挂 Claude 缓存标记。 ｜ 详细见 docs/施工日志.md */
-const CACHE_CONTROL_ENABLED = true;
+/* 缓存断点开关：给 system 的稳定段与最近几条历史挂 Claude 缓存标记。 ｜ 详细见 docs/施工日志.md
+ *  1.9.87：用户要求「去掉現在的斷點」→ 置 false。请求体里不再出现任何 cache_control，
+ *  system 退回「稳定段／易变段各自平铺」那条老路（见下面 !CACHE_CONTROL_ENABLED 分支），
+ *  前缀缓存交给中转站自己按逐字比对去做。
+ *  怎么判断要不要留着：看下一笔中转站日志的「缓存」列——若还有几十K，说明站子自己也缓存，
+ *  成了；若「缓存」归零、↓ 冲到 3 万+，说明站子不吃这套，把这一行改回 true 即可（只动这一行）。 */
+const CACHE_CONTROL_ENABLED: boolean = false;
 
 /** 历史里挂缓存断点的「用户消息」条数。
  *  为什么挑用户消息、不挑末尾那几条：微信体一轮里助手会拆成 3–5 条气泡，
@@ -280,7 +286,10 @@ function buildApiMessages(
               ? `（发来一张图片：${m.mediaNote}）`
               : "（发来一张图片）";
       } else if (type === "voice") {
-        content = m.role === "assistant" ? `〔语音〕${m.content}` : `（发来一条语音）`;
+        content =
+          m.role === "assistant"
+            ? `〔语音〕${readVoiceContent(m.content).display}`
+            : `（发来一条语音）`;
       }
     }
     const body = m.quote ? `【引用】${m.quote}\n${content}` : content;
@@ -1135,6 +1144,45 @@ export function splitBilingual(text: string): { src: string; zh?: string } {
   const zh = m[2].trim();
   if (!src || !zh) return { src: s };
   return { src, zh };
+}
+
+/**
+ * 语音内容解析（1.9.92）：语音提示词让模型吐的是一个 JSON——
+ *   {"chinese_display":"…","tts_text":"…"}
+ * chinese_display＝无标签干净中文（给人看）、tts_text＝插了 ElevenLabs 标签的朗读稿。
+ *
+ * 语音消息落库时（m.content）**原样存这串 JSON**（合成要 tts_text，不能丢标签），
+ * 于是所有「给人看 / 送去念 / 写进记忆」的地方都得过这一道：
+ *   - 显示、译文、记忆 → 取 display（干净中文）；
+ *   - 合成           → 取 tts（带标签的朗读稿）。
+ * 认不出（不是 JSON、或两键都没有）就原样退回，老消息不受影响。
+ */
+export function readVoiceContent(content: string): { display: string; tts: string } {
+  const raw = content.trim();
+  /* 模型偶尔会把 JSON 包进 ```json 围栏，先剥掉再认。 */
+  const body = raw
+    .replace(/^```[a-zA-Z]*[ \t]*\n?/, "")
+    .replace(/\n?[ \t]*```$/, "")
+    .trim();
+  if (!body.startsWith("{") || !body.endsWith("}")) return { display: content, tts: content };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return { display: content, tts: content };
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { display: content, tts: content };
+  }
+  const rec = parsed as Record<string, unknown>;
+  const pick = (k: string): string => {
+    const v = rec[k];
+    return typeof v === "string" ? v.trim() : "";
+  };
+  const display = pick("chinese_display");
+  const tts = pick("tts_text");
+  if (!display && !tts) return { display: content, tts: content };
+  return { display: display || tts, tts: tts || display };
 }
 
 /**
@@ -2335,13 +2383,30 @@ export async function generateImage(
   }
 }
 
+/** 送给**不认方括号音频标签**的服务商前，把 `[whispers]` 这类语气标签剥掉（1.9.87 补）。
+ *  那套标签只有 ElevenLabs（v3／v4）当指令认；MiniMax、OpenAI 兼容站会把它们当普通文字
+ *  **照字念出来**。1.9.89 起出厂规矩已改成「把语气写进文字」（不再用标签），但这层兜底留着：
+ *  用户若自己把标签规矩写回去，别家也不会听见「左括号 whispers 右括号」。
+ *  显示层同样会剥（ChatWindow 的 stripVoiceTags），两边口径一致；ElevenLabs 那支原样保留。
+ *  洗空了（整条都是标签）就退回原文，宁可多念也别合成一段空音频。 */
+function stripVoiceAudioTags(text: string): string {
+  const cleaned = text
+    .replace(/[\[［][^\[\]［］]*[\]］]/g, " ")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+  return cleaned || text.trim();
+}
+
 /** 是否 MiniMax 语音接口（国内 api.minimax.chat／国际 api.minimaxi.chat，专用格式）。 */
 function isMiniMaxVoice(baseUrl: string): boolean {
   return /api\.minimax(i)?\.chat/i.test(baseUrl.trim());
 }
 
-/** 是否 ElevenLabs 官方语音接口（api.elevenlabs.io，专用格式＋xi-api-key 认证）。 */
-function isElevenLabsVoice(baseUrl: string): boolean {
+/** 是否 ElevenLabs 官方语音接口（api.elevenlabs.io，专用格式＋xi-api-key 认证）。
+ *  合成与「获取模型」都靠它分流：ElevenLabs 走 /v1 那一套，别家走 OpenAI 兼容那套。
+ *  （1.9.87 曾导出给 ChatWindow 判「默认台词规矩要不要注入」；1.9.89 出厂规矩改成
+ *  「把语气写进文字」后对所有音色通用，那处引用已撤。） */
+export function isElevenLabsVoice(baseUrl: string): boolean {
   return /elevenlabs\.io/i.test(baseUrl.trim());
 }
 
@@ -2457,6 +2522,14 @@ async function requestSpeechViaMiniMax(
 const ELEVEN_SPEED_MIN = 0.7;
 const ELEVEN_SPEED_MAX = 1.2;
 
+/** 把 0–1 的档位（稳定性／风格）钳好；旧存档缺这一格、或值不是数时退回默认。
+    角色级 voiceOverride 是**整份替换**（不是合并），从前存下的那份没有这两格，
+    所以这里必须防一手，不能直接拿它算。 */
+function clampUnit(value: number | undefined, fallback: number): number {
+  const n = typeof value === "number" && Number.isFinite(value) ? value : fallback;
+  return Math.min(1, Math.max(0, n));
+}
+
 /**
  * 经 ElevenLabs 官方接口合成语音（POST /v1/text-to-speech/{voice_id}）。
  *
@@ -2467,6 +2540,11 @@ const ELEVEN_SPEED_MAX = 1.2;
  *   `eleven_multilingual_v2` 老而稳，`eleven_flash_v2_5` 最快最省。
  *
  * 音调（pitch）它没有这个参数，那一格在这儿不起作用；语速只认 0.7–1.2。
+ * 1.9.87 起稳定度（stability）与风格夸张度（style）恒发（默认 0.4／0.4，恩熙定「中」）：
+ * 从前是「少发一个少一个错」，但这样一来声音永远是它的中性腔、没语气；现在主动带一点
+ * 表现力，设置里可拖。逐句贴合情境的语气，1.9.89 起改成靠台词文字本身（出厂那份提示词
+ * 规矩就是「把语气写进文字」，见 DEFAULT_VOICE_PROMPT_TEXT）；方括号音频标签（[whispers]
+ * 这类）仍是它的合法指令，用户若写了照认不误。
  */
 async function requestSpeechViaElevenLabs(
   base: string,
@@ -2478,6 +2556,8 @@ async function requestSpeechViaElevenLabs(
   if (!voiceId) throw new Error("请先填音色：ElevenLabs 要的是 voice id（Voices 页复制那串）");
   const url = `${base}/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_128`;
   const speed = Math.min(ELEVEN_SPEED_MAX, Math.max(ELEVEN_SPEED_MIN, extras.speed));
+  const stability = clampUnit(extras.stability, DEFAULT_VOICE_EXTRAS.stability);
+  const style = clampUnit(extras.style, DEFAULT_VOICE_EXTRAS.style);
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 120_000);
@@ -2492,10 +2572,14 @@ async function requestSpeechViaElevenLabs(
       body: JSON.stringify({
         text,
         model_id: api.model,
-        /* 语速只在挪过时才发（默认 1 就一个参数都不带）：stability／similarity_boost 这些
-           交给它的默认值，要细调去它网站上按那个音色调；新模型（v4）的参数面也可能变，
-           能少发一个就少一个出错的机会。 */
-        ...(speed !== 1 ? { voice_settings: { speed } } : {}),
+        /* 稳定度／风格夸张度**常发**（默认 0.4／0.4）：这是「默认语音要有基本语气」的那一半。
+           语速仍旧只在挪过时才发（默认 1 就别去碰它的中性值）；similarity_boost／speaker_boost
+           留给它的默认，要细调去它网站上按那个音色调。 */
+        voice_settings: {
+          stability,
+          style,
+          ...(speed !== 1 ? { speed } : {}),
+        },
       }),
       signal: controller.signal,
     });
@@ -2541,13 +2625,19 @@ export async function synthesizeSpeech(
   if (!base) throw new Error("请先填好 Base URL");
   if (!api.model.trim()) throw new Error("请先填好模型名称");
 
-  /* MiniMax：专用接口＋团队 ID＋hex 音频，单独处理。 */
+  /* 不认方括号情绪标签的服务商（MiniMax、OpenAI 兼容站）合成前先把标签摘掉，
+     只有 ElevenLabs 拿原始带标签的台词（见 stripVoiceAudioTags）。 */
+  const plain = stripVoiceAudioTags(text);
+
+  /* MiniMax：专用接口＋团队 ID＋hex 音频，单独处理。
+     **语气走它的「自动情绪」**：voice_setting 里不传 emotion，它按台词内容自己挑最自然的
+     情绪（官方默认行为），逐句语气天然就有；传死一个 emotion 反而会锁死一种情绪，故不传。 */
   if (isMiniMaxVoice(base)) {
-    const audio = await requestSpeechViaMiniMax(base, api, text, extras);
+    const audio = await requestSpeechViaMiniMax(base, api, plain, extras);
     return { audio };
   }
 
-  /* ElevenLabs 官方：专用接口＋xi-api-key，单独处理。 */
+  /* ElevenLabs 官方：专用接口＋xi-api-key，单独处理（方括号标签是给它的指令，保留原文）。 */
   if (isElevenLabsVoice(base)) {
     const audio = await requestSpeechViaElevenLabs(base, api, text, extras);
     return { audio };
@@ -2557,7 +2647,7 @@ export async function synthesizeSpeech(
 
   const body: Record<string, unknown> = {
     model: api.model,
-    input: text,
+    input: plain,
     voice: extras.voice,
     response_format: "mp3",
   };
@@ -2604,7 +2694,7 @@ export async function synthesizeSpeech(
 }
 
 /**
- * 拉取模型列表（OpenAI 兼容 GET /models）。
+ * 拉取模型列表：OpenAI 兼容站走 GET {base}/models，ElevenLabs 走 GET /v1/models。
  * 成功返回模型 id 列表（保持服务商返回顺序）；失败抛出人话错误。
  */
 export async function fetchModelList(
@@ -2612,7 +2702,20 @@ export async function fetchModelList(
 ): Promise<string[]> {
   const base = api.baseUrl.trim().replace(/\/+$/, "");
   if (!base) throw new Error("请先填好 Base URL 再获取");
-  const url = base.endsWith("/models") ? base : `${base}/models`;
+
+  /* ElevenLabs 跟 OpenAI 那套有三处不一样，得单独走一支：
+     - 地址是 /v1/models（不是根下的 /models）；
+     - 认证头是 xi-api-key，它不认 Authorization: Bearer（发 Bearer 只会拿到 401）；
+     - 返回是**顶层数组**，模型名那格叫 model_id（不是 data[].id 那套）。
+     摆上这个按钮，是为了让恩熙能亲眼确认 eleven_v4 这类型号到底在不在、是不是真能用。 */
+  const eleven = isElevenLabsVoice(base);
+  const url = eleven
+    ? /\/v1$/i.test(base)
+      ? `${base}/models`
+      : `${base}/v1/models`
+    : base.endsWith("/models")
+      ? base
+      : `${base}/models`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -2620,9 +2723,9 @@ export async function fetchModelList(
   try {
     res = await fetch(url, {
       method: "GET",
-      headers: {
-        ...(api.apiKey ? { Authorization: `Bearer ${api.apiKey}` } : {}),
-      },
+      headers: eleven
+        ? { "xi-api-key": api.apiKey }
+        : { ...(api.apiKey ? { Authorization: `Bearer ${api.apiKey}` } : {}) },
       signal: controller.signal,
     });
   } catch (err) {
@@ -2636,22 +2739,40 @@ export async function fetchModelList(
   if (!res.ok) {
     let detail = "";
     try {
-      const errBody = (await res.json()) as { error?: { message?: string } | string };
-      detail = typeof errBody.error === "string" ? errBody.error : (errBody.error?.message ?? "");
+      /* OpenAI 兼容站把原因放在 error.message；ElevenLabs 放在 detail.message（有时 detail 直接是字符串）。 */
+      const errBody = (await res.json()) as {
+        error?: { message?: string } | string;
+        detail?: { message?: string } | string;
+      };
+      detail =
+        typeof errBody.error === "string"
+          ? errBody.error
+          : (errBody.error?.message ??
+            (typeof errBody.detail === "string" ? errBody.detail : (errBody.detail?.message ?? "")));
     } catch {
       // 响应体不是 JSON（如网关返回 HTML）就只报状态码。
     }
     throw new Error(detail ? `HTTP ${res.status}：${detail}` : `HTTP ${res.status}（服务商未说明原因）`);
   }
-  let data: { data?: { id?: string }[] };
+  let data: unknown;
   try {
-    data = (await res.json()) as typeof data;
+    data = await res.json();
   } catch {
     throw new Error("接口返回了无法解析的内容，请检查地址是否填对");
   }
-  const ids = (data.data ?? [])
-    .map((m) => (m.id ?? "").trim())
-    .filter((id) => id !== "");
+  let ids: string[];
+  if (eleven) {
+    /* 它那份清单混着 speech-to-speech 之类**不能做 TTS** 的型号，挑进来自会报错；
+       有 can_do_text_to_speech 这格的、且明确为 false 的，先剔掉。 */
+    const arr = Array.isArray(data) ? (data as { model_id?: unknown; can_do_text_to_speech?: unknown }[]) : [];
+    ids = arr
+      .filter((m) => m?.can_do_text_to_speech !== false)
+      .map((m) => (typeof m?.model_id === "string" ? m.model_id.trim() : ""))
+      .filter((id) => id !== "");
+  } else {
+    const arr = (data as { data?: { id?: string }[] }).data ?? [];
+    ids = arr.map((m) => (m.id ?? "").trim()).filter((id) => id !== "");
+  }
   if (ids.length === 0) throw new Error("接口没有返回任何模型");
   return ids;
 }

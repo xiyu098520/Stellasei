@@ -971,6 +971,13 @@ export async function deleteApiPreset(category: ApiCategory, id: string): Promis
 
 const CHAT_PREFS_KEY = "chat-prefs";
 
+/** 「语音提示词默认规矩」一次性迁移的戳子（1.9.87）：补过一次就不再补，见 getChatPrefs。 */
+const VOICE_PROMPT_DEFAULT_MIGRATED_KEY = "chat-prefs-voice-default-v1";
+
+/** 「语音提示词出厂原文换版」一次性迁移的戳子（1.9.89）：把方括号标签那版换成
+ *  「把语气写进文字」版，见 getChatPrefs。 */
+const VOICE_PROMPT_TEXT_MIGRATED_V2_KEY = "chat-prefs-voice-default-v2";
+
 /** 对话行为偏好（全局一份，不分角色与面具；每聊天设定在 Conversation 上）。 */
 export interface ChatPrefs {
   /**
@@ -1002,8 +1009,8 @@ export interface ChatPrefs {
   smoothMode: boolean;
   /**
    * 语音提示词开关：打开后把下面那段「〔语音〕里说的话」的规矩拼进发给聊天模型的
-   * 系统提示词，让 TA 照这份规矩写〔语音〕里那句台词（说什么、什么口吻、要不要插
-   * 方括号标签）——只管内容，不管要不要发语音、怎么标〔语音〕。
+   * 系统提示词，让 TA 照这份规矩写〔语音〕里那句台词（说什么、什么口吻、怎么断句）
+   * ——只管内容，不管要不要发语音、怎么标〔语音〕。
    * 全局一份；角色可在「角色设置 · 语音提示词」里单独覆盖。
    */
   voicePromptOn: boolean;
@@ -1011,13 +1018,38 @@ export interface ChatPrefs {
   voicePromptText: string;
 }
 
+/**
+ * 「语音提示词」的默认规矩（1.9.89 改版）：〔语音〕里那句台词要像**真的说出口**，
+ * 语气写在字里，不靠标签。
+ *
+ * 为什么改：1.9.87 那版是教模型往台词前插英文方括号音频标签（[whispers] 这类）——
+ * 只有 ElevenLabs 的 v3／v4 认，v2 与 flash／turbo 会把它**照字念出来**；实测中文角色
+ * 在中文台词前挂英文标签太反直觉，模型常常不写、写错，恩熙听到的仍是生硬的中性腔
+ *（该轻声的地方反而强硬）。改成把语气做进文字本身——省略号、断句、语气词、句子长短——
+ * 这条路对**所有**音色都成立（ElevenLabs／MiniMax／OpenAI 兼容都吃这套），也没有
+ * 「换个音色就失效」的毛病。
+ *
+ * 方括号标签的机制没删：显示层照旧剥（ChatWindow 的 stripVoiceTags），合成侧照旧给
+ * 别家剥（chatApi 的 stripVoiceAudioTags）。想玩标签的人，自己在设置里把那段规矩写回去即可。
+ * 用户随时可在设置里改这段文字、或整个关掉（角色级也能单独覆盖）。
+ */
+export const DEFAULT_VOICE_PROMPT_TEXT =
+  "〔语音〕里那句台词要像真的说出口，语气写进字里，别写成平整的陈述句：\n· 该轻的时候用省略号和断句把话放软：「嗯…」「别…别这样」「…我知道了」\n· 该硬的时候句子要短、要脆，别拖长\n· 语气词（啊、呢、嘛、啦、吧、诶）按人设写足，别省\n· 迟疑、撒娇、委屈、试探都要从字面上看得出来\n· 一句别太长\n· 不写括号动作、不用星号、不写 emoji——都会被原样念出来";
+
+/** 1.9.87～1.9.88 那版出厂「语音提示词」原文（教模型插方括号标签那套）。
+ *  老装置上存的还是这一份，1.9.89 改版时要一次性换成新原文（见 getChatPrefs）。 */
+const LEGACY_VOICE_PROMPT_TEXT_V1 =
+  "说话时带上当下的口吻，让声音有情绪：在这句台词最前面加一个英文半角方括号标签，例如 [whispers]（气声低语）、[laughs]（笑）、[sighs]（叹气）、[excited]（兴奋）、[sad]（低落）、[angry]（生气）、[sarcastic]（揶揄）、[softly]（轻声）、[nervous]（紧张）、[curious]（好奇）。一句话最多一个标签；平常闲聊不必每句都加，只在情绪明显、或想让声音换个语气时才加，挑最贴当下情境的那一个。标签不会显示给对方看，只影响声音听起来的样子。";
+
 export const DEFAULT_CHAT_PREFS: ChatPrefs = {
   timeAware: true,
   autoGenerateImage: true,
   showReasoning: true,
   smoothMode: false,
-  voicePromptOn: false,
-  voicePromptText: "",
+  /* 1.9.87：默认开、并带上默认语音规矩（见上）。目标就是「默认语音就该有基本语气」，
+     不该让用户先去设置里自己开一道开关才有——所以这次默认值直接改成开。 */
+  voicePromptOn: true,
+  voicePromptText: DEFAULT_VOICE_PROMPT_TEXT,
 };
 
 /** 把存档补全成一份合法偏好（缺漏栏位补预设值，方便日后加开关）。 */
@@ -1034,7 +1066,30 @@ function normalizePrefs(saved: Partial<ChatPrefs>): ChatPrefs {
 
 /** 读取对话偏好；缺漏栏位补预设值，方便日后加开关。 */
 export async function getChatPrefs(): Promise<ChatPrefs> {
-  return normalizePrefs((await kvGet<Partial<ChatPrefs>>(CHAT_PREFS_KEY)) ?? {});
+  const prefs = normalizePrefs((await kvGet<Partial<ChatPrefs>>(CHAT_PREFS_KEY)) ?? {});
+  /* 1.9.87 一次性迁移：默认语音要有基本语气，于是给「语音提示词」配了默认规矩并默认开。
+     但 saveChatPrefs 存的是**整份**，老装置那份里 voicePromptOn=false、正文空，改
+     DEFAULT_CHAT_PREFS 对它不生效——所以这里补一次：只在「从没开过、正文也空」时填默认，
+     用户自己开过或写过一字的都不碰。marker 记一笔，补过就不再来（免得她手动清空后被塞回）。 */
+  if (!(await kvGet<boolean>(VOICE_PROMPT_DEFAULT_MIGRATED_KEY))) {
+    if (!prefs.voicePromptOn && !prefs.voicePromptText.trim()) {
+      prefs.voicePromptOn = true;
+      prefs.voicePromptText = DEFAULT_VOICE_PROMPT_TEXT;
+      await kvSet(CHAT_PREFS_KEY, prefs);
+    }
+    await kvSet(VOICE_PROMPT_DEFAULT_MIGRATED_KEY, true);
+  }
+  /* 1.9.89 一次性迁移：出厂那份默认规矩从「插方括号标签」改成「把语气写进文字」。
+     老装置上存的还是旧原文（v1 那段已补过、不会再动），这里把它换成新原文——但
+     **只换一字未改的**：她要是自己改过这段规矩，就一个字都不碰。 */
+  if (!(await kvGet<boolean>(VOICE_PROMPT_TEXT_MIGRATED_V2_KEY))) {
+    if (prefs.voicePromptText.trim() === LEGACY_VOICE_PROMPT_TEXT_V1.trim()) {
+      prefs.voicePromptText = DEFAULT_VOICE_PROMPT_TEXT;
+      await kvSet(CHAT_PREFS_KEY, prefs);
+    }
+    await kvSet(VOICE_PROMPT_TEXT_MIGRATED_V2_KEY, true);
+  }
+  return prefs;
 }
 
 /** 局部更新对话偏好（只传要改的那个开关）。 */

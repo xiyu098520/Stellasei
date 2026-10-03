@@ -8,6 +8,7 @@ import { ContactsApp } from "@/apps/contacts/ContactsApp";
 import WorldBookApp from "@/apps/worldbook/WorldBookApp";
 import ChatApp from "@/apps/chat/ChatApp";
 import MemoryApp from "@/apps/memory/MemoryApp";
+import PeekApp from "@/apps/peek/PeekApp";
 
 /**
  * 视窗管理：当前 App 以全屏覆盖层呈现（z 高於主屏幕、低於开屏）。
@@ -27,6 +28,8 @@ export function AppWindow() {
     content = <ChatApp />;
   } else if (currentApp.id === "memory") {
     content = <MemoryApp />;
+  } else if (currentApp.id === "peek") {
+    content = <PeekApp />;
   } else if (currentApp.comingSoon) {
     content = <ComingSoon app={currentApp} />;
   } else if (currentApp.id === "beautify") {

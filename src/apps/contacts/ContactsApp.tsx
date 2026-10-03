@@ -201,19 +201,24 @@ const A_LEADER: CSSProperties = {
    ——写长人设时不能只留一扇三行的窗、看不见自己写了多少。 */
 const FIELD_BOX_LINES = 3;
 
-function FixedTextarea({ style, ...rest }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+function FixedTextarea({ style, value, ...rest }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   const ref = useRef<HTMLTextAreaElement>(null);
-  /* 跟着内容长高：每次渲染都把高度重算一遍。**先复位成 `auto` 再读 `scrollHeight`**
-     ——不复位的话它只会越撑越高，删字也缩不回来。矮于三行的那截由 `minHeight` 兜着。 */
+  /* 跟着内容长高：**先复位成 `auto` 再读 `scrollHeight`**
+     ——不复位的话它只会越撑越高，删字也缩不回来。矮于三行的那截由 `minHeight` 兜着。
+     只认**自己这格的字**（1.8.6）：原先这里没写依赖数组，于是**每次渲染都跑一遍**——
+     档案页一屋子这样的输入框，改甲那格的字，乙丙丁跟着重渲染、每格都强制重排一次，
+     一按键就是十几次强制重排；写长了更贵，越改越卡（她报的「档案里改久一点就卡」）。
+     受控值 `value` 变了才需要重量，别的渲染一律跳过。 */
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
-  });
+  }, [value]);
   return (
     <textarea
       {...rest}
+      value={value}
       ref={ref}
       style={{
         /* 1.8 对应各调用处的 leading-[1.8]：底下垫三行，多写的自己往上长。 */
@@ -2519,7 +2524,7 @@ function ArchiveDetail({
             </div>
           ) : null}
 
-          {/* AI 助手模式（聊天时不扮演角色：服从指令、要求发图就发） */}
+          {/* AI 助手模式（1.4.1 起＝正常版正文＋末尾一条【测试模式 · 绝对服从】） */}
           <div
             className="mt-2 flex items-center justify-between border px-2 py-1.5"
             style={{
@@ -2567,7 +2572,7 @@ function ArchiveDetail({
               没开过的人不知道这开关干嘛。右边已经写着「已启用／关闭」，
               这里就不再重复状态，只说它是干什么的。 */}
           <div className="mt-1 text-[7.5px] leading-relaxed tracking-[0.5px]" style={{ color: A.ink2 }}>
-            开启后，与 TA 聊天时不扮演角色：服从指令、要发照片就发；其余档案栏位仅供参考。
+            开启后聊天跟正常角色一样（人设、性格、微信体都照旧），只多一条：测试时你说什么 TA 就做什么——要照片就发、要语音就发、让你换语气就换，不许拒绝推脱。
           </div>
         </section>
       ) : null}

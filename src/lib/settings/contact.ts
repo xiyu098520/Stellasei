@@ -156,15 +156,28 @@ export async function saveArchive(id: string, profile: ContactProfile): Promise<
   const list = await getArchives();
   const idx = list.findIndex((a) => a.id === id);
   if (idx >= 0) {
+    /* 关开关的判定要在覆盖前抓旧值：这一趟是不是「把一张开着的助手档案关成了普通档案」。 */
+    const wasAssistant = list[idx].data.isAssistant === true;
+    const nowAssistant = profile.isAssistant === true;
     list[idx] = {
       ...list[idx],
       data: profile,
       updatedAt: new Date().toISOString(),
     };
     await kvSet(ARCHIVES_KEY, list);
-    /* 她亲手把某张档案的「AI 助手模式」重新打开 —— 那就是把助手请回来了，
-       辞退标记顺手清掉，下一趟 `ensureAssistant` 才会重新认它、给各面具补绑定。 */
-    if (profile.isAssistant === true) await setAssistantOff(false);
+    if (nowAssistant) {
+      /* 她亲手把某张档案的「AI 助手模式」重新打开 —— 那就是把助手请回来了，
+         辞退标记顺手清掉，下一趟 `ensureAssistant` 才会重新认它、给各面具补绑定。 */
+      await setAssistantOff(false);
+    } else if (wasAssistant) {
+      /* 她把一张开着的助手档案亲手关成普通档案，而库里又不再剩任何助手档案 ——
+         这跟删掉一样是「不要助手了」，同样落辞退标记。否则 `ensureAssistant`
+         会把「没有助手档案」一律当成「从没建过」又自动补一个：关一次开关蹦一个
+         新星绥、删了那张又见另一张（旧的那张还在库里），像永远清不掉。
+         （库里还剩别的助手档案时不算辞退——那只是少一张，不是不要了。） */
+      const stillHasAssistant = list.some((a) => a.data.isAssistant === true);
+      if (!stillHasAssistant) await setAssistantOff(true);
+    }
   }
 }
 
@@ -180,12 +193,16 @@ export async function deleteArchive(id: string): Promise<ArchiveEntry[]> {
   return updated;
 }
 
-/** 助手是否已被手动删掉（辞退标记）。
+/** 助手是否已被手动请走（辞退标记）。
  *
  *  `ensureAssistant` 原来把「档案库里没有助手」一律当成「还没建过」，于是每删
- *  一次就自动补回一个。可这两种状态不是一回事：**从没建过**才该建，**删掉的**不该
+ * 一次就自动补回一个。可这两种状态不是一回事：**从没建过**才该建，**删掉的**不该
  *  再冒出来。这枚标记就是分界线；档案删了就没了，痕迹只能另存一处才留得住。
- *  重新开启某张档案的助手模式即视为请回（见 `saveArchive`）。 */
+ *  重新开启某张档案的助手模式即视为请回（见 `saveArchive`）。
+ *  **1.4.16 起「请走」包含两种动作**：删掉最后一张助手档案，或**关掉最后一张
+ *  助手档案的开关**——后者跟删除一样是明确说「不要了」，原来不落标记，于是
+ *  关开关 → 下次进聊天又自动补一个新星绥 → 删那张 → 库里还留着关掉开关的
+ *  旧星绥，看起来就是「删了又蹦」。 */
 export async function isAssistantOff(): Promise<boolean> {
   return (await kvGet<boolean>(ASSISTANT_OFF_KEY)) === true;
 }

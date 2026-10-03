@@ -28,6 +28,13 @@ import {
 const IMAGE_MAX_EDGE = 1280;
 const IMAGE_JPEG_QUALITY = 0.82;
 
+/** 给模型「看」的那张小图：最长边 768 / JPEG 0.7。
+    为什么另压一份、压得更狠：这一份只在「我发图的那一轮」随请求发出去，用完就丢；
+    图是按**尺寸**算 token 的（不按字节），768 是折中——再小球就看不清截图里的字，
+    再大纯属白花。 */
+const VISION_MAX_EDGE = 768;
+const VISION_JPEG_QUALITY = 0.7;
+
 /** 把任意来源（data URL／http 链接／blob 地址）读成 Blob；读不到回 null。 */
 async function sourceToBlob(source: string): Promise<Blob | null> {
   const res = await fetch(source);
@@ -147,6 +154,39 @@ export async function mediaRefToDataUrl(value: string | undefined): Promise<stri
 }
 
 /**
+ * 把消息里那张图取出来、压成「给模型看」的小图，回一份 data URL；任何一步不成都回 undefined。
+ *
+ * 为什么要单独来这一份：模型真看见图，靠的是把图本体随那一次请求发出去。可是
+ * ① 图是按尺寸算 token 的，每轮都重带＝把钱一轮一轮重烧一遍；
+ * ② base64 若落到消息字段里，会把「每次读列表都整份读出」的会话记录撑爆。
+ * 所以这一份**只在「我发图的那一轮」那一次请求上用**，用完即弃、不落库——
+ * 仓库里照旧只存一份（上屏用的那张）。
+ *
+ * 回 undefined 时调用方原样走「（发来一张图片）」那条老路：压不出来／读不回来
+ * 都只是「这一轮 TA 看不见图」，聊天不会因此断掉。
+ */
+export async function mediaRefToVisionDataUrl(
+  value: string | undefined,
+): Promise<string | undefined> {
+  const full = await mediaRefToDataUrl(value);
+  if (!full) return undefined;
+  try {
+    const raw = await sourceToBlob(full);
+    if (!raw) return undefined;
+    const small = await compressToJpeg(raw, VISION_MAX_EDGE, VISION_JPEG_QUALITY);
+    if (!small) return undefined;
+    return await new Promise<string | undefined>((resolve) => {
+      const reader = new FileReader();
+      reader.onerror = () => resolve(undefined);
+      reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : undefined);
+      reader.readAsDataURL(small);
+    });
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * 丢掉一笔已经没人引用的图（删消息、重新生成把旧图顶掉时调用）。
  * 仓库与消息是分开存的，消息一删引用链就断了，不主动回收就成了只进不出的垃圾——
  * 这正是「存储早晚撑满」的来源。
@@ -221,17 +261,31 @@ function dataUrlToBlob(dataUrl: string): Blob | null {
 /**
  * 把一张图交给系统去存（聊天里点大图的「保存图片」、朋友圈配图的「保存图片」共用这一支）。
  *
- * 手机优先走系统分享面板（Web Share API）：面板里有「存储图像／存储到照片」且随时可取消——
- * 比触发浏览器下载稳：iOS 的下载确认／文件预览界面在部分浏览器里没有返回键，会把人困在里面
- * 只能杀应用。data URL 同步转 File（不让出线程，保住用户手势）；不支持分享的浏览器／桌面再走
- * 下载：data URL 就地转 blob 地址，远程图交给 /api/image-proxy 代取。
+ * 手机上点「保存图片」要的就是**那个系统面板**（「存储图像」在里面）——一次到位，中间不再
+ * 经过别的页面。这个面板只能靠 Web Share API 唤起，所以这里**不拿 `canShare` 先问一句**：
+ * iOS 上有版本明明能分享文件，却把 canShare 答成「不行」，先问就把面板问没了，于是掉进下载兜底，
+ * iOS 拿到 blob 不当下载、而是当文件打开一张「照片-xxx.png · 在"预览"中打开 · 更多…」的文件页
+ * ——想存还得再按「更多」，她看到的就是这个。直接递上去最稳：成了就出面板，用户自己取消
+ * （AbortError）就静默收场。
+ *
+ * 【1.4.28 找到的真根因】：`navigator.share` 是 Secure Context 特性（W3C 规范写死
+ * `[SecureContext] share(...)`）——**只有 https／localhost 下这个属性才存在**。她走的是
+ * http://192.168.1.2 的局域网地址，所以这个 API 根本不存在，代码必然掉进下载兜底＝那张文件页。
+ * ⇒ 想一次到位出面板，就得让页面落在 https 上（部署到网上的 https 地址，或我这边给一个
+ * https 入口）。在那之前先维持「至少能保存」：手机在 http 下也照旧走下载兜底那张文件页。
+ *
+ * 【1.4.25／1.4.26 两条弯路，都已撤】：1.4.25 改成「只提示长按图片」——按钮上写着保存、
+ * 却让她换个手势，说不通；1.4.26 改成「另开一张全屏图」——她要的是面板，不是又一层页面。
+ * 按钮上写着保存，就得在保存。
+ *
+ * 桌面（无触摸）不走面板：那儿 `share` 是分享给别的应用，不是「存到本机」，直接下载才对。
  *
  * 试过要回执、已撤：本想在面板关闭后用 await navigator.share 的结果
  * 提示「已保存到相册」，但 iOS 上 promise 不按规范 settle（点完存储图像既不 resolve 也不
  * reject），提示永不出现——只能维持静默。想要明确回执与「点一下就进相册」，只能等打包原生 App。
  *
  * knownBlob：媒体仓库那条路已经把图解好了，直接拿现成的（转成 data URL 再解一遍只会白白把
- * 用户手势耗掉）。没有才退回老办法自己解。notify 只用来提示「已开始下载」那一条。
+ * 用户手势耗掉）。没有才退回老办法自己解。notify 用来提示「已开始下载」。
  *
  * 故意做成同步函数：整个决定必须在用户点击的那一次手势里做完。
  */
@@ -244,30 +298,49 @@ export function saveImageToDevice(
   const blob = knownBlob ?? (url.startsWith("data:") ? dataUrlToBlob(url) : null);
   /* 名字跟着实际类型走：过了仓库的图统一是 JPEG。 */
   const name = `照片-${stamp}.${blob?.type === "image/jpeg" ? "jpg" : "png"}`;
-  if (blob) {
+
+  /* 兜底：下载（桌面／安卓／不支持文件分享的浏览器／远程 URL）。data URL 就地转 blob 地址，
+     远程图交给 /api/image-proxy 代取。 */
+  const download = () => {
+    const blobUrl = blob ? URL.createObjectURL(blob) : null;
+    const a = document.createElement("a");
+    a.href =
+      blobUrl ??
+      (url.startsWith("data:")
+        ? url
+        : `/api/image-proxy?url=${encodeURIComponent(url)}&name=${encodeURIComponent(name)}`);
+    a.download = name;
+    a.target = "_blank";
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    if (blobUrl) setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+    notify?.("已开始下载");
+  };
+
+  /* 触摸设备（手机／平板）＝要的是系统面板这条路。 */
+  const touchDevice = typeof navigator !== "undefined" && navigator.maxTouchPoints > 0;
+
+  if (touchDevice && blob && typeof navigator.share === "function") {
     /* window.File：绕开类型环境的 File 构造签名冲突，运行时就是浏览器的 File。 */
     const file = new window.File([blob], name, { type: blob.type || "image/png" });
-    if (navigator.canShare?.({ files: [file] })) {
-      void navigator.share({ files: [file] }).catch(() => {});
-      return; // 分享面板自己就是反馈，取消也不报错
-    }
+    void navigator.share({ files: [file] }).then(
+      () => {},
+      (err: unknown) => {
+        /* 用户点了取消／划掉面板——这就是他的意思，别再自作主张去下载。 */
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        notify?.("系统分享面板没起来，再点一次「保存图片」试试");
+      },
+    );
+    return; // 面板自己就是反馈
   }
-  /* 兜底：下载（桌面／不支持文件分享的浏览器／远程 URL）。 */
-  const blobUrl = blob ? URL.createObjectURL(blob) : null;
-  const a = document.createElement("a");
-  a.href =
-    blobUrl ??
-    (url.startsWith("data:")
-      ? url
-      : `/api/image-proxy?url=${encodeURIComponent(url)}&name=${encodeURIComponent(name)}`);
-  a.download = name;
-  a.target = "_blank";
-  a.rel = "noopener";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  if (blobUrl) setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
-  notify?.("已开始下载");
+
+  /* 手机但拿不到 navigator.share＝页面不在安全上下文里（Web Share 是 [SecureContext] 特性，
+     http:// 非 localhost 下压根不存在）。这里仍然走下载兜底：iOS 会把它当文件打开一张
+     「照片-xxx.jpg · 在"预览"中打开」的文件页——虽然要多按一次「更多」，但至少存得下来。
+     想要点一下就出系统面板，得把页面换成 https（部署或 https 入口）。 */
+  download();
 }
 
 export { getCachedMediaBlob };
