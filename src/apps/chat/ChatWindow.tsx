@@ -1611,6 +1611,10 @@ export default function ChatWindow({
           conv?.voicePromptOverride?.text ??
           (prefs.voicePromptOn ? prefs.voicePromptText : "");
         const voicePromptRule = vpText.trim() ? vpText : null;
+        /* 外语聊天（1.9.81）：语音的双语格式要「用户提示词压不掉」，所以在 buildStylePrompt
+           里就带上目标语言（见那边的 voiceLang 参数）。取在调用之前，下面两处都要用。 */
+        const trOut = conv?.translate?.out;
+        const trInnerOn = conv?.translate?.inner === true;
         const { head: stylePrompt, tail: styleRules } = buildStylePrompt(
           charName,
           myName,
@@ -1628,6 +1632,9 @@ export default function ChatWindow({
              （设置里的开关＋正文）。管的是〔语音〕里那句台词怎么写，不是发语音的机制。
              开关开着且正文非空才注入；否则传 null，稳定区逐字不变（不吃缓存重建）。 */
           voicePromptRule,
+          /* 语音的目标外语（1.9.81）：开着「他说的外语」＝传该语言，语音固定写成「原文|中文」，
+             压过用户自定义的语音规矩，语音永远自带中文。 */
+          trOut?.on ? trOut.lang : null,
         );
         /* system 只放稳定段（最前：【心声】＋沉浸指令 → 对方档案／常驻世界书／人设／
            记忆碎片 → 末尾：消息格式／富媒体／【行为守则】／测试模式）
@@ -1642,11 +1649,11 @@ export default function ChatWindow({
            动了就解析不出来；思考过程与动态（朋友圈）这一版仍写中文。
            钉在稳定段：它只在设置改动那一下才变，跟别的稳定内容一起吃前缀缓存。 */
         /* 1.9.80：不再事后发第二次翻译请求，改成让模型**一次就写两半**——
-           每条消息写成「外文原文|简体中文」，解析层按竖线劈开（见 splitBilingual）。 */
-        const trOut = conv?.translate?.out;
-        const trInnerOn = conv?.translate?.inner === true;
+           每条消息写成「外文原文|简体中文」，解析层按竖线劈开（见 splitBilingual）。
+           1.9.81：语音那半的固定格式移到 buildStylePrompt 的【发语音】一节（用户提示词
+           压不掉），这里只管正文与 <think>。 */
         const langRule = trOut?.on
-          ? `\n\n【说话的语言】你用${trOut.lang}说话。**你发出的每一条消息都写成两半：外文原文「|」简体中文**——先写这句话的${trOut.lang}原文，紧跟一根竖线「|」，再写这句话的简体中文；一条消息一行、成对出现，例如：こんにちは|你好。竖线两边都要写全，**缺了中文她会看不懂意思**。气泡正文、语音台词都照这个格式。` +
+          ? `\n\n【说话的语言】你用${trOut.lang}说话。**你发出的每一条消息都写成两半：外文原文「|」简体中文**——先写这句话的${trOut.lang}原文，紧跟一根竖线「|」，再写这句话的简体中文；一条消息一行、成对出现，例如：こんにちは|你好。竖线两边都要写全，**缺了中文她会看不懂意思**。气泡正文照这个格式；〔语音〕里的话按【发语音】那节的固定格式写（一样是「原文|中文」，用户自定义的语音规矩也改不掉）。` +
             (trInnerOn
               ? `回复最前面那段 <think>…</think> 里也一样：**每一行都写成「原文|简体中文」两半**——心声、环境、心情、欲望、怯念、细处、日记，一行一对。`
               : `回复最前面那段 <think>…</think> 里的每一行（心声、环境、心情、欲望、怯念、细处、日记）仍只用${trOut.lang}写，不必附中文。`) +
