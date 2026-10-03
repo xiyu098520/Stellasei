@@ -3,271 +3,445 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>红包样式 · Risograph 三版</title>
+<title>红包样式 · 十套风格</title>
 <style>
   :root {
-    --paper:  #FFFBF0;   /* 新闻纸，永远不用纯白 */
-    --paper2: #F6EFDD;   /* 纸的暗面 */
-    --ink:    #1A1A1A;
-    --pink:   #FF6B9D;   /* 荧光粉 */
-    --blue:   #2563EB;   /* 油墨蓝 */
-    --orange: #FF8A00;   /* 烧橙 */
-    --green:  #22C55E;   /* 树液绿 */
+    --page: #F3F1EC;
+    --ink:  #16161A;
+    --line: rgba(22,22,26,.16);
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
     --mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', monospace;
-    --snap: .1s linear;
+    --serif: Georgia, 'Songti SC', 'Times New Roman', serif;
+    --kai: 'Kaiti SC', 'STKaiti', 'KaiTi', 'Songti SC', Georgia, serif;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html { zoom: var(--page-zoom, 1); }
   body {
-    background-color: var(--paper);
-    background-image: radial-gradient(circle, rgba(26,26,26,.04) 1px, transparent 1.2px);
-    background-size: 4px 4px;
+    background: var(--page);
     color: var(--ink);
-    font-family: var(--mono);
+    font-family: var(--sans);
     padding: 26px 16px calc(env(safe-area-inset-bottom, 0px) + 48px);
     max-width: 470px;
     margin: 0 auto;
   }
   header { text-align: center; }
-  header h1 {
-    font-size: 19px; font-weight: 700; letter-spacing: .1em; text-indent: .1em;
-    text-shadow: 2px 2px 0 rgba(255,107,157,.9), -2px -2px 0 rgba(37,99,235,.75);
-  }
-  header .chips { display: flex; justify-content: center; gap: 5px; margin-top: 13px; }
-  header .chips i { width: 12px; height: 12px; border: 2px solid var(--ink); display: block; }
-  header .chips i:nth-child(1) { background: var(--pink); }
-  header .chips i:nth-child(2) { background: var(--blue); }
-  header .chips i:nth-child(3) { background: var(--green); }
-  header p { margin-top: 12px; font-size: 11px; color: rgba(26,26,26,.62); letter-spacing: .02em; line-height: 1.95; }
+  header h1 { font-size: 19px; font-weight: 800; letter-spacing: .08em; }
+  header p { margin-top: 10px; font-size: 11px; color: rgba(22,22,26,.55); line-height: 1.9; font-family: var(--mono); }
 
   .zoom-row { margin-top: 15px; display: flex; justify-content: center; gap: 8px; }
   .zoom-row button {
     font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .16em; text-indent: .16em;
-    color: var(--ink); background: var(--paper);
-    border: 2px solid var(--ink); border-radius: 0;
+    color: var(--ink); background: #fff;
+    border: 1.5px solid var(--ink); border-radius: 999px;
     padding: 5px 14px; cursor: pointer;
-    transition: box-shadow var(--snap), transform var(--snap);
   }
-  .zoom-row button.on {
-    background: var(--pink);
-    box-shadow: 3px 3px 0 var(--blue);
-  }
-  body.zoomed { --page-zoom: 1.55; }
+  .zoom-row button.on { background: var(--ink); color: #fff; }
+  body.zoomed { --page-zoom: 1.5; }
 
   .ver { margin-top: 34px; }
-  .ver-head { display: flex; align-items: baseline; gap: 10px; }
+  .ver-head { display: flex; align-items: baseline; gap: 9px; }
   .ver-head .tag {
-    font-size: 11px; font-weight: 700; letter-spacing: .14em; text-indent: .14em;
-    color: var(--paper); background: var(--ink);
-    border: 2px solid var(--ink); padding: 2px 6px; border-radius: 0;
+    font-family: var(--mono); font-size: 11px; font-weight: 700;
+    color: #fff; background: var(--ink); padding: 2px 7px; border-radius: 3px;
   }
-  .ver-head .name { font-size: 16px; font-weight: 700; letter-spacing: .06em; }
-  .ver .desc { font-size: 11px; color: rgba(26,26,26,.6); letter-spacing: .01em; line-height: 1.95; margin: 9px 0 14px; }
+  .ver-head .name { font-size: 15px; font-weight: 800; letter-spacing: .02em; }
+  .ver-head .en { font-family: var(--mono); font-size: 10px; color: rgba(22,22,26,.4); letter-spacing: .04em; }
+  .ver .desc { font-size: 11.5px; color: rgba(22,22,26,.6); line-height: 1.85; margin: 8px 0 13px; }
 
-  /* 聊天底：一块压暗的新闻纸，硬边 */
   .chat {
-    background: var(--paper2);
-    border: 2px solid var(--ink);
-    border-radius: 0;
-    padding: 15px 12px;
-    display: flex; flex-direction: column; gap: 13px; align-items: flex-end;
+    background: #E9E7E2;
+    border-radius: 12px;
+    padding: 14px 12px;
+    display: flex; flex-direction: column; gap: 12px; align-items: flex-end;
   }
-  .state-label { align-self: flex-start; font-size: 10px; font-weight: 700; letter-spacing: .14em; color: rgba(26,26,26,.45); }
-  .state-label + .rp { margin-bottom: 3px; }
+  .chat.dark { background: #14121C; }
+  .chat.dark .state-label { color: rgba(255,255,255,.45); }
+  .state-label { align-self: flex-start; font-family: var(--mono); font-size: 10px; letter-spacing: .12em; color: rgba(22,22,26,.42); }
 
-  /* ── 卡骨架：跟真卡一个尺寸（228×76、内边距 14）。硬边、硬框、零模糊 ── */
+  /* ── 骨架：跟真卡一样 228×76，左边 38 圆标、右边两行字 ── */
   .rp {
-    position: relative; width: 228px; height: 76px; border-radius: 4px;
+    position: relative; width: 228px; height: 76px;
     box-sizing: border-box; overflow: hidden;
     display: flex; align-items: center; padding: 0 14px;
-    border: 2px solid var(--ink);
-    font-family: var(--mono);
-    transition: box-shadow var(--snap);
+    border-radius: var(--rad, 11px);
+    background: var(--bg);
+    color: var(--fg);
+    border: var(--bd, none);
+    box-shadow: var(--sh, none);
+    transition: box-shadow .18s ease, transform .18s ease;
   }
-  .rp .body { position: relative; z-index: 3; flex: 1; min-width: 0; }
+  .rp .chip {
+    position: relative; z-index: 3; flex: none;
+    width: 38px; height: 38px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--chip-bg, transparent);
+    border: var(--chip-bd, none);
+    box-shadow: var(--chip-sh, none);
+    color: var(--chip-fg, currentColor);
+  }
+  .rp .body { position: relative; z-index: 3; margin-left: 12px; flex: 1; min-width: 0; }
   .rp .note {
-    font-size: 13.5px; font-weight: 700; letter-spacing: .04em; line-height: 1.3;
+    font-family: var(--font, var(--kai));
+    font-size: 14px; font-weight: 500; line-height: 1.35; letter-spacing: var(--ls, .03em);
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    text-shadow: var(--note-sh, none);
   }
-  .rp .sub { margin-top: 5px; font-size: 9px; font-weight: 700; letter-spacing: .3em; }
-
-  /* 自定义照片：半调网点套印（riso 里照片就是这样印出来的） */
-  .rp .photo { position: absolute; inset: 0; z-index: 0; }
-  .rp .scrim { position: absolute; inset: 0; z-index: 1; opacity: 0; }
+  .rp .sub {
+    margin-top: 3px;
+    font-family: var(--sub-font, var(--font, var(--kai)));
+    font-size: 11px; font-weight: 500; line-height: 1.3; letter-spacing: var(--sub-ls, .06em);
+    text-transform: var(--tt, none);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: var(--fg2);
+  }
+  .rp .photo { position: absolute; inset: 0; z-index: 0; display: none; }
+  .rp .deco  { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+  .rp .scrim { position: absolute; inset: 0; z-index: 2; opacity: 0; }
+  .rp.has-photo .photo { display: block; }
   .rp.has-photo .scrim { opacity: 1; }
-  .rp.has-photo .note,
-  .rp.has-photo .sub { color: var(--paper); }
-  .rp.has-photo .note { text-shadow: 2px 2px 0 rgba(26,26,26,.45); }
+  .rp.has-photo .note { color: var(--fg-photo, #fff); text-shadow: var(--note-sh-photo, 0 1px 3px rgba(0,0,0,.5)); }
+  .rp.has-photo .sub { color: var(--fg2-photo, rgba(255,255,255,.9)); }
+  .rp.has-photo .deco { display: none; }
 
-  /* 已领取：一层平的纸白罩在底上，字在罩子上面 */
-  .rp .veil {
-    position: absolute; inset: 0; z-index: 2; pointer-events: none;
-    background: rgba(255,251,240,.72);
-  }
-  .rp.claimed .note { color: rgba(26,26,26,.55); }
-  .rp.claimed .sub { color: rgba(26,26,26,.4); }
+  .rp .veil { position: absolute; inset: 0; z-index: 2; pointer-events: none; background: var(--veil, rgba(255,251,240,.72)); }
+  .rp.claimed .body { opacity: .52; }
 
-  /* ─────────── 甲 · 双版叠印 ───────────
-     新闻纸底、墨字。右下粉版 + 左上蓝版 —— 两版错位投影，是 riso 的签名。 */
-  .rp-a {
-    color: var(--ink);
-    background: var(--paper);
-    box-shadow: 3px 3px 0 var(--pink), -2px -2px 0 var(--blue);
+  /* 照片态统一用这张「晚霞」，各风格自己调色 */
+  .photo {
+    background-color: #E8845C;
+    background-image:
+      radial-gradient(circle at 30% 72%, #F6C77A 0%, transparent 52%),
+      linear-gradient(178deg, #7B4A9E 0%, #E8845C 46%, #F7C978 100%);
   }
-  .rp-a:hover { box-shadow: 6px 6px 0 var(--pink), -4px -4px 0 var(--blue); }
-  .rp-a .photo {
-    background-color: var(--blue);
-    background-image: radial-gradient(circle, rgba(255,107,157,.9) 1.1px, transparent 1.4px);
-    background-size: 5px 5px;
-  }
-  .rp-a .scrim { background: rgba(37,99,235,.3); }
 
-  /* ─────────── 乙 · 实墨 ───────────
-     通版粉墨实底、墨字。油墨不透明、不上渐变——最海报的一版。 */
-  .rp-b {
-    color: var(--ink);
-    background: var(--pink);
-    box-shadow: 3px 3px 0 var(--blue), -2px -2px 0 var(--green);
+  /* ═══ 一 · 孔版印刷 ═══ */
+  .rp-1 {
+    --bg:#FFFBF0; --fg:#1A1A1A; --fg2:#1A1A1A; --rad:4px;
+    --bd:2px solid #1A1A1A;
+    --sh:3px 3px 0 #FF6B9D, -2px -2px 0 #2563EB;
+    --font: var(--mono); --sub-font: var(--mono); --sub-ls:.28em;
+    --chip-bg:#FFFBF0; --chip-bd:2px solid #1A1A1A; --chip-fg:#1A1A1A;
+    --veil: rgba(255,251,240,.72);
   }
-  .rp-b:hover { box-shadow: 6px 6px 0 var(--blue), -4px -4px 0 var(--green); }
-  .rp-b .photo {
-    background-color: var(--orange);
-    background-image: radial-gradient(circle, rgba(37,99,235,.9) 1.1px, transparent 1.4px);
-    background-size: 5px 5px;
-  }
-  .rp-b .scrim { background: rgba(255,138,0,.28); }
+  .rp-1:hover { box-shadow: 6px 6px 0 #FF6B9D, -4px -4px 0 #2563EB; }
+  .rp-1 .photo { background-color:#2563EB; background-image: radial-gradient(circle,#FF6B9D 1.1px,transparent 1.4px); background-size:5px 5px; }
+  .rp-1 .scrim { background: rgba(37,99,235,.32); }
 
-  /* ─────────── 丙 · 半调 ───────────
-     纸底压粉点半调，墨字；右上角一枚绿套准标记，静止时错位、悬停才落位。 */
-  .rp-c {
-    color: var(--ink);
-    background-color: var(--paper);
-    background-image: radial-gradient(circle, rgba(255,107,157,.55) 1.3px, transparent 1.6px);
-    background-size: 5px 5px;
-    box-shadow: 3px 3px 0 var(--pink), -2px -2px 0 var(--blue);
+  /* ═══ 二 · 波普 ═══ */
+  .rp-2 {
+    --bg:#FFDD00; --fg:#000; --fg2:#000; --rad:0;
+    --bd:4px solid #000; --sh:6px 6px 0 #000;
+    --font: var(--sans); --sub-font: var(--sans);
+    --ls:.09em; --sub-ls:.22em; --tt:uppercase;
+    --chip-bg:#FF69B4; --chip-bd:4px solid #000; --chip-fg:#000;
+    --veil: rgba(255,255,255,.7);
+    --fg-photo:#fff; --note-sh-photo: 2px 2px 0 #000;
   }
-  .rp-c:hover { box-shadow: 6px 6px 0 var(--pink), -4px -4px 0 var(--blue); }
-  .rp-c .reg {
-    position: absolute; z-index: 4; right: 6px; top: 6px;
-    width: 10px; height: 10px;
-    background: var(--green); border: 2px solid var(--ink);
-    transform: translate(2px,-2px);
-    transition: transform var(--snap);
+  .rp-2 .note { font-weight: 900; }
+  .rp-2 .sub  { font-weight: 800; }
+  .rp-2 .deco {
+    opacity: .2;
+    background-image:
+      radial-gradient(circle, #000 1.25px, transparent 1.5px),
+      radial-gradient(circle, #fff 1.55px, transparent 1.8px);
+    background-size: 6px 6px, 6px 6px;
+    background-position: 0 0, 3px 3px;
   }
-  .rp-c:hover .reg { transform: translate(0,0); }
-  .rp-c .photo {
-    background-color: var(--pink);
-    background-image: radial-gradient(circle, rgba(37,99,235,.85) 1.1px, transparent 1.4px);
-    background-size: 5px 5px;
+  .rp-2:hover { transform: translate(-2px,-2px) rotate(-3deg) scale(1.03); box-shadow: 8px 8px 0 #000; }
+  .rp-2:active { transform: translate(2px,2px) scale(.96); box-shadow: 2px 2px 0 #000; }
+  .rp-2 .photo { background-color:#00BFFF; background-image: radial-gradient(circle,#FF69B4 1.2px,transparent 1.5px); background-size:6px 6px; }
+  .rp-2 .scrim { background: rgba(0,191,255,.3); }
+
+  /* ═══ 三 · 黏土 ═══ */
+  .rp-3 {
+    --bg:#F8B4D9; --fg:#5B3A4D; --fg2:rgba(91,58,77,.72); --rad:24px;
+    --sh: 8px 8px 0 0 rgba(0,0,0,.13), inset 0 2px 4px rgba(255,255,255,.6);
+    --font: var(--sans); --sub-font: var(--sans); --sub-ls:.1em;
+    --chip-bg:#A7F3D0; --chip-fg:#3E7A62;
+    --chip-sh: inset 0 2px 4px rgba(255,255,255,.85), 0 3px 0 rgba(0,0,0,.1);
+    --veil: rgba(254,243,199,.72);
+    --fg-photo:#fff; --note-sh-photo: 0 2px 4px rgba(0,0,0,.35);
+    --fg2-photo: rgba(255,255,255,.92);
   }
-  .rp-c .scrim { background: rgba(255,107,157,.3); }
+  .rp-3 .note { font-weight: 600; }
+  .rp-3 .sub  { font-weight: 600; }
+  .rp-3 .chip { border: none; }
+  .rp-3:hover { transform: scale(1.04); box-shadow: 12px 12px 0 0 rgba(0,0,0,.15), inset 0 2px 4px rgba(255,255,255,.6); }
+  .rp-3:active { transform: scale(.97); box-shadow: 4px 4px 0 0 rgba(0,0,0,.1), inset 0 2px 4px rgba(255,255,255,.6); }
+  .rp-3 .photo { background-color:#C4B5FD; background-image: linear-gradient(178deg,#C4B5FD,#F8B4D9 55%,#FCD34D); }
+  .rp-3 .scrim { background: rgba(91,58,77,.28); }
+
+  /* ═══ 四 · 孟菲斯 ═══ */
+  .rp-4 {
+    --bg:#FECA57; --fg:#000; --fg2:#000; --rad:0;
+    --bd:4px solid #000; --sh:6px 6px 0 #000;
+    --font: var(--sans); --sub-font: var(--sans);
+    --ls:.06em; --sub-ls:.2em; --tt:uppercase;
+    --chip-bg:#48DBFB; --chip-bd:4px solid #000; --chip-fg:#000;
+    --veil: rgba(255,255,255,.68);
+    --fg-photo:#fff; --note-sh-photo: 2px 2px 0 #000;
+  }
+  .rp-4 .note { font-weight: 900; }
+  .rp-4 .sub  { font-weight: 800; }
+  .rp-4 .deco {
+    background-image:
+      radial-gradient(circle at 86% 76%, #FF9FF3 0 9px, transparent 10px),
+      radial-gradient(circle at 74% 24%, #1DD1A1 0 5px, transparent 6px),
+      linear-gradient(115deg, transparent 0 62%, rgba(95,39,205,.22) 62% 74%, transparent 74%);
+  }
+  .rp-4:hover { box-shadow: 8px 8px 0 #000; }
+  .rp-4:active { transform: translate(6px,6px); box-shadow: none; }
+  .rp-4 .photo { background-color:#5F27CD; background-image: linear-gradient(178deg,#5F27CD,#FF6B6B 60%,#FECA57); }
+  .rp-4 .scrim { background: rgba(95,39,205,.3); }
+
+  /* ═══ 五 · 蒸汽波 ═══ */
+  .rp-5 {
+    --bg: linear-gradient(120deg,#FF71CE 0%,#B967FF 46%,#01CDFE 100%);
+    --fg:#fff; --fg2:rgba(255,255,255,.88); --rad:0;
+    --bd:1px solid rgba(255,255,255,.55);
+    --sh: 0 0 16px rgba(255,113,206,.55), 0 0 26px rgba(1,205,254,.4);
+    --font: var(--sans); --sub-font: var(--sans);
+    --ls:.1em; --sub-ls:.3em; --tt:uppercase;
+    --note-sh: 1.5px 0 0 rgba(1,205,254,.9), -1.5px 0 0 rgba(255,113,206,.9);
+    --chip-bg: rgba(255,255,255,.16); --chip-bd:1px solid rgba(255,255,255,.6); --chip-fg:#FFFB96;
+    --veil: rgba(43,0,87,.6);
+    --fg-photo:#fff; --note-sh-photo: 0 2px 6px rgba(0,0,0,.5);
+  }
+  .rp-5 .note { font-weight: 800; }
+  .rp-5 .sub  { font-weight: 700; }
+  .rp-5 .deco {
+    background-image:
+      repeating-linear-gradient(90deg, rgba(255,255,255,.22) 0 1px, transparent 1px 13px),
+      repeating-linear-gradient(0deg, rgba(255,255,255,.16) 0 1px, transparent 1px 11px);
+    -webkit-mask-image: linear-gradient(to top, #000 0%, transparent 62%);
+    mask-image: linear-gradient(to top, #000 0%, transparent 62%);
+  }
+  .rp-5:hover { transform: translateY(-3px); box-shadow: 0 0 24px rgba(255,113,206,.8), 0 0 40px rgba(1,205,254,.6); }
+  .rp-5 .photo { background-color:#B967FF; background-image: linear-gradient(178deg,#FF71CE,#B967FF 55%,#01CDFE); }
+  .rp-5 .scrim { background: rgba(43,0,87,.42); }
+
+  /* ═══ 六 · Y2K ═══ */
+  .rp-6 {
+    --bg: linear-gradient(180deg,#F2F2F8 0%,#FFFFFF 40%,#C0C0C0 100%);
+    --fg:#2B2B3A; --fg2:#6B6B80; --rad:38px;
+    --bd:1px solid rgba(255,255,255,.9);
+    --sh: 0 6px 14px rgba(120,120,150,.32), inset 0 2px 6px rgba(255,255,255,.95);
+    --font: var(--sans); --sub-font: var(--sans); --sub-ls:.16em;
+    --chip-bg: radial-gradient(circle at 32% 28%, #FFFFFF, #DCDCDC 46%, #C0C0C0 100%);
+    --chip-bd:1px solid rgba(255,255,255,.9); --chip-fg:#7B5EA7;
+    --chip-sh: inset 0 1px 3px rgba(255,255,255,1), 0 2px 5px rgba(120,120,150,.3);
+    --veil: rgba(255,255,255,.7);
+    --fg-photo:#fff; --note-sh-photo: 0 1px 4px rgba(0,0,0,.55);
+  }
+  .rp-6 .note { font-weight: 800; }
+  .rp-6 .note {
+    background: linear-gradient(90deg,#FF69B4,#00FFFF 52%,#FF00FF);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent; color: transparent;
+  }
+  .rp-6 .deco {
+    background-image:
+      radial-gradient(circle at 84% 26%, #fff 0 2.6px, transparent 3.1px),
+      radial-gradient(circle at 92% 62%, #fff 0 1.7px, transparent 2.1px),
+      linear-gradient(180deg, rgba(255,255,255,.9) 0 20%, transparent 44%);
+  }
+  .rp-6:hover { box-shadow: 0 9px 20px rgba(120,120,150,.4), inset 0 2px 6px rgba(255,255,255,.95); }
+  .rp-6 .photo { background-color:#87CEEB; background-image: linear-gradient(178deg,#E6E6FA,#87CEEB 48%,#FF69B4); }
+  .rp-6 .scrim { background: rgba(120,120,150,.3); }
+
+  /* ═══ 七 · 水彩 ═══ */
+  .rp-7 {
+    --bg:#FAF8F5; --fg:#3D4A5C; --fg2:rgba(61,74,92,.68); --rad: 18px 26px 20px 28px / 24px 20px 28px 22px;
+    --sh: 0 2px 10px rgba(74,111,165,.1);
+    --font: var(--serif); --sub-font: var(--serif); --sub-ls:.14em;
+    --chip-bg: rgba(133,205,202,.32); --chip-fg:#4A6FA5;
+    --veil: rgba(250,248,245,.75);
+    --fg-photo:#fff; --note-sh-photo: 0 1px 6px rgba(0,0,0,.45);
+  }
+  .rp-7 .note { font-style: italic; font-weight: 600; }
+  .rp-7 .sub  { font-style: italic; }
+  .rp-7 .deco {
+    filter: blur(9px);
+    background-image:
+      radial-gradient(circle at 16% 28%, rgba(74,111,165,.3), transparent 58%),
+      radial-gradient(circle at 70% 74%, rgba(232,168,124,.34), transparent 60%),
+      radial-gradient(circle at 94% 16%, rgba(133,205,202,.32), transparent 56%);
+  }
+  .rp-7 .chip { border: none; }
+  .rp-7:hover { box-shadow: 0 4px 16px rgba(74,111,165,.16); }
+  .rp-7 .photo { background-color:#85CDCA; background-image: linear-gradient(178deg,#4A6FA5,#C38D94 52%,#E8A87C); }
+  .rp-7 .scrim { background: rgba(74,111,165,.3); }
+
+  /* ═══ 八 · 合成波 ═══ */
+  .rp-8 {
+    --bg:#150050; --fg:#00FFFF; --fg2:#FF6EC7; --rad:0;
+    --bd:2px solid #FF00FF;
+    --sh: inset 0 0 14px rgba(255,0,255,.75), 0 0 16px rgba(255,0,255,.5);
+    --font: var(--sans); --sub-font: var(--sans);
+    --ls:.12em; --sub-ls:.28em; --tt:uppercase;
+    --note-sh: 0 0 8px rgba(0,255,255,.85);
+    --chip-bg: rgba(255,0,255,.12); --chip-bd:2px solid #00FFFF; --chip-fg:#00FFFF;
+    --chip-sh: inset 0 0 8px rgba(0,255,255,.8), 0 0 10px rgba(0,255,255,.55);
+    --veil: rgba(13,2,33,.62);
+    --fg-photo:#00FFFF; --note-sh-photo: 0 0 8px rgba(0,255,255,.9);
+    --fg2-photo:#FF6EC7;
+  }
+  .rp-8 .note { font-weight: 800; }
+  .rp-8 .sub  { font-weight: 700; }
+  .rp-8 .deco {
+    background-image:
+      repeating-linear-gradient(90deg, rgba(255,0,255,.5) 0 1px, transparent 1px 12px),
+      repeating-linear-gradient(0deg, rgba(0,255,255,.42) 0 1px, transparent 1px 10px);
+    -webkit-mask-image: linear-gradient(to top, #000 0%, transparent 55%);
+    mask-image: linear-gradient(to top, #000 0%, transparent 55%);
+  }
+  .rp-8:hover { box-shadow: inset 0 0 18px rgba(255,0,255,.95), 0 0 26px rgba(255,0,255,.75); }
+  .rp-8:active { box-shadow: inset 0 0 18px #fff, 0 0 26px #fff; border-color:#fff; }
+  .rp-8 .photo { background-color:#2D1B4E; background-image: linear-gradient(178deg,#FF1493,#7B68EE 52%,#00FFFF); }
+  .rp-8 .scrim { background: rgba(13,2,33,.4); }
+
+  /* ═══ 九 · 柔和野兽派 ═══ */
+  .rp-9 {
+    --bg:#F5F5F5; --fg:#1A1A1A; --fg2:#5B5B5B; --rad:0;
+    --bd:2px solid #1A1A1A;
+    --sh:4px 4px 0 0 rgba(0,0,0,.2);
+    --font: var(--sans); --sub-font: var(--mono); --sub-ls:.18em; --tt:uppercase;
+    --chip-bg:#F472B6; --chip-bd:2px solid #1A1A1A; --chip-fg:#1A1A1A;
+    --veil: rgba(245,245,245,.75);
+    --fg-photo:#fff; --note-sh-photo: 0 1px 4px rgba(0,0,0,.55);
+    --fg2-photo: rgba(255,255,255,.9);
+  }
+  .rp-9 .note { font-weight: 900; }
+  .rp-9 .sub  { font-weight: 700; font-size: 10px; }
+  .rp-9 .deco { background: linear-gradient(to bottom, #F472B6 0 4px, transparent 4px); }
+  .rp-9:hover { transform: translate(-2px,-2px); box-shadow: 6px 6px 0 0 rgba(0,0,0,.2); }
+  .rp-9:active { transform: translate(2px,2px); box-shadow: none; }
+  .rp-9 .photo { background-color:#38BDF8; background-image: linear-gradient(178deg,#F472B6,#38BDF8 55%,#A3E635); }
+  .rp-9 .scrim { background: rgba(26,26,26,.34); }
+
+  /* ═══ 十 · 俏皮野兽派 ═══ */
+  .rp-10 {
+    --bg:#FFE66D; --fg:#111; --fg2:#111; --rad:0;
+    --bd:4px solid #000; --sh:6px 6px 0 #FF6B6B;
+    --font: var(--sans); --sub-font: var(--sans);
+    --ls:.04em; --sub-ls:.2em; --tt:uppercase;
+    --chip-bg:#4ECDC4; --chip-bd:4px solid #000; --chip-fg:#111;
+    --veil: rgba(255,255,255,.7);
+    --fg-photo:#fff; --note-sh-photo: 2px 2px 0 #000;
+    transform: rotate(-2deg);
+    transition: box-shadow .3s cubic-bezier(.34,1.56,.64,1), transform .3s cubic-bezier(.34,1.56,.64,1);
+  }
+  .rp-10 .note { font-weight: 800; }
+  .rp-10 .sub  { font-weight: 700; }
+  .rp-10 .deco {
+    background-image:
+      radial-gradient(circle at 90% 20%, #F38181 0 6px, transparent 7px),
+      linear-gradient(160deg, transparent 0 74%, rgba(78,205,196,.35) 74% 88%, transparent 88%);
+  }
+  .rp-10:hover { transform: rotate(1.5deg) scale(1.04); box-shadow: 6px 6px 0 #4ECDC4; }
+  .rp-10:active { transform: rotate(1.5deg) translate(6px,6px) scale(.95); box-shadow: none; }
+  .rp-10 .photo { background-color:#4ECDC4; background-image: linear-gradient(178deg,#FF6B6B,#4ECDC4 52%,#95E1D3); }
+  .rp-10 .scrim { background: rgba(17,17,17,.32); }
 
   footer {
-    margin-top: 38px; padding-top: 16px;
-    border-top: 2px solid var(--ink);
-    font-size: 11px; color: rgba(26,26,26,.62); letter-spacing: .02em; line-height: 2;
+    margin-top: 36px; padding-top: 15px;
+    border-top: 1px solid var(--line);
+    font-size: 11px; color: rgba(22,22,26,.6); line-height: 2;
   }
   footer b { color: var(--ink); font-weight: 700; }
 </style>
 </head>
 <body>
   <header>
-    <h1>红包 · 发出来的样子</h1>
-    <div class="chips"><i></i><i></i><i></i></div>
-    <p>Risograph 规则：四色油墨、平面实色、不上渐变；纸底永远是新闻纸 #FFFBF0；<br>双版错位投影（右下 + 左上），禁止模糊；硬边框、无圆角、等宽字。<br>尺寸跟聊天里那张卡一模一样（228×76）。</p>
+    <h1>红包 · 十套风格</h1>
+    <p>尺寸跟聊天里那张卡完全一样（228×76，38 圆标 + 两行字）。<br>每套三态：默认封面 / 自定义照片 / 已领取。</p>
   </header>
   <div class="zoom-row">
     <button id="z1" class="on" type="button">原大</button>
     <button id="z2" type="button">放大看</button>
   </div>
-
-  <section class="ver">
-    <div class="ver-head"><span class="tag">甲</span><span class="name">双版叠印</span></div>
-    <p class="desc">新闻纸底、墨字。右下压一版荧光粉、左上压一版油墨蓝——两版错开，就是印刷机没对准的那一下。最干净的一版。</p>
-    <div class="chat">
-      <span class="state-label">默认封面 · 未领</span>
-      <div class="rp rp-a">
-        <div class="body"><div class="note">恭喜发财，大吉大利</div><div class="sub">星绥红包</div></div>
-      </div>
-      <span class="state-label">自定义照片 · 未领</span>
-      <div class="rp rp-a has-photo">
-        <div class="photo"></div><div class="scrim"></div>
-        <div class="body"><div class="note">去看晚霞吧</div><div class="sub">星绥红包</div></div>
-      </div>
-      <span class="state-label">已领取</span>
-      <div class="rp rp-a claimed">
-        <div class="body"><div class="note">恭喜发财，大吉大利</div><div class="sub">他已领取</div></div>
-        <div class="veil"></div>
-      </div>
-    </div>
-  </section>
-
-  <section class="ver">
-    <div class="ver-head"><span class="tag">乙</span><span class="name">实墨</span></div>
-    <p class="desc">整张通版荧光粉实底、墨字；蓝版压右下、绿版压左上。油墨是平的、不透明的——最海报、最跳的一版。</p>
-    <div class="chat">
-      <span class="state-label">默认封面 · 未领</span>
-      <div class="rp rp-b">
-        <div class="body"><div class="note">恭喜发财，大吉大利</div><div class="sub">星绥红包</div></div>
-      </div>
-      <span class="state-label">自定义照片 · 未领</span>
-      <div class="rp rp-b has-photo">
-        <div class="photo"></div><div class="scrim"></div>
-        <div class="body"><div class="note">去看晚霞吧</div><div class="sub">星绥红包</div></div>
-      </div>
-      <span class="state-label">已领取</span>
-      <div class="rp rp-b claimed">
-        <div class="body"><div class="note">恭喜发财，大吉大利</div><div class="sub">他已领取</div></div>
-        <div class="veil"></div>
-      </div>
-    </div>
-  </section>
-
-  <section class="ver">
-    <div class="ver-head"><span class="tag">丙</span><span class="name">半调</span></div>
-    <p class="desc">纸底压一层粉半调网点，墨字；右上角一枚绿套准标记，静止时错开、悬停才落位。最有印刷质感的一版。</p>
-    <div class="chat">
-      <span class="state-label">默认封面 · 未领</span>
-      <div class="rp rp-c">
-        <div class="reg"></div>
-        <div class="body"><div class="note">恭喜发财，大吉大利</div><div class="sub">星绥红包</div></div>
-      </div>
-      <span class="state-label">自定义照片 · 未领</span>
-      <div class="rp rp-c has-photo">
-        <div class="photo"></div><div class="scrim"></div><div class="reg"></div>
-        <div class="body"><div class="note">去看晚霞吧</div><div class="sub">星绥红包</div></div>
-      </div>
-      <span class="state-label">已领取</span>
-      <div class="rp rp-c claimed">
-        <div class="reg"></div>
-        <div class="body"><div class="note">恭喜发财，大吉大利</div><div class="sub">他已领取</div></div>
-        <div class="veil"></div>
-      </div>
-    </div>
-  </section>
+  <div id="list"></div>
 
   <footer>
-    挑一版（<b>甲</b> 双版叠印／<b>乙</b> 实墨／<b>丙</b> 半调），也可以混搭。<br>
-    有一点要你点头：riso 规矩是圆角最大到 4px，现在真卡是 <b>11px</b> 圆角——采用这套就要把它改成 4px，卡片会一下子变「印出来的」。
+    挑一套（也可以混搭），告诉我编号就行。<br>
+    有件事要你点头：各套风格自己的圆角规矩不一样——黏土 24px、Y2K 胶囊、水彩是有机圆角，其余多是<b>直角</b>；现在真卡是 <b>11px</b> 圆角。
   </footer>
 
-  <script>
-    var b1 = document.getElementById('z1'), b2 = document.getElementById('z2');
-    function setZoom(on) {
-      document.body.classList.toggle('zoomed', on);
-      b1.classList.toggle('on', !on);
-      b2.classList.toggle('on', on);
+<script>
+  var GIFT = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
+    '<rect x="3" y="8" width="18" height="4" rx="1"/>' +
+    '<path d="M12 8v13"/>' +
+    '<path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/>' +
+    '<path d="M7.5 8a2.5 2.5 0 0 1 0-5A4.8 8 0 0 1 12 8a4.8 8 0 0 1 4.5-5 2.5 2.5 0 0 1 0 5"/></svg>';
+
+  var STYLES = [
+    { k:'riso',     n:'一', name:'孔版印刷',   en:'Risograph',
+      desc:'新闻纸底、墨字，右下压荧光粉、左上压油墨蓝——两版错开。硬边、零模糊，印刷机没对准的那一下。', dark:false },
+    { k:'pop',      n:'二', name:'波普',       en:'Pop Art',
+      desc:'亮黄底、4px 黑框、6px 硬黑投影，Ben-Day 网点铺满，全大写黑体。像漫画分格。', dark:false },
+    { k:'clay',     n:'三', name:'黏土',       en:'Claymorphism',
+      desc:'粉黏土底、24px 大圆角，外扩软投影 + 内高光，圆润得像捏出来的糖果。', dark:false },
+    { k:'memphis',  n:'四', name:'孟菲斯',     en:'Memphis',
+      desc:'黄底撞色，4px 黑框、6px 硬投影，青粉紫几何块一起上，棱角分明。', dark:false },
+    { k:'vapor',    n:'五', name:'蒸汽波',     en:'Vaporwave',
+      desc:'粉紫青渐变，霓虹双色重影字，底部透视网格，慢节奏、漂浮感。', dark:true  },
+    { k:'y2k',      n:'六', name:'Y2K',        en:'Y2K',
+      desc:'银金属渐变、胶囊圆角，镜面高光 + 星芒，标题走彩虹渐变字。', dark:false },
+    { k:'water',    n:'七', name:'水彩',       en:'Watercolor',
+      desc:'暖白纸底，半透明色斑互相渗开，有机圆角、斜体衬线，没有一条硬边。', dark:false },
+    { k:'synth',    n:'八', name:'合成波',     en:'Synthwave',
+      desc:'深紫底，霓虹粉青「内阴影 + 外发光」双层，CRT 网格，全大写。', dark:true  },
+    { k:'nbrs',     n:'九', name:'柔和野兽派', en:'Neo-Brutalist Soft',
+      desc:'近黑 2px 框、4px 半透明硬投影、零圆角，顶边一道粉，正文左对齐。', dark:false },
+    { k:'nbrp',     n:'十', name:'俏皮野兽派', en:'Neo-Brutalist Playful',
+      desc:'4px 黑框、彩色硬投影、-2° 倾斜，按下去就弹回来，四个方向撞色跳换。', dark:false }
+  ];
+
+  function card(s, state) {
+    var cls = 'rp rp-' + (STYLES.indexOf(s) + 1);
+    var note = '恭喜发财，大吉大利', sub = '星绥红包';
+    if (state === 'photo') { cls += ' has-photo'; note = '去看晚霞吧'; }
+    if (state === 'claimed') { cls += ' claimed'; sub = '他已领取'; }
+    return '<div class="' + cls + '">' +
+      '<div class="photo"></div><div class="deco"></div><div class="scrim"></div>' +
+      (state === 'claimed' ? '<div class="veil"></div>' : '') +
+      '<div class="chip">' + GIFT + '</div>' +
+      '<div class="body"><div class="note">' + note + '</div><div class="sub">' + sub + '</div></div>' +
+    '</div>';
+  }
+
+  var html = '';
+  var STATES = [['默认封面 · 未领', ''], ['自定义照片 · 未领', 'photo'], ['已领取', 'claimed']];
+  for (var i = 0; i < STYLES.length; i++) {
+    var s = STYLES[i];
+    html += '<section class="ver">' +
+      '<div class="ver-head"><span class="tag">' + s.n + '</span>' +
+      '<span class="name">' + s.name + '</span><span class="en">' + s.en + '</span></div>' +
+      '<p class="desc">' + s.desc + '</p>' +
+      '<div class="chat' + (s.dark ? ' dark' : '') + '">';
+    for (var j = 0; j < STATES.length; j++) {
+      html += '<span class="state-label">' + STATES[j][0] + '</span>' + card(s, STATES[j][1]);
     }
-    b1.addEventListener('click', function () { setZoom(false); });
-    b2.addEventListener('click', function () { setZoom(true); });
-    var h = location.hash.replace('#', '');
-    if (h === 'a' || h === 'b' || h === 'c') {
-      var vs = document.querySelectorAll('.ver');
-      for (var i = 0; i < vs.length; i++) {
-        if ('abc'.charAt(i) !== h) vs[i].style.display = 'none';
-      }
-      setZoom(true);
-    }
-  </script>
+    html += '</div></section>';
+  }
+  document.getElementById('list').innerHTML = html;
+
+  var b1 = document.getElementById('z1'), b2 = document.getElementById('z2');
+  function setZoom(on) {
+    document.body.classList.toggle('zoomed', on);
+    b1.classList.toggle('on', !on);
+    b2.classList.toggle('on', on);
+  }
+  b1.addEventListener('click', function () { setZoom(false); });
+  b2.addEventListener('click', function () { setZoom(true); });
+
+  var h = location.hash.replace('#', '');
+  if (/^s([1-9]|10)$/.test(h)) {
+    var idx = parseInt(h.slice(1), 10) - 1;
+    var vs = document.querySelectorAll('.ver');
+    for (var m = 0; m < vs.length; m++) if (m !== idx) vs[m].style.display = 'none';
+    setZoom(true);
+  }
+</script>
 </body>
 </html>
