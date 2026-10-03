@@ -25,9 +25,8 @@
  * 右边一枚「制作封面」。自定义图走媒体仓库，消息里只存引用串（跟聊天图片同一条规矩——
  * 不撑会话记录）；**取景位置挂在引用串的尾巴上**，居中就不写，所以没挪过的封面存出来跟从前一样。
  * 点「制作封面」进封面那几页：「我的封面」画廊 → 大预览／调整位置／更多内容。
- * 那几页也是弹窗，但走的是钱这一族的家底壳 WalletSheet（白纸方角＋顶上一道粉线＋墨色方签
- * 主按钮）——样式跟着全族的壳走，不自己另起一套；只有「调整位置」那页因为第④块要通栏
- * 贴到纸边，手抄了同一副壳（见 `framerPaperStyle` 的注释）。
+ * 那几页也是弹窗，跟这一页同一族（见 `CoverSheet`）：同一张墨底纸、同一副页头页脚——
+ * 红包这条流程从填钱到做封面一口气是一个长相，不混别的族的壳。
  */
 
 import {
@@ -37,9 +36,10 @@ import {
   type ChangeEvent,
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
 } from "react";
 import { ChevronRight, Gift, Image as ImageIcon, Plus, Smile, X } from "lucide-react";
-import WalletSheet, { WALLET_MONO, WALLET_PRIMARY_BTN, WALLET_TITLE } from "./WalletSheet";
+import { WALLET_MONO, WALLET_TITLE } from "./WalletSheet";
 import { AVATAR_GRADIENT, KAI, SANS, T } from "./shared";
 import {
   clampRedCoverPos,
@@ -694,7 +694,7 @@ const coverTileStyle: CSSProperties = {
   position: "relative",
   aspectRatio: "250 / 236",
   borderRadius: 12,
-  border: `1px solid ${T.line}`,
+  border: "1px solid rgba(255,253,248,.16)",
   overflow: "hidden",
   padding: 0,
   boxSizing: "border-box",
@@ -737,16 +737,16 @@ const coverTileCloseStyle: CSSProperties = {
   boxShadow: "0 1px 3px rgba(20,19,24,.12)",
 };
 
-/** 末尾那格「新建」：虚线圈一块空地，一枚「＋」说清这儿能添一张。 */
+/** 末尾那格「新建」：虚线圈一块空地，一枚「＋」说清这儿能添一张（墨纸上的浅描边）。 */
 const newTileStyle: CSSProperties = {
   ...coverTileStyle,
-  border: `1px dashed ${T.line}`,
+  border: "1px dashed rgba(255,253,248,.28)",
   background: "transparent",
   flexDirection: "column",
   alignItems: "center",
   justifyContent: "center",
   gap: 6,
-  color: T.ink3,
+  color: "rgba(255,253,248,.50)",
 };
 
 const newTileTextStyle: CSSProperties = {
@@ -756,90 +756,94 @@ const newTileTextStyle: CSSProperties = {
 
 /* ── 封面那几页（画廊／大预览／调整位置）── */
 
-/* ── 「调整位置」页的壳：照钱这一族 WalletSheet 那副（遮罩＋白纸＋顶上一道粉线）摆，
-   但不走那个组件——这一页的第④块要通栏贴到纸的两边（那个组件的内容区左右各留 20px
-   纸边，会把通栏裁短一截，取景预览就跟真的详情页对不上了），滚动区得自己拿在手里。
-   画廊／大预览／更多内容没有这种块，直接用 WalletSheet 就行。 ── */
+/* ── 封面那几页的壳：跟发红包那一页（同一条流程）同一族的墨底弹窗——遮罩＋贴屏底
+   的墨纸（#1B161B＋极淡网点＋顶上柔光）、顶上两角圆、一根抓手、页头标题在左「×」在右、
+   页脚一枚粉色胶囊主按钮。只是叠在更高一层（盖在发红包那张纸上）。
+   「调整位置」页的第④块要通栏贴到纸边，所以滚动区本体不留左右边（各页自己包 20px）。 ── */
 
-const framerMaskStyle: CSSProperties = {
+const coverSheetLayerStyle: CSSProperties = {
   position: "absolute",
   inset: 0,
-  zIndex: 120,
-  background: "rgba(20,19,24,.42)",
-};
-
-const framerPaperStyle: CSSProperties = {
-  position: "absolute",
-  left: 0,
-  right: 0,
-  bottom: 0,
-  zIndex: 130,
-  maxHeight: "84%",
+  zIndex: 140,
   display: "flex",
   flexDirection: "column",
-  background: "#FFFFFF",
-  borderTop: `2px solid ${T.pink}`,
-  boxShadow: "0 -16px 38px -30px rgba(20,19,24,.55)",
+  justifyContent: "flex-end",
+  overflow: "hidden",
+};
+
+/** 跟发红包那页同一张墨纸（sheetStyle 的底样），只是不带左右内边距——滚动区要通栏。 */
+const coverSheetPaperStyle: CSSProperties = {
+  position: "relative",
+  maxHeight: "92%",
+  display: "flex",
+  flexDirection: "column",
+  borderTopLeftRadius: 18,
+  borderTopRightRadius: 18,
+  padding: "0 0 calc(var(--safe-area-bottom, 0px) + 12px)",
+  boxShadow: "0 -18px 44px rgba(0,0,0,.5)",
+  backgroundColor: "#1B161B",
+  backgroundImage:
+    "radial-gradient(circle, rgba(255,253,248,.05) 1px, transparent 1.2px), " +
+    "radial-gradient(130% 90% at 50% 0%, rgba(255,253,248,.07) 0%, transparent 62%)",
+  backgroundSize: "10px 10px, 100% 100%",
+  backgroundPosition: "50% 50%, 0 0",
   fontFamily: SANS,
-  color: T.ink,
-};
-
-/** 页头一行：标题在左、「×」在右——跟 WalletSheet 那行一个摆法。 */
-const framerHeadRowStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  padding: "18px 20px 0",
-};
-
-const framerHeadTitleStyle: CSSProperties = {
-  fontFamily: WALLET_TITLE,
-  fontSize: 17,
-  fontWeight: 500,
-  letterSpacing: ".02em",
-};
-
-const framerHeadCloseStyle: CSSProperties = {
-  border: "none",
-  background: "transparent",
-  padding: 0,
-  color: T.ink3,
-  cursor: "pointer",
-  display: "flex",
-};
-
-/** 标题下那行小字（WalletSheet 的 hint 同款）。 */
-const framerHintStyle: CSSProperties = {
-  margin: "5px 20px 14px",
-  fontSize: 11,
-  color: T.ink3,
-  letterSpacing: ".04em",
+  color: "#FFFDF8",
 };
 
 /** 滚动区。【`overflowX: "hidden"` 别删】只写 overflowY 时另一轴按 CSS 的规定**算成 auto**——
-    这一页第④块是通栏（贴到纸边、比正文宽），横轴一松 iOS 上整页就跟着左右晃。 */
-const framerScrollStyle: CSSProperties = {
+    「调整位置」那页的通栏块比正文宽，横轴一松 iOS 上整页就跟着左右晃。 */
+const coverScrollStyle: CSSProperties = {
   flex: 1,
   minHeight: 0,
   overflowY: "auto",
   overflowX: "hidden",
   overscrollBehavior: "none",
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "center",
-  padding: "0 0 24px",
 };
 
-/** 每一格预览的底：一张白纸托着，让封面自己当主角（不另加框线抢戏）。 */
+/** 封面那几页共用的墨底弹窗骨架：遮罩＋墨纸（抓手＋页头），正文塞滚动区、
+ *  主按钮钉在页脚（跟发红包那页一个摆法）；`overlay` 是要铺满整屏的那层（大预览的「预览」）。 */
+function CoverSheet({
+  title,
+  onClose,
+  children,
+  footer,
+  overlay,
+}: {
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+  footer?: ReactNode;
+  overlay?: ReactNode;
+}) {
+  return (
+    <div style={coverSheetLayerStyle}>
+      <div style={scrimStyle} />
+      <div style={coverSheetPaperStyle}>
+        <div style={gripStyle} />
+        <div style={{ ...headerStyle, padding: "0 20px" }}>
+          <span style={headerTitleStyle}>{title}</span>
+          <button type="button" aria-label="关闭" onClick={onClose} style={closeBtnStyle}>
+            <X size={14} strokeWidth={2} />
+          </button>
+        </div>
+        {children}
+        {footer ? <div style={{ ...footerStyle, padding: "0 20px" }}>{footer}</div> : null}
+      </div>
+      {overlay}
+    </div>
+  );
+}
+
+/** 每一格预览的底：墨纸上一只浅描边的暗槽，托着封面卡当主角。 */
 const studioPanelStyle: CSSProperties = {
-  border: `1px solid ${T.line}`,
+  border: "1px solid rgba(255,253,248,.13)",
   borderRadius: 16,
-  background: "#FFFFFF",
+  background: "rgba(255,253,248,.05)",
   padding: "18px 14px",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  boxShadow: "0 10px 24px -22px rgba(20,19,24,.4)",
 };
 
 /** 次要的文字钮（「恢复默认封面」／「预览」／「各处回到正中」）：主按钮底下居中一句小字。 */
@@ -850,7 +854,7 @@ const studioResetBtnStyle: CSSProperties = {
   background: "transparent",
   fontFamily: SANS,
   fontSize: 12.5,
-  color: T.ink3,
+  color: "rgba(255,253,248,.45)",
   letterSpacing: ".06em",
   textAlign: "center",
   cursor: "pointer",
@@ -858,16 +862,16 @@ const studioResetBtnStyle: CSSProperties = {
 
 /* ── 封面那几页的小零件 ── */
 
-/** 大预览底下那行小字（说清照片会被裁到哪儿）。 */
+/** 大预览底下那行小字（说清照片会被裁到哪儿）——墨纸上的浅字。 */
 const studioHintStyle: CSSProperties = {
   marginTop: 14,
   fontSize: 11.5,
-  color: T.ink3,
+  color: "rgba(255,253,248,.45)",
   letterSpacing: ".04em",
   textAlign: "center",
 };
 
-/** 那一行入口（更换封面照片｜添加挂件｜更多内容）：竖线隔开，字用可读的深蓝。 */
+/** 那一行入口（更换封面照片｜添加挂件｜更多内容）：竖线隔开，字用主粉（墨底上读得清）。 */
 const studioEntryRowStyle: CSSProperties = {
   marginTop: 20,
   display: "flex",
@@ -883,7 +887,7 @@ const studioEntryBtnStyle: CSSProperties = {
   background: "none",
   fontFamily: SANS,
   fontSize: 13.5,
-  color: T.blueDeep,
+  color: T.pink,
   letterSpacing: ".04em",
   cursor: "pointer",
 };
@@ -903,7 +907,7 @@ const studioEntryBarStyle: CSSProperties = {
   width: 1,
   height: 13,
   flex: "none",
-  background: T.line,
+  background: "rgba(255,253,248,.22)",
 };
 
 /** 「更多内容」子页里每一块的标题（以及右边那枚「更换」）。 */
@@ -917,15 +921,15 @@ const studioBlockHeadStyle: CSSProperties = {
 const studioBlockTitleStyle: CSSProperties = {
   fontSize: 15,
   fontWeight: 600,
-  color: T.ink,
+  color: "rgba(255,253,248,.92)",
   letterSpacing: ".02em",
 };
 
-/** 块与块之间那条淡线（跟微信那页一样，横着拉通）。 */
+/** 块与块之间那条淡线（跟微信那页一样，横着拉通）——墨纸上的浅痕。 */
 const studioDividerStyle: CSSProperties = {
   height: 1,
   margin: "26px 0 0",
-  background: T.line,
+  background: "rgba(255,253,248,.12)",
 };
 
 /** 「预览」按下去铺满一屏看那张卡（点哪儿都收）。 */
@@ -982,51 +986,96 @@ function RedCoverStudio({
 
   if (moreOpen) {
     return (
-      <WalletSheet title="更多内容" onClose={() => setMoreOpen(false)}>
-        {/* ① 这张封面在聊天气泡里的样子 */}
-        <div style={studioBlockTitleStyle}>消息气泡里的样子</div>
-        <div style={{ ...studioHintStyle, marginTop: 8 }}>
-          封面照片会自动裁成气泡里那个横向的区域
-        </div>
-        <div style={{ ...studioPanelStyle, marginTop: 14 }}>
-          <StudioCard coverBg={coverBgCard} customSrc={customSrc} done={false} />
-        </div>
-
-        <div style={studioDividerStyle} />
-
-        {/* ② 开完之后那张纸上的样子 */}
-        <div style={{ ...studioBlockHeadStyle, marginTop: 20 }}>
-          <span style={studioBlockTitleStyle}>更换红包打开后的样式</span>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={onPickFile}
-            style={{ ...studioEntryBtnStyle, opacity: busy ? 0.6 : 1 }}
-          >
-            更换
+      <CoverSheet
+        title="更多内容"
+        onClose={() => setMoreOpen(false)}
+        footer={
+          <button type="button" onClick={() => setMoreOpen(false)} style={submitBtnStyle}>
+            确定
           </button>
-        </div>
-        <div style={{ ...studioPanelStyle, marginTop: 14 }}>
-          <RedOpenedCard
-            coverBg={coverBgOpen}
-            customSrc={customSrc}
-            amount="8.88"
-            statusLine="已存入我的零钱"
-            footLine="刚刚 · 你 的红包"
-          />
-        </div>
+        }
+      >
+        <div style={coverScrollStyle}>
+          <div style={{ padding: "4px 20px 22px" }}>
+            {/* ① 这张封面在聊天气泡里的样子 */}
+            <div style={studioBlockTitleStyle}>消息气泡里的样子</div>
+            <div style={{ ...studioHintStyle, marginTop: 8, textAlign: "left" }}>
+              封面照片会自动裁成气泡里那个横向的区域
+            </div>
+            <div style={{ ...studioPanelStyle, marginTop: 14 }}>
+              <StudioCard coverBg={coverBgCard} customSrc={customSrc} done={false} />
+            </div>
 
-        <button type="button" onClick={() => setMoreOpen(false)} style={WALLET_PRIMARY_BTN}>
-          确定
-        </button>
-      </WalletSheet>
+            <div style={studioDividerStyle} />
+
+            {/* ② 开完之后那张纸上的样子 */}
+            <div style={{ ...studioBlockHeadStyle, marginTop: 20 }}>
+              <span style={studioBlockTitleStyle}>更换红包打开后的样式</span>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={onPickFile}
+                style={{ ...studioEntryBtnStyle, opacity: busy ? 0.6 : 1 }}
+              >
+                更换
+              </button>
+            </div>
+            <div style={{ ...studioPanelStyle, marginTop: 14 }}>
+              <RedOpenedCard
+                coverBg={coverBgOpen}
+                customSrc={customSrc}
+                amount="8.88"
+                statusLine="已存入我的零钱"
+                footLine="刚刚 · 你 的红包"
+              />
+            </div>
+          </div>
+        </div>
+      </CoverSheet>
     );
   }
 
   return (
-    <>
-      <WalletSheet title="制作我的红包封面" onClose={onBack}>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+    <CoverSheet
+      title="制作我的红包封面"
+      onClose={onBack}
+      footer={
+        <>
+          <button type="button" onClick={onClose} style={submitBtnStyle}>
+            完成
+          </button>
+          <button
+            type="button"
+            onClick={() => setPeekOpen(true)}
+            style={{ ...studioResetBtnStyle, marginTop: 4 }}
+          >
+            预览
+          </button>
+        </>
+      }
+      overlay={
+        /* 预览那张全屏蒙层：贴在纸外面（铺满整屏） */
+        peekOpen ? (
+          <div onClick={() => setPeekOpen(false)} style={studioPeekStyle} aria-hidden>
+            <RedEnvelopeCard
+              coverBg={coverBgOpen}
+              customSrc={customSrc}
+              senderLine="我发出的红包"
+              note="恭喜发财，大吉大利"
+            />
+          </div>
+        ) : null
+      }
+    >
+      <div style={coverScrollStyle}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            padding: "4px 20px 22px",
+          }}
+        >
           {/* 这张封面的正脸（跟聊天里点开红包那一页同一张，那枚「開」在这儿点不动） */}
           <div style={{ marginTop: 6 }}>
             <RedEnvelopeCard
@@ -1080,36 +1129,9 @@ function RedCoverStudio({
               恢复默认封面
             </button>
           ) : null}
-
-          <button type="button" onClick={onClose} style={WALLET_PRIMARY_BTN}>
-            完成
-          </button>
-          <button
-            type="button"
-            onClick={() => setPeekOpen(true)}
-            style={{ ...studioResetBtnStyle, marginTop: 4 }}
-          >
-            预览
-          </button>
         </div>
-      </WalletSheet>
-
-      {/* 预览那张全屏蒙层：贴在面板外面（铺满整屏） */}
-      {peekOpen ? (
-        <div
-          onClick={() => setPeekOpen(false)}
-          style={studioPeekStyle}
-          aria-hidden
-        >
-          <RedEnvelopeCard
-            coverBg={coverBgOpen}
-            customSrc={customSrc}
-            senderLine="我发出的红包"
-            note="恭喜发财，大吉大利"
-          />
-        </div>
-      ) : null}
-    </>
+      </div>
+    </CoverSheet>
   );
 }
 
@@ -1149,42 +1171,49 @@ function RedCoverGallery({
   };
 
   return (
-    <WalletSheet
+    <CoverSheet
       title="我的封面"
-      hint="点一张就用它；「新建」是从相册里挑一张新的"
       onClose={onClose}
-    >
-      <div style={coverGridStyle}>
-        <CoverTile
-          value={RED_COVER_DEFAULT.id}
-          selected={!isCustomRedCover(cover)}
-          onPick={onPick}
-        />
-        {mine.map((v) => (
-          <CoverTile
-            key={v}
-            value={v}
-            selected={v === cover}
-            /* 正在用的那张不给删：删了它，眼下这份「正在用」就没地方挂了 */
-            onRemove={v === cover ? undefined : () => drop(v)}
-            onPick={onPick}
-          />
-        ))}
-        <button
-          type="button"
-          disabled={busy}
-          onClick={onNew}
-          style={{ ...newTileStyle, opacity: busy ? 0.6 : 1 }}
-        >
-          <Plus size={20} strokeWidth={2} />
-          <span style={newTileTextStyle}>{busy ? "正在存入…" : "新建"}</span>
+      footer={
+        <button type="button" onClick={onClose} style={submitBtnStyle}>
+          完成
         </button>
+      }
+    >
+      <div style={coverScrollStyle}>
+        <div style={{ padding: "4px 20px 20px" }}>
+          <div style={coverGridStyle}>
+            <CoverTile
+              value={RED_COVER_DEFAULT.id}
+              selected={!isCustomRedCover(cover)}
+              onPick={onPick}
+            />
+            {mine.map((v) => (
+              <CoverTile
+                key={v}
+                value={v}
+                selected={v === cover}
+                /* 正在用的那张不给删：删了它，眼下这份「正在用」就没地方挂了 */
+                onRemove={v === cover ? undefined : () => drop(v)}
+                onPick={onPick}
+              />
+            ))}
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onNew}
+              style={{ ...newTileStyle, opacity: busy ? 0.6 : 1 }}
+            >
+              <Plus size={20} strokeWidth={2} />
+              <span style={newTileTextStyle}>{busy ? "正在存入…" : "新建"}</span>
+            </button>
+          </div>
+          <div style={studioHintStyle}>
+            点一张就用它，点进去还能换照片、挪位置；「新建」是从相册里挑一张新的
+          </div>
+        </div>
       </div>
-
-      <button type="button" onClick={onClose} style={WALLET_PRIMARY_BTN}>
-        完成
-      </button>
-    </WalletSheet>
+    </CoverSheet>
   );
 }
 
@@ -1241,7 +1270,7 @@ const framerLabelStyle: CSSProperties = {
   fontFamily: SANS,
   fontSize: 13,
   fontWeight: 600,
-  color: T.ink2,
+  color: "rgba(255,253,248,.60)",
   letterSpacing: ".08em",
   alignSelf: "flex-start",
   paddingLeft: 20,
@@ -1348,18 +1377,37 @@ function RedCoverFramer({
   };
 
   return (
-    <>
-      <div style={framerMaskStyle} onClick={onCancel} />
-      <div style={framerPaperStyle}>
-        <div style={framerHeadRowStyle}>
-          <span style={framerHeadTitleStyle}>调整位置</span>
-          <button type="button" aria-label="返回" onClick={onCancel} style={framerHeadCloseStyle}>
-            <X size={18} strokeWidth={2} />
+    <CoverSheet
+      title="调整位置"
+      onClose={onCancel}
+      footer={
+        <>
+          <button type="button" onClick={() => onDone(map)} style={submitBtnStyle}>
+            确定
           </button>
+          <button
+            type="button"
+            onClick={() => setMap({})}
+            style={{ ...studioResetBtnStyle, marginTop: 4 }}
+          >
+            各处回到正中
+          </button>
+        </>
+      }
+    >
+      <div
+        style={{
+          ...coverScrollStyle,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          padding: "0 0 22px",
+        }}
+      >
+        <div style={{ ...studioHintStyle, marginTop: 4, padding: "0 20px" }}>
+          一共四处，往下滑能看全；开红包前、后是同一张，那两块会一起挪
         </div>
-        <div style={framerHintStyle}>一共四处，往下滑能看全；开红包前、后是同一张，那两块会一起挪</div>
 
-        <div style={framerScrollStyle}>
         {/* ① 聊天里那张红包卡（228×76 横向小卡）：照片铺满整张卡，礼盒与那两行字压在照片上不动 */}
         <div style={{ ...framerLabelStyle, marginTop: 18 }}>① 聊天里的红包卡</div>
         <div
@@ -1510,23 +1558,11 @@ function RedCoverFramer({
             width: "100%",
             height: FRAMER_DETAIL_H,
             background: bgOf("detail"),
-            boxShadow: "0 12px 28px -20px rgba(20,19,24,.34)",
+            boxShadow: "0 12px 28px -20px rgba(0,0,0,.6)",
           }}
         />
-
-        <button type="button" onClick={() => onDone(map)} style={WALLET_PRIMARY_BTN}>
-          确定
-        </button>
-        <button
-          type="button"
-          onClick={() => setMap({})}
-          style={studioResetBtnStyle}
-        >
-          各处回到正中
-        </button>
-        </div>
       </div>
-    </>
+    </CoverSheet>
   );
 }
 
