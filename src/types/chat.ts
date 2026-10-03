@@ -509,11 +509,16 @@ export interface OfflineScene {
  *   气泡显示外语、下面挂我那句中文本意。
  * - `show*`：各自那一行译文显不显示（关掉＝只留外语，但译文照旧存着，随时能翻出来）。
  * - `api`：翻译交给哪套文本接口；`sub`＝副接口（便宜、够用），留空／没配会自动退回主接口。
+ *   1.9.80 起他说话改成**一次就写「原文|中文」两半**（不再事后发第二次请求），
+ *   这一套只当**兜底**：哪句漏写了竖线，才用它补翻。
+ * - `inner`：心声页双语（1.9.80）。`: true` 时回复最前面那段 <think> 里的每一行也照
+ *   「原文|中文」一次写完，心声页进去就显中文、不用点；关着则只写外语、照旧点一下才翻。
  */
 export interface TranslateSetting {
   out: { on: boolean; lang: string; show: boolean };
   in: { on: boolean; lang: string; show: boolean };
   api: "main" | "sub";
+  inner: boolean;
 }
 
 /** 语言一览：给设置页的下拉用（存的是这几个值，翻译提示词照它写）。 */

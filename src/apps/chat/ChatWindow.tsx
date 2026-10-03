@@ -82,6 +82,7 @@ import {
   moneyNoteOf,
   moneyStateNoteOf,
   outgoingContents,
+  splitBilingual,
   splitReply,
   splitReplyStream,
   stripMetaMarkersForPreview,
@@ -1640,9 +1641,16 @@ export default function ChatWindow({
            见 transCache；不必自己附中文）。**中文标签与〔〕标记一律原样**——它们是解析的锚，
            动了就解析不出来；思考过程与动态（朋友圈）这一版仍写中文。
            钉在稳定段：它只在设置改动那一下才变，跟别的稳定内容一起吃前缀缓存。 */
-        const langRule = conv?.translate?.out.on
-          ? `\n\n【说话的语言】你说话一律用${conv.translate.out.lang}：气泡正文、语音，以及回复最前面那段 <think>…</think> 里的每一行——**心声、环境、心情、欲望、怯念、细处、日记**——全都用${conv.translate.out.lang}（她会点一下看中文，你不必自己附中文）。` +
-            `\n但**中文标签**一律保持中文、一个字都不许翻：方括号里的标记（〔签名〕〔动态〕〔语音〕〔图片〕〔红包〕〔转账〕〔引用〕），以及 <think> 里那几行的冒号前缀（「环境：」「心情：」「欲望：」「怯念：」「细处：」「日记：」「角色心声：」）——它们是机器的锚，翻了整块就解析不出来；标签后面的**内容**照旧用${conv.translate.out.lang}。动态（朋友圈）这一版仍写中文。`
+        /* 1.9.80：不再事后发第二次翻译请求，改成让模型**一次就写两半**——
+           每条消息写成「外文原文|简体中文」，解析层按竖线劈开（见 splitBilingual）。 */
+        const trOut = conv?.translate?.out;
+        const trInnerOn = conv?.translate?.inner === true;
+        const langRule = trOut?.on
+          ? `\n\n【说话的语言】你用${trOut.lang}说话。**你发出的每一条消息都写成两半：外文原文「|」简体中文**——先写这句话的${trOut.lang}原文，紧跟一根竖线「|」，再写这句话的简体中文；一条消息一行、成对出现，例如：こんにちは|你好。竖线两边都要写全，**缺了中文她会看不懂意思**。气泡正文、语音台词都照这个格式。` +
+            (trInnerOn
+              ? `回复最前面那段 <think>…</think> 里也一样：**每一行都写成「原文|简体中文」两半**——心声、环境、心情、欲望、怯念、细处、日记，一行一对。`
+              : `回复最前面那段 <think>…</think> 里的每一行（心声、环境、心情、欲望、怯念、细处、日记）仍只用${trOut.lang}写，不必附中文。`) +
+            `\n但**中文标签**一律保持中文、一个字都不许翻：方括号里的标记（〔签名〕〔动态〕〔语音〕〔图片〕〔红包〕〔转账〕〔引用〕），以及 <think> 里那几行的冒号前缀（「环境：」「心情：」「欲望：」「怯念：」「细处：」「日记：」「角色心声：」）——它们是机器的锚，翻了整块就解析不出来；标签后面的**内容**照旧写成「${trOut.lang}|中文」两半。引用的原话是她说的中文，原样照抄、不要翻、也不要加竖线。动态（朋友圈）这一版仍写中文。`
           : "";
         const systemStable = stylePrompt + "\n\n" + built.stable + "\n\n" + styleRules + langRule;
         /* 拉黑状态是「会变的状态」（拉／解除各换一份），所以不占稳定段——走 system 的
@@ -1766,6 +1774,10 @@ export default function ChatWindow({
         let reply = "";
         let stopped = false;
         let streamed = false;
+        /* 双语模式总闸（1.9.80）：他说的外语这一侧开着＝回复按「原文|译文」成对解析；
+           innerBilingual 再叠加「心声页双语」那一格（<think> 各行也成对写）。 */
+        const pairMode = conv?.translate?.out.on === true;
+        const innerBilingual = pairMode && conv?.translate?.inner === true;
         /* 流式增量回调抽成具名函数：站点回绝带图时我们要**摘图重发一次**，
            重发必须走同一份回调，否则第二次的内容不会上屏。 */
         const onStreamDelta = (full: string) => {
@@ -1773,12 +1785,12 @@ export default function ChatWindow({
           streamTextRef.current = full;
           /* 先把〔图片〕〔语音〕这类标记剥掉再拆条：不然它们会以纯文本先长在
              屏幕上，等落库时整段消失换成真图片，看着像「先发一堆文字再重整」。 */
-          const preview = stripMetaMarkersForPreview(full);
+          const preview = stripMetaMarkersForPreview(full, pairMode);
           if (full) {
             streamed = true;
           }
           const prevSettled = streamSettledRef.current;
-          const next = splitReplyStream(preview, bubbleCap);
+          const next = splitReplyStream(preview, bubbleCap, pairMode);
           streamSettledRef.current = next.settled.length;
           if (streamShownRef.current >= next.settled.length) {
             /* 节拍器追平了：尾巴正长在屏幕上，记下它；冻住的旧尾巴可以撤了。 */
@@ -1884,14 +1896,19 @@ export default function ChatWindow({
            摘完的正文再往下走标记与拆条，一个字都不受影响。
            1.7.92：八根拆掉后这份底只为一件东西——**穿着**（人不会一条消息换一套衣服，
            这一轮没写就沿用上一次，见 parseInnerSnapshot／lastInnerSnapshot）。 */
-        const voice = extractInnerVoice(reply, lastInnerSnapshot(messages)?.snapshot);
+        const voice = extractInnerVoice(reply, lastInnerSnapshot(messages)?.snapshot, innerBilingual);
         // 先剥掉末尾的〔签名〕／〔动态〕／〔图片〕／〔语音〕标记（气泡里永远看不到），再拆条连发。
         const extracted = extractMetaMarkers(voice.clean, charName);
         /* 与上面的流式预览传同一个上限：预览转正时条数一致，不会突然合并或裂开。 */
         /* 1.5.47 TA 引用回复：拆完条再摘〔引用:原话〕——标记跟着某一条走，摘到谁头上
            就贴到谁的气泡上方。库里存「我：原话」（跟 quoteMsg 一个写法），
            气泡那侧照旧按「对面那个名字」把前缀摘掉显示。 */
-        const { parts, quotes } = extractBubbleQuotes(splitReply(extracted.clean, bubbleCap));
+        const rawParts = splitReply(extracted.clean, bubbleCap, pairMode);
+        const { parts: pairedParts, quotes } = extractBubbleQuotes(rawParts);
+        /* 双语劈分（1.9.80）：一条「原文|译文」里，左半边进气泡（content／TTS 都读它），
+           右半边进译文行。漏写竖线的那条 inlineTrans 为 undefined，交给副接口兜底。 */
+        const parts = pairMode ? pairedParts.map((p) => splitBilingual(p).src) : pairedParts;
+        const inlineTrans = pairMode ? pairedParts.map((p) => splitBilingual(p).zh) : [];
         /* 半途停止只留正文；标记类内容（签名／动态／配图／语音）不处理。 */
         const signature = stopped ? undefined : extracted.signature;
         const moments = stopped ? [] : extracted.moments;
@@ -1920,13 +1937,18 @@ export default function ChatWindow({
           onDataChange();
           return conv;
         };
-        /* 外语聊天（1.9.48）：他说的外语 → 中文，逐条翻好挂到译文行上。
-           只翻**说出口的话**（气泡正文），签名／心声／思考／动态一概不碰；
-           半途停止不翻（话都没说完）；一条翻不动就只留那一条没有译文，不拖累别的。 */
+        /* 外语聊天（1.9.48；1.9.80 改双主打）：他说的外语 → 中文，逐条翻好挂到译文行上。
+           译文**优先用模型自己写的那半**（inlineTrans，随回复一次到齐）；只有哪一条漏写了
+           竖线，才用（副）翻译接口兜底补翻那一条——接口抽风最多让那一条没译文，不再全场空白。
+           只翻**说出口的话**（气泡正文），签名／心声／思考／动态一概不碰；半途停止不翻。 */
         const trSetNow = conv?.translate;
         const wantTrans = trSetNow?.out.on === true && !stopped && parts.length > 0;
         const partTrans: (string | undefined)[] = wantTrans
-          ? await Promise.all(parts.map((p) => translateWithRetry(translateApi, p, "中文")))
+          ? await Promise.all(
+              parts.map(
+                async (p, i) => inlineTrans[i] ?? (await translateWithRetry(translateApi, p, "中文")),
+              ),
+            )
           : [];
         if (streamed && !stopped) {
           /* 等节拍器把攒下的气泡放完再落库：预览一撤、真消息整批冒出来，反而跳得更狠。
@@ -1982,6 +2004,18 @@ export default function ChatWindow({
             await persistFromChar(msg);
             pushLocal(msg);
           }
+        }
+        /* 心声页双语（1.9.80）：这一轮模型把 <think> 各行也写成了「原文|中文」，右半边
+           收进会话的译文缓存——心声页里 useTrans(源文) 直接命中，**点开即显中文、零等待**。
+           键＝解析时洗净的源文（与 InnerVoicePage 取键同一份写法），保证对得上。
+           这里用 conv.transCache 作底、不用 transCacheRef：后者定义在本函数之后（TDZ）。 */
+        if (innerBilingual && !stopped && Object.keys(voice.pairs).length > 0) {
+          const mergedCache = { ...(conv?.transCache ?? {}), ...voice.pairs };
+          void updateConversation(character.id, maskId, { transCache: mergedCache })
+            .then(setConv)
+            .catch(() => {
+              /* 写不进去不影响这一轮聊天：下一次点心声页再走 translateCached 补翻。 */
+            });
         }
         /* TA 附带的签名更新／新动态落库（资料页展示）。接住这一趟新落的动态：
            配图要按它们的内部 id 回写，而 id 只有 appendMetaUpdates 知道。 */
@@ -2078,15 +2112,21 @@ export default function ChatWindow({
            条数**不设上限**（同上面图片那条）：它想连着发三条就发三条。 */
         const voicePlaceholders: ChatMessage[] = [];
         if (voices.length > 0 && effVoiceApi && effVoiceExtras && canVoice) {
-          /* 外语聊天（1.9.48）：语音跟气泡正文同一门语言（提示词里那份也换成了外语），
-             所以照样挂一行中文译文——恩熙：「语音的话，它没有个自动显示中文的地方」。
-             规矩跟气泡一模一样：一条翻不动就只留那一条没译文，不拖累别的。 */
+          /* 外语聊天（1.9.48；1.9.80 改双主打）：语音跟气泡正文同一门语言，照样挂一行中文译文。
+             台词本身也是「原文|中文」：**TTS 只念左半边原文**，右半边进译文行；
+             漏写竖线的那条才用（副）接口兜底补翻。 */
+          const voicePairs = pairMode ? voices.map((v) => splitBilingual(v)) : [];
           const voiceTrans =
             trSetNow?.out.on === true && !stopped
-              ? await Promise.all(voices.map((v) => translateWithRetry(translateApi, v, "中文")))
+              ? await Promise.all(
+                  voices.map(
+                    async (v, i) =>
+                      voicePairs[i]?.zh ?? (await translateWithRetry(translateApi, v, "中文")),
+                  ),
+                )
               : [];
           for (let vi = 0; vi < voices.length; vi++) {
-            const text = voices[vi];
+            const text = voicePairs[vi]?.src || voices[vi];
             const placeholder: ChatMessage = {
               id: uuid(),
               role: "assistant",

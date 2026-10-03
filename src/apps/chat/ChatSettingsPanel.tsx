@@ -5,7 +5,17 @@ import { ChevronLeft, ChevronRight, ImagePlus, Minus, Plus, Trash2, X } from "lu
 import { clampBubbleMax, type ConversationPatch } from "@/lib/settings/chat";
 import { AVATAR_GRADIENT, CHAT_BG_DEFAULT, EN, SANS, T } from "./shared";
 import type { ArchiveEntry } from "@/types/contact";
-import type { Conversation } from "@/types/chat";
+import { TRANSLATE_LANGS, type Conversation, type TranslateSetting } from "@/types/chat";
+
+/** 外语聊天的出厂值：两个开关都关着，语言默认日语，翻译走便宜的副接口。
+ *  「显示中文那一行」默认开——开翻译却看不见中文，等于白开。
+ *  inner（心声页双语）默认关：心声页默认仍是他写外语、点一下才看中文。 */
+const DEFAULT_TRANSLATE: TranslateSetting = {
+  out: { on: false, lang: "日语", show: true },
+  in: { on: false, lang: "日语", show: true },
+  api: "sub",
+  inner: false,
+};
 
 /* =======================================================================
  * 每聊天设定（跟随旧档案 ChatSettings）：背景／字号／置顶／免打扰／
@@ -159,6 +169,7 @@ export default function ChatSettingsPanel({
   myName,
   maskAvatar = "",
   blocked = false,
+  subReady = false,
   onBack,
   onUpdate,
   onClearMessages,
@@ -174,6 +185,9 @@ export default function ChatSettingsPanel({
   maskAvatar?: string;
   /** 拉黑中（危险区开关的当前状态）。 */
   blocked?: boolean;
+  /** 副接口是否真配齐了（启用＋地址＋模型）：翻译那一栏拿它说真话——
+   *  挑的副接口没配齐时会自动退回主接口，不告诉用户的话账单上就对不上。 */
+  subReady?: boolean;
   onBack: () => void;
   onUpdate: (patch: ConversationPatch) => Promise<void>;
   onClearMessages: () => Promise<void>;
@@ -194,6 +208,8 @@ export default function ChatSettingsPanel({
 
   const charName = character.data.name || character.data.nickname || "TA";
   const fontSize = conv.fontSize ?? 13;
+  /* 外语聊天：老会话没有这一格，拿出厂值顶上，改哪一项写哪一项。 */
+  const tr: TranslateSetting = conv.translate ?? DEFAULT_TRANSLATE;
 
   const pickFile = (ref: React.RefObject<HTMLInputElement | null>) => ref.current?.click();
 
@@ -632,6 +648,163 @@ export default function ChatSettingsPanel({
           ) : null}
         </div>
 
+        {/* 外语聊天（1.9.48）：他说外语、我说中文，气泡下方各挂一行中文。
+            口径见 types 的 TranslateSetting——**只有说出口的话换语言**（气泡正文＋语音），
+            心声／思考／签名／动态／记忆一律中文，所以这里逐条写明「管到哪儿」。 */}
+        <GroupTitle title="翻译" en="translate" />
+        <div style={sectionStyle}>
+          <SettingRow
+            title="他说外语，我用中文看"
+            desc="气泡正文与语音用外语，下面挂一行中文"
+            showArrow={false}
+            right={
+              <Switch
+                on={tr.out.on}
+                onClick={() => void onUpdate({ translate: { ...tr, out: { ...tr.out, on: !tr.out.on } } })}
+              />
+            }
+          />
+          {tr.out.on ? (
+            <>
+              <SettingRow
+                title="他说的语言"
+                showArrow={false}
+                right={
+                  <LangPick
+                    value={tr.out.lang}
+                    onChange={(v) => void onUpdate({ translate: { ...tr, out: { ...tr.out, lang: v } } })}
+                  />
+                }
+              />
+              <SettingRow
+                title="显示中文那一行"
+                showArrow={false}
+                right={
+                  <Switch
+                    on={tr.out.show}
+                    onClick={() =>
+                      void onUpdate({ translate: { ...tr, out: { ...tr.out, show: !tr.out.show } } })
+                    }
+                  />
+                }
+              />
+              {/* 1.9.80 心声页双语：开着时他一轮回复最前面那段 <think> 里也一次写
+                  「原文|中文」两半，心声页一进去就是中文（不用再点）；关着就还是
+                  点一下才翻。只在外语这个开关开着时才有意义，所以收在里面。 */}
+              <SettingRow
+                title="心声页也直接显示中文"
+                desc="打开后心声、环境、心情那几栏也一次写两种语言，进页即中文"
+                showArrow={false}
+                right={
+                  <Switch
+                    on={tr.inner}
+                    onClick={() => void onUpdate({ translate: { ...tr, inner: !tr.inner } })}
+                  />
+                }
+              />
+            </>
+          ) : null}
+
+          <SettingRow
+            title="我说中文，发出去翻成他的语言"
+            desc="输入框里照打中文，气泡下面挂我那句中文本意"
+            showArrow={false}
+            right={
+              <Switch
+                on={tr.in.on}
+                onClick={() => void onUpdate({ translate: { ...tr, in: { ...tr.in, on: !tr.in.on } } })}
+              />
+            }
+          />
+          {tr.in.on ? (
+            <>
+              <SettingRow
+                title="翻成"
+                showArrow={false}
+                right={
+                  <LangPick
+                    value={tr.in.lang}
+                    onChange={(v) => void onUpdate({ translate: { ...tr, in: { ...tr.in, lang: v } } })}
+                  />
+                }
+              />
+              <SettingRow
+                title="显示中文那一行"
+                showArrow={false}
+                right={
+                  <Switch
+                    on={tr.in.show}
+                    onClick={() =>
+                      void onUpdate({ translate: { ...tr, in: { ...tr.in, show: !tr.in.show } } })
+                    }
+                  />
+                }
+              />
+            </>
+          ) : null}
+
+          {tr.out.on || tr.in.on ? (
+            <>
+              <SettingRow
+                title="漏翻时用哪套接口补"
+                desc="正文由模型一次写成两种语言；他万一句漏了中文，才用它补翻"
+                showArrow={false}
+                right={
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {([
+                      ["sub", "副接口"],
+                      ["main", "主接口"],
+                    ] as const).map(([v, label]) => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => void onUpdate({ translate: { ...tr, api: v } })}
+                        style={{
+                          border: `1.5px solid ${T.ink}`,
+                          borderRadius: 999,
+                          padding: "3px 10px",
+                          fontSize: 11.5,
+                          fontFamily: SANS,
+                          background: tr.api === v ? T.pink : "#FFFFFF",
+                          color: tr.api === v ? "#FFFFFF" : T.ink,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                }
+              />
+              {/* 挑的副接口没配齐时我们**会自动退回主接口**——不写明的话，账单上就对不上
+                  （恩熙：「我用副 API 去查看，没看见翻译的扣费」）。这句直接说此刻实际走哪套。 */}
+              <div
+                style={{
+                  padding: "0 10px 2px",
+                  fontSize: 9.8,
+                  lineHeight: 1.6,
+                  color: tr.api === "sub" && !subReady ? T.pink : T.ink3,
+                }}
+              >
+                {tr.api === "sub"
+                  ? subReady
+                    ? "实际走：副接口。"
+                    : "副接口还没配齐（要「启用」＋地址＋模型），现在实际走的是主接口。"
+                  : "实际走：主接口。"}
+                {" "}它平时不干活——只有他哪句漏写中文时才叫它补一句，用量极小、账单上可能只是一两分钱。
+              </div>
+              {/* 她自己问过「会不会把心声、签名也翻掉」——把口径直接印在这儿，一眼看得到。 */}
+              <div style={{ padding: "0 10px 12px", fontSize: 9.8, lineHeight: 1.6, color: T.ink3 }}>
+                开着时，他一轮回复就<b>一次写成两种语言</b>：上面是外语原文、下面挂一行中文，
+                不用再发第二次翻译请求，所以不会出现「有些突然不翻」。他写下的字——签名、
+                心声、日记、环境／心情／欲望那些——原本要<b>点一下</b>才显中文（翻过一次就记住）；
+                把上面那个「心声页也直接显示中文」打开，心声那几栏也会一进页就是中文。
+                至于思考过程和朋友圈，这一版仍保持中文。
+              </div>
+            </>
+          ) : null}
+        </div>
+
         {/* 头像：并排两枚方砖。两个头像地位对等，
             给它们一样大的两块地，一眼就能对比。 */}
         <GroupTitle title="头像" en="avatar" />
@@ -688,8 +861,8 @@ export default function ChatSettingsPanel({
             title={blocked ? "解除拉黑" : "加入黑名单"}
             desc={
               blocked
-                ? "解除后 TA 会发现自己又能发出消息了"
-                : "TA 还在列表里；TA 发的消息你都能收到，但 TA 那边会显示发送失败"
+                ? "解除后 TA 的消息就能正常发出去了"
+                : "TA 还在列表里；你发的消息 TA 都看得到，TA 发的消息 TA 那边一直显示失败，你照样看得见"
             }
             showArrow={false}
             right={<Switch on={blocked} onClick={() => onToggleBlocked(!blocked)} />}
@@ -1129,6 +1302,35 @@ function Switch({ on, onClick }: { on: boolean; onClick: () => void }) {
         }}
       />
     </div>
+  );
+}
+
+/** 语言选择（外语聊天那两行）：就用原生下拉，省得再画一套弹层。
+ *  贴纸风对齐面板其它小件：黑描边＋纸白底＋圆角。 */
+function LangPick({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      style={{
+        appearance: "none",
+        WebkitAppearance: "none",
+        border: `1.5px solid ${T.ink}`,
+        borderRadius: 10,
+        background: "#FFFFFF",
+        color: T.ink,
+        fontFamily: SANS,
+        fontSize: 12.5,
+        padding: "4px 10px",
+        cursor: "pointer",
+      }}
+    >
+      {TRANSLATE_LANGS.map((l) => (
+        <option key={l.value} value={l.value}>
+          {l.label}
+        </option>
+      ))}
+    </select>
   );
 }
 
