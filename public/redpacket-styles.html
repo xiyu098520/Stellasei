@@ -105,6 +105,11 @@
 
   .rp .veil { position: absolute; inset: 0; z-index: 2; pointer-events: none; background: var(--veil, rgba(255,251,240,.72)); }
   .rp.claimed .body { opacity: .52; }
+  /* 领了之后：不压暗底图，只盖那层浅色 veil；照片态留 0.72 让图还看得见（跟真卡一致），字翻成深色 */
+  .rp.claimed .scrim { opacity: 0; }
+  .rp.claimed.has-photo .veil { opacity: .72; }
+  .rp.claimed .note { color: var(--fg); text-shadow: none; }
+  .rp.claimed .sub  { color: var(--fg2); }
 
   /* 照片态统一用这张「晚霞」，各风格自己调色 */
   .photo {
@@ -207,8 +212,8 @@
       linear-gradient(to bottom, #F472B6 0 4px, transparent 4px),
       radial-gradient(circle at 89% 76%, rgba(244,114,182,.5) 0 8px, rgba(244,114,182,0) 14px),
       radial-gradient(circle at 75% 26%, rgba(45,212,191,.42) 0 5px, rgba(45,212,191,0) 10px),
-      radial-gradient(circle at 65% 74%, rgba(250,204,21,.34) 0 6px, rgba(250,204,21,0) 12px),
-      radial-gradient(ellipse 64% 96% at 84% 42%, rgba(167,139,250,.30) 0%, rgba(167,139,250,.10) 46%, rgba(167,139,250,0) 74%);
+      radial-gradient(circle at 64% 74%, rgba(250,204,21,.34) 0 6px, rgba(250,204,21,0) 12px),
+      radial-gradient(circle at 84% 32%, rgba(167,139,250,.45) 0 6px, rgba(167,139,250,0) 13px);
   }
   .rp-4:hover { transform: translate(-2px,-2px); box-shadow: 6px 6px 0 0 rgba(0,0,0,.2); }
   .rp-4:active { transform: translate(2px,2px); box-shadow: none; }
@@ -226,7 +231,7 @@
 <body>
   <header>
     <h1>红包 · 四套风格</h1>
-    <p>尺寸跟聊天里那张卡完全一样（228×76，38 圆标 + 两行字）。<br>每套三态：默认封面 / 自定义照片 / 已领取。</p>
+    <p>尺寸跟聊天里那张卡完全一样（228×76，38 圆标 + 两行字）。<br>每套四态：默认封面 / 自定义照片 × 未领 / 已领取。</p>
   </header>
   <div class="zoom-row">
     <button id="z1" class="on" type="button">原大</button>
@@ -257,21 +262,26 @@
       desc:'近黑 2px 框、4px 半透明硬投影、小圆角 9px，顶边一道粉，柔色圆点散在右下，衬线字。', dark:false }
   ];
 
-  function card(s, state) {
+  function card(s, st) {
     var cls = 'rp rp-' + (STYLES.indexOf(s) + 1);
-    var note = '恭喜发财，大吉大利', sub = 'From 星绥';
-    if (state === 'photo') { cls += ' has-photo'; note = '去看晚霞吧'; }
-    if (state === 'claimed') { cls += ' claimed'; sub = '他已领取'; }
+    if (st.photo) cls += ' has-photo';
+    if (st.claimed) cls += ' claimed';
     return '<div class="' + cls + '">' +
       '<div class="photo"></div><div class="deco"></div><div class="scrim"></div>' +
-      (state === 'claimed' ? '<div class="veil"></div>' : '') +
+      (st.claimed ? '<div class="veil"></div>' : '') +
       '<div class="chip">' + GIFT + '</div>' +
-      '<div class="body"><div class="note">' + note + '</div><div class="sub">' + sub + '</div></div>' +
+      '<div class="body"><div class="note">' + st.note + '</div><div class="sub">' + st.sub + '</div></div>' +
     '</div>';
   }
 
   var html = '';
-  var STATES = [['默认封面 · 未领', ''], ['自定义照片 · 未领', 'photo'], ['已领取', 'claimed']];
+  var NOTE = '恭喜发财，大吉大利', NOTE_P = '去看晚霞吧';
+  var STATES = [
+    ['默认封面 · 未领',     { note:NOTE,   sub:'From 星绥' }],
+    ['默认封面 · 已领取',   { note:NOTE,   sub:'他已领取', claimed:true }],
+    ['自定义照片 · 未领',   { note:NOTE_P, sub:'From 星绥', photo:true }],
+    ['自定义照片 · 已领取', { note:NOTE_P, sub:'他已领取', photo:true, claimed:true }]
+  ];
   for (var i = 0; i < STYLES.length; i++) {
     var s = STYLES[i];
     html += '<section class="ver">' +
