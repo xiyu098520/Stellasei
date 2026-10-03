@@ -4249,11 +4249,13 @@ export default function ChatWindow({
                   <>
                     {/* 1.9.56：「转文字」给的是**原文**——他说出口的那句话（外语聊天里就是外语），
                         中文译文这时先让开（气泡下方那行暂时不露），收起原文又恢复。
-                        1.9.55 曾把这里改成默认给中文，方向反了，恩熙 2026-10-03 纠正回原文。 */}
+                        1.9.55 曾把这里改成默认给中文，方向反了，恩熙 2026-10-03 纠正回原文。
+                        1.9.82：方括号语气标签（[轻笑] 这类给合成引擎的记号）不给人看，
+                        只留他真说出口的字（见 stripVoiceTags）。 */}
                     <div style={{ fontSize: 10, letterSpacing: ".14em", color: T.ink3, marginBottom: 3 }}>
                       原文
                     </div>
-                    <div>{m.content}</div>
+                    <div>{stripVoiceTags(m.content)}</div>
                   </>
                 ) : (
                   "转文字内容将在生成后显示。"
@@ -5297,7 +5299,9 @@ export default function ChatWindow({
           whiteSpace: "pre-wrap",
         }}
       >
-        {m.translated}
+        {/* 1.9.82：语音那行的中文译文同样不露方括号语气标签（跟「转文字」的原文一个口径，
+            见 stripVoiceTags）；其余消息的译文照旧原样显示。 */}
+        {m.type === "voice" ? stripVoiceTags(m.translated ?? "") : m.translated}
       </div>
     ) : null;
     /* 引用块（1.5.49 改脸）：1.5.47 那版是「一整块淡粉底 ＋ 顶上一行小字『引用』」，
@@ -7993,6 +7997,22 @@ function voiceSpokenText(content: string): string {
     .replace(/[ \t]{2,}/g, " ")
     .trim();
   return cleaned || content.trim();
+}
+
+/** 「转文字」的原文／气泡下那行中文译文，**给人看**时的洗法（1.9.82，恩熙定）：
+    剥掉语音台词里的方括号语气标签（[轻笑]、[whispers] 这类 ElevenLabs 记号）。
+    跟上面 voiceSpokenText 正好是一对：那个管「送去合成、哪些不该念」（洗圆括号里的动作），
+    这个管「给人看、哪些不该露」（洗方括号标签）——标签只喂给合成引擎，不该出现在
+    点开「转文字」看到的原文里，也不该出现在译文行里。
+    恩熙原话：「语音转文字的原文应该不会把我的语气标签打进去才对」，两侧都要干净。
+    半角 `[ ]` 与全角 `［ ］` 都认；**只洗显示**，消息 content 里照旧带标签送合成，
+    声音的表情一点不受影响。洗空了（整条都是标签）就退回原文，宁可多露也别露白。 */
+function stripVoiceTags(text: string): string {
+  const cleaned = text
+    .replace(/[\[［][^\[\]［］]*[\]］]/g, " ")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+  return cleaned || text.trim();
 }
 
 /** 系统版本，只给诊断行报数用。 */
