@@ -6,157 +6,204 @@
 <title>红包样式 · 三版预览</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html { zoom: var(--page-zoom, 1); }
   body {
     background: #1B161B;
     background-image:
-      radial-gradient(circle, rgba(255,253,248,.05) 1px, transparent 1.2px),
+      radial-gradient(circle, rgba(255,253,248,.045) 1px, transparent 1.2px),
       radial-gradient(130% 90% at 50% 0%, rgba(255,253,248,.07) 0%, transparent 62%);
     background-size: 10px 10px, 100% 100%;
     color: #FFFDF8;
     font-family: 'LXGW WenKai GB', 'Kaiti SC', 'STKaiti', 'KaiTi', 'Songti SC', serif;
-    padding: 26px 16px calc(env(safe-area-inset-bottom, 0px) + 40px);
-    max-width: 460px;
+    padding: 24px 16px calc(env(safe-area-inset-bottom, 0px) + 44px);
+    max-width: 470px;
     margin: 0 auto;
   }
-  header { text-align: center; margin-bottom: 8px; }
-  header h1 { font-size: 21px; font-weight: 500; letter-spacing: .12em; }
-  header p { margin-top: 8px; font-size: 12px; color: rgba(255,253,248,.5); letter-spacing: .06em; line-height: 1.7; }
+  header { text-align: center; }
+  header h1 { font-size: 20px; font-weight: 500; letter-spacing: .14em; }
+  header p { margin-top: 8px; font-size: 12px; color: rgba(255,253,248,.5); letter-spacing: .05em; line-height: 1.8; }
 
-  .ver { margin-top: 30px; }
-  .ver-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px; }
-  .ver-head .tag {
-    font-size: 13px; letter-spacing: .18em; color: #E86A9B;
-    border: 1px solid rgba(232,106,155,.45); padding: 2px 9px 2px 11px; border-radius: 3px;
+  /* 放大开关：看细节用 */
+  .zoom-row { margin-top: 14px; display: flex; justify-content: center; gap: 8px; }
+  .zoom-row button {
+    font-family: inherit; font-size: 11.5px; letter-spacing: .18em; text-indent: .18em;
+    color: rgba(255,253,248,.6); background: transparent;
+    border: 1px solid rgba(255,253,248,.22); border-radius: 999px;
+    padding: 5px 14px; cursor: pointer;
   }
-  .ver-head .name { font-size: 17px; font-weight: 500; letter-spacing: .06em; }
-  .ver .desc { font-size: 12px; color: rgba(255,253,248,.52); letter-spacing: .04em; line-height: 1.8; margin: 6px 0 12px; }
+  .zoom-row button.on { color: #1B161B; background: #E86A9B; border-color: #E86A9B; }
+  body.zoomed { --page-zoom: 1.55; }
 
-  /* 聊天底：一张浅色的聊天画布，卡像消息一样靠右摆 */
+  .ver { margin-top: 34px; }
+  .ver-head { display: flex; align-items: baseline; gap: 10px; }
+  .ver-head .tag {
+    font-size: 12px; letter-spacing: .22em; text-indent: .22em; color: #E86A9B;
+    border: 1px solid rgba(232,106,155,.45); padding: 2px 8px; border-radius: 3px;
+  }
+  .ver-head .name { font-size: 17px; font-weight: 500; letter-spacing: .08em; }
+  .ver .desc { font-size: 12px; color: rgba(255,253,248,.52); letter-spacing: .03em; line-height: 1.85; margin: 7px 0 13px; }
+
+  /* 聊天底：浅色画布，卡像消息一样靠右 */
   .chat {
     background: linear-gradient(160deg, #FFFFFF 0%, #FFF0F5 100%);
     border-radius: 14px;
     padding: 16px 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    align-items: flex-end;
-    box-shadow: inset 0 0 0 1px rgba(20,19,24,.05), 0 14px 30px -20px rgba(0,0,0,.5);
+    display: flex; flex-direction: column; gap: 14px; align-items: flex-end;
+    box-shadow: inset 0 0 0 1px rgba(20,19,24,.05), 0 16px 34px -22px rgba(0,0,0,.55);
   }
-  .state-label {
-    align-self: flex-start;
-    font-size: 10.5px; color: rgba(20,19,24,.4); letter-spacing: .14em;
-    padding-left: 2px;
+  .state-label { align-self: flex-start; font-size: 10.5px; color: rgba(20,19,24,.38); letter-spacing: .16em; padding-left: 3px; }
+
+  /* 自定义照片的占位：一帧安静的暮色，别脏 */
+  .photo {
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(90% 60% at 72% 14%, rgba(255,238,216,.5) 0%, rgba(255,238,216,0) 58%),
+      linear-gradient(155deg, #F5D6C0 0%, #E4ACB7 40%, #A487AC 70%, #6B7195 100%);
   }
 
-  /* ───────────────────────── 甲 · 金带封条 ───────────────────────── */
+  /* ───────────── 甲 · 金带封条 ───────────── */
   .rp-a {
     position: relative; width: 228px; height: 76px;
-    border-radius: 10px; overflow: hidden; cursor: pointer;
-    background: linear-gradient(166deg, #E0679A 0%, #CE4E82 55%, #B93F72 100%);
-    box-shadow: 0 8px 18px -10px rgba(150,40,90,.55);
-    display: flex; align-items: stretch;
-    color: #FFFDF8;
+    border-radius: 12px; overflow: hidden;
+    background:
+      radial-gradient(130% 110% at 16% -14%, rgba(255,243,235,.16) 0%, rgba(255,243,235,0) 55%),
+      linear-gradient(168deg, #D95B8C 0%, #C64778 50%, #AC3762 100%);
+    box-shadow:
+      inset 0 0 0 1px rgba(255,255,255,.12),
+      inset 0 1px 0 rgba(255,255,255,.2),
+      0 10px 20px -12px rgba(140,35,80,.55);
+    display: flex; align-items: stretch; color: #FFFDF8;
   }
-  .rp-a .photo, .rp-b .photo, .rp-c .photo {
-    position: absolute; inset: 0;
-    background: linear-gradient(152deg, #F7C7A6 0%, #D98BA4 42%, #8E6390 78%, #5C4A78 100%);
-  }
-  /* 那条竖着的浅金封条：从上包到下，条上竖排「星绥红包」，正中一枚小圆「福」印 */
+  /* 竖着的浅金封条：一层受光一层背光，才像一条有厚度的纸带 */
   .rp-a .band {
-    position: relative; flex: none; width: 34px; z-index: 2;
-    background: linear-gradient(180deg, #F7E7C0 0%, #EFD9A4 48%, #E7CD92 100%);
+    position: relative; flex: none; width: 37px; z-index: 2;
+    background: linear-gradient(180deg, #F8ECC9 0%, #F1DFAE 42%, #E6CB92 100%);
+    box-shadow:
+      inset 1px 0 0 rgba(255,255,255,.65),
+      inset -1px 0 0 rgba(146,98,36,.28),
+      3px 0 9px -3px rgba(96,22,54,.38);
     display: flex; flex-direction: column; align-items: center; justify-content: center;
-    box-shadow: 2px 0 6px -2px rgba(120,30,60,.35);
   }
   .rp-a .band .vt {
     writing-mode: vertical-rl;
-    font-size: 10.5px; letter-spacing: .34em; color: #9A4E6E; font-weight: 500;
+    font-size: 11px; font-weight: 500; letter-spacing: .3em;
+    color: #9C5570;
   }
   .rp-a .band .fu {
-    margin-top: 7px; width: 17px; height: 17px; border-radius: 50%;
-    background: radial-gradient(circle at 34% 30%, #D9577F, #B23A57 70%);
-    color: #F9E9C8; font-size: 10px;
+    margin-top: 8px; width: 18px; height: 18px; border-radius: 50%;
+    background: radial-gradient(circle at 34% 28%, #D6567E 0%, #AD3156 72%);
+    box-shadow: inset 0 0 0 1.5px rgba(255,243,219,.55), 0 1px 3px rgba(96,22,54,.35);
+    color: #F9ECCF; font-size: 10.5px;
     display: flex; align-items: center; justify-content: center;
-    box-shadow: inset 0 1px 1px rgba(255,255,255,.4), 0 1px 2px rgba(120,30,60,.3);
   }
-  .rp-a .txt { position: relative; z-index: 1; flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; padding: 0 13px 0 12px; }
-  .rp-a .note { font-size: 14px; font-weight: 500; letter-spacing: .03em; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 1px 1px rgba(120,30,60,.3); }
-  .rp-a .sub { margin-top: 5px; font-size: 10px; letter-spacing: .2em; color: rgba(255,253,248,.72); }
-  .rp-a .veil { position: absolute; inset: 0; z-index: 3; background: linear-gradient(158deg, rgba(255,247,251,.78) 0%, rgba(254,238,246,.84) 48%, rgba(251,226,239,.9) 100%); opacity: 0; transition: opacity .35s; }
+  .rp-a .txt { position: relative; z-index: 1; flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; padding: 0 15px 0 14px; }
+  .rp-a .note {
+    font-size: 15px; font-weight: 500; letter-spacing: .04em; line-height: 1.3;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    text-shadow: 0 1px 2px rgba(110,25,60,.35);
+  }
+  .rp-a .sub { margin-top: 5px; font-size: 10px; letter-spacing: .24em; color: rgba(255,246,250,.78); }
+  .rp-a .veil { position: absolute; inset: 0; z-index: 3; background: linear-gradient(158deg, rgba(255,247,251,.76) 0%, rgba(254,238,246,.83) 48%, rgba(251,226,239,.9) 100%); }
   .rp-a.claimed .veil { opacity: 1; }
+  .rp-a.claimed .band { filter: saturate(.55) brightness(1.05); }
   .rp-a.claimed .note { color: #A4507A; text-shadow: none; }
-  .rp-a.claimed .sub { color: rgba(164,80,122,.8); }
-  .rp-a.claimed .band { filter: saturate(.55) brightness(1.06); }
+  .rp-a.claimed .sub { color: rgba(164,80,122,.82); }
 
-  /* ───────────────────────── 乙 · 火漆開印 ───────────────────────── */
+  /* ───────────── 乙 · 火漆開印 ───────────── */
   .rp-b {
     position: relative; width: 228px; height: 76px;
-    border-radius: 10px; overflow: hidden; cursor: pointer;
+    border-radius: 12px; overflow: hidden;
     background:
-      radial-gradient(circle, rgba(255,240,225,.10) 1px, transparent 1.4px),
-      linear-gradient(166deg, #DE6494 0%, #C74A80 52%, #AE3A6C 100%);
-    background-size: 13px 13px, 100% 100%;
-    box-shadow: 0 8px 18px -10px rgba(150,40,90,.55);
+      repeating-linear-gradient(90deg, rgba(255,243,235,.055) 0px, rgba(255,243,235,.055) 1px, transparent 1px, transparent 5px),
+      radial-gradient(130% 110% at 50% -20%, rgba(255,243,235,.12) 0%, rgba(255,243,235,0) 55%),
+      linear-gradient(168deg, #D75E8F 0%, #C04576 52%, #A2315B 100%);
+    box-shadow:
+      inset 0 0 0 1px rgba(255,255,255,.12),
+      inset 0 1px 0 rgba(255,255,255,.18),
+      0 10px 20px -12px rgba(140,35,80,.55);
     color: #FFFDF8;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding-right: 30px;
   }
-  .rp-b .who { font-size: 9.5px; letter-spacing: .42em; text-indent: .42em; color: rgba(255,253,248,.66); }
-  .rp-b .note { margin-top: 6px; font-size: 14.5px; font-weight: 500; letter-spacing: .05em; line-height: 1.3; max-width: 150px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 1px 1px rgba(120,30,60,.3); }
-  .rp-b .sub { margin-top: 6px; font-size: 9.5px; letter-spacing: .3em; text-indent: .3em; color: rgba(255,253,248,.66); }
-  /* 火漆印：压在右下角，不规则的圆＋金圈＋「開」 */
+  .rp-b .who { font-size: 10px; letter-spacing: .44em; text-indent: .44em; color: rgba(255,248,245,.72); }
+  .rp-b .note {
+    margin-top: 6px; font-size: 15px; font-weight: 500; letter-spacing: .06em; line-height: 1.3;
+    max-width: 156px; text-align: center;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    text-shadow: 0 1px 2px rgba(110,25,60,.35);
+  }
+  .rp-b .sub { margin-top: 6px; font-size: 10px; letter-spacing: .3em; text-indent: .3em; color: rgba(255,248,245,.72); }
+  /* 火漆：不规则的边缘＋边上两滴蜡＋内圈一道压痕，「開」是压出来的凹字 */
   .rp-b .seal {
-    position: absolute; right: 11px; bottom: -7px; z-index: 2;
-    width: 46px; height: 46px;
-    border-radius: 47% 53% 51% 49% / 55% 48% 54% 46%;
-    background: radial-gradient(circle at 36% 30%, #C24E6B 0%, #A23350 58%, #8C2742 100%);
-    box-shadow: inset 0 0 0 2.5px rgba(249,229,178,.5), inset 0 2px 3px rgba(255,255,255,.22), 0 4px 9px -3px rgba(90,20,40,.6);
+    position: absolute; right: 10px; bottom: -6px; z-index: 2;
+    width: 49px; height: 49px;
+    border-radius: 46% 54% 52% 48% / 58% 46% 56% 44%;
+    background: radial-gradient(circle at 38% 30%, #B44264 0%, #983251 55%, #7D2340 100%);
+    box-shadow:
+      inset 0 0 0 3px rgba(52,8,22,.22),
+      inset 0 2px 4px rgba(255,255,255,.16),
+      0 5px 11px -4px rgba(80,15,35,.6);
+    transform: rotate(-8deg);
     display: flex; align-items: center; justify-content: center;
-    color: #F6E3B4; font-size: 19px;
-    transform: rotate(-6deg);
   }
-  .rp-b .veil { position: absolute; inset: 0; z-index: 3; background: linear-gradient(158deg, rgba(255,247,251,.78) 0%, rgba(254,238,246,.84) 48%, rgba(251,226,239,.9) 100%); opacity: 0; transition: opacity .35s; }
+  .rp-b .seal i {
+    position: absolute; border-radius: 50%;
+    background: radial-gradient(circle at 38% 30%, #A63A5B 0%, #8A2B48 70%);
+  }
+  .rp-b .seal i.d1 { width: 10px; height: 9px; left: -5px; top: 30px; }
+  .rp-b .seal i.d2 { width: 7px; height: 7px; right: -2px; top: 12px; }
+  .rp-b .seal b {
+    font-weight: 400; font-size: 20px; color: #F3DCB2;
+    text-shadow: 0 -1px 0 rgba(70,10,25,.55), 0 1px 1px rgba(255,255,255,.15);
+    transform: rotate(8deg);
+  }
+  .rp-b .veil { position: absolute; inset: 0; z-index: 3; background: linear-gradient(158deg, rgba(255,247,251,.76) 0%, rgba(254,238,246,.83) 48%, rgba(251,226,239,.9) 100%); }
   .rp-b.claimed .veil { opacity: 1; }
+  .rp-b.claimed .seal { filter: saturate(.4) brightness(1.16); }
   .rp-b.claimed .note { color: #A4507A; text-shadow: none; }
-  .rp-b.claimed .who, .rp-b.claimed .sub { color: rgba(164,80,122,.8); }
-  .rp-b.claimed .seal { filter: saturate(.5) brightness(1.18); }
+  .rp-b.claimed .who, .rp-b.claimed .sub { color: rgba(164,80,122,.82); }
 
-  /* ───────────────────────── 丙 · 红笺金框 ───────────────────────── */
+  /* ───────────── 丙 · 洒金红笺 ───────────── */
   .rp-c {
-    position: relative; width: 228px; height: 76px;
-    border-radius: 0; cursor: pointer; overflow: hidden;
-    background: linear-gradient(166deg, rgba(252,224,239,.96) 0%, rgba(250,214,233,.96) 50%, rgba(248,204,228,.96) 100%);
+    position: relative; width: 228px; height: 76px; overflow: hidden;
+    background:
+      radial-gradient(circle, rgba(202,153,80,.5) 0 .8px, rgba(202,153,80,0) 1.3px),
+      radial-gradient(circle, rgba(202,153,80,.38) 0 .7px, rgba(202,153,80,0) 1.2px),
+      radial-gradient(circle, rgba(202,153,80,.44) 0 .9px, rgba(202,153,80,0) 1.4px),
+      radial-gradient(circle, rgba(202,153,80,.3) 0 .6px, rgba(202,153,80,0) 1.1px),
+      radial-gradient(circle, rgba(202,153,80,.46) 0 .8px, rgba(202,153,80,0) 1.3px),
+      radial-gradient(circle, rgba(202,153,80,.34) 0 .7px, rgba(202,153,80,0) 1.2px),
+      radial-gradient(circle, rgba(202,153,80,.5) 0 .9px, rgba(202,153,80,0) 1.4px),
+      radial-gradient(circle, rgba(202,153,80,.36) 0 .6px, rgba(202,153,80,0) 1.1px),
+      linear-gradient(166deg, rgba(252,224,239,.97) 0%, rgba(250,214,233,.97) 50%, rgba(248,204,228,.97) 100%);
+    background-size: 34px 30px, 26px 34px, 40px 26px, 30px 40px, 36px 22px, 22px 36px, 28px 28px, 38px 32px, 100% 100%;
+    background-position: 8px 6px, 19px 14px, 4px 21px, 26px 3px, 13px 26px, 2px 12px, 22px 18px, 10px 30px, 0 0;
     border-left: 4px solid #E86A9B;
-    box-shadow: 3px 3px 0 rgba(20,19,24,.07), 0 8px 18px -12px rgba(178,105,142,.4);
+    box-shadow: 3px 3px 0 rgba(20,19,24,.06), 0 10px 20px -13px rgba(178,105,142,.5);
     color: #A4507A;
     display: flex; align-items: center;
   }
-  .rp-c .frame {
-    position: absolute; inset: 6px; z-index: 2; pointer-events: none;
-    border: 1px solid rgba(189,139,63,.5);
-    outline: 1px solid rgba(189,139,63,.22);
-    outline-offset: 2px;
-  }
-  /* 左上那枚方形朱印：像盖上去的藏书章 */
+  /* 朱印：方形、微转、一道细白里圈，像真的盖章 */
   .rp-c .stamp {
-    position: absolute; top: 10px; left: 14px; z-index: 2;
-    width: 21px; height: 21px; border-radius: 3px;
-    background: linear-gradient(160deg, #CB4463 0%, #B23351 100%);
-    color: #FBEFDD; font-size: 12px;
-    display: flex; align-items: center; justify-content: center;
+    position: absolute; top: 11px; left: 15px; z-index: 2;
+    width: 22px; height: 22px; border-radius: 4px;
+    background: linear-gradient(160deg, #CF4A68 0%, #B23351 100%);
+    box-shadow: inset 0 0 0 1px rgba(255,244,230,.4), 0 2px 5px -1px rgba(140,50,80,.45);
     transform: rotate(-6deg);
-    box-shadow: 0 2px 4px -1px rgba(140,50,80,.4);
+    color: #FCF1DE; font-size: 12.5px;
+    display: flex; align-items: center; justify-content: center;
   }
-  .rp-c .txt { position: relative; z-index: 1; flex: 1; min-width: 0; padding: 0 14px 0 44px; display: flex; flex-direction: column; justify-content: center; }
-  .rp-c .note { font-size: 13.5px; font-weight: 500; letter-spacing: .04em; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .rp-c .sub { margin-top: 5px; font-size: 10px; letter-spacing: .24em; color: rgba(164,80,122,.72); }
-  .rp-c .veil { position: absolute; inset: 0; z-index: 3; background: linear-gradient(158deg, rgba(255,247,251,.72) 0%, rgba(254,238,246,.8) 48%, rgba(251,226,239,.86) 100%); opacity: 0; transition: opacity .35s; }
+  .rp-c .txt { position: relative; z-index: 1; flex: 1; min-width: 0; padding: 0 15px 0 46px; display: flex; flex-direction: column; justify-content: center; }
+  .rp-c .note { font-size: 14px; font-weight: 500; letter-spacing: .05em; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rp-c .sub { margin-top: 5px; font-size: 10px; letter-spacing: .26em; color: rgba(164,80,122,.72); }
+  .rp-c .veil { position: absolute; inset: 0; z-index: 3; background: linear-gradient(158deg, rgba(255,247,251,.7) 0%, rgba(254,238,246,.78) 48%, rgba(251,226,239,.85) 100%); }
   .rp-c.claimed .veil { opacity: 1; }
-  .rp-c.claimed .stamp { filter: saturate(.5) brightness(1.1); }
+  .rp-c.claimed .stamp { filter: saturate(.45) brightness(1.12); }
 
   footer {
-    margin-top: 34px; padding-top: 18px;
+    margin-top: 36px; padding-top: 18px;
     border-top: 1px solid rgba(255,253,248,.12);
-    font-size: 12px; color: rgba(255,253,248,.55); letter-spacing: .05em; line-height: 1.9;
+    font-size: 12px; color: rgba(255,253,248,.55); letter-spacing: .04em; line-height: 1.9;
   }
   footer b { color: #E86A9B; font-weight: 500; }
 </style>
@@ -164,12 +211,16 @@
 <body>
   <header>
     <h1>红包 · 发出来的样子</h1>
-    <p>三版方向，都还是「红包」，但不再照微信的排法摆。<br>每版都看三种状态：默认封面 · 自定义照片 · 已领取。</p>
+    <p>三版方向，每版看三种状态：默认封面 · 自定义照片 · 已领取。</p>
   </header>
+  <div class="zoom-row">
+    <button id="z1" class="on" type="button">原大</button>
+    <button id="z2" type="button">放大看</button>
+  </div>
 
   <section class="ver">
     <div class="ver-head"><span class="tag">甲</span><span class="name">金带封条</span></div>
-    <p class="desc">玫红纸卡，左三分之一压一条竖向的浅金封条——像一根纸带把封口绕住。条上竖排「星绥红包」、正中一枚小「福」印；留言在条右边。红包的仪式感全在这条带上，跟微信一眼岔开。自定义照片时整张卡是照片，金带照压。</p>
+    <p class="desc">玫红纸卡，左一条竖向浅金封条绕住封口：条上竖排「星绥红包」，正中一枚小「福」印，留言在条右。红包味最重的一版。</p>
     <div class="chat">
       <span class="state-label">默认封面 · 未领</span>
       <div class="rp-a">
@@ -193,14 +244,14 @@
 
   <section class="ver">
     <div class="ver-head"><span class="tag">乙</span><span class="name">火漆開印</span></div>
-    <p class="desc">一封压了火漆的信：卡面玫红带细波点，字全部居中——上「星绥红包」、中留言、下状态；右下角斜压一枚火漆「開」印，像封信落款处封的蜡。没有左边圆图标、没有左对齐两行，是微信完全不用的排法。</p>
+    <p class="desc">一封压了蜡的信：字全居中，卡面带一道道竖丝纹，右下角压一枚火漆「開」印——边上还挂着两滴蜡。最不像微信的一版。</p>
     <div class="chat">
       <span class="state-label">默认封面 · 未领</span>
       <div class="rp-b">
         <span class="who">星绥红包</span>
         <span class="note">恭喜发财，大吉大利</span>
         <span class="sub">等他领取</span>
-        <span class="seal">開</span>
+        <span class="seal"><i class="d1"></i><i class="d2"></i><b>開</b></span>
       </div>
       <span class="state-label">自定义照片 · 未领</span>
       <div class="rp-b">
@@ -208,40 +259,37 @@
         <span class="who">星绥红包</span>
         <span class="note">去看晚霞吧</span>
         <span class="sub">等他领取</span>
-        <span class="seal">開</span>
+        <span class="seal"><i class="d1"></i><i class="d2"></i><b>開</b></span>
       </div>
       <span class="state-label">已领取</span>
       <div class="rp-b claimed">
         <span class="who">星绥红包</span>
         <span class="note">恭喜发财，大吉大利</span>
         <span class="sub">他已领取</span>
-        <span class="seal">開</span>
+        <span class="seal"><i class="d1"></i><i class="d2"></i><b>開</b></span>
         <div class="veil"></div>
       </div>
     </div>
   </section>
 
   <section class="ver">
-    <div class="ver-head"><span class="tag">丙</span><span class="name">红笺金框</span></div>
-    <p class="desc">一张裱了金框的红笺，走钱包那族「账册」的纸感：淡粉纸、方角、左缘一道粉编目条、硬边投影；框内左上盖一枚方形朱印「福」，中间墨玫红的留言。比另两版文气，跟 app 自己的气质最贴。</p>
+    <div class="ver-head"><span class="tag">丙</span><span class="name">洒金红笺</span></div>
+    <p class="desc">一张洒了金屑的淡粉笺纸：方角、左缘一道粉编目条（钱包那族的纸感），左上盖一枚朱印「福」，中间墨玫红的留言。最贴 app 气质的一版。</p>
     <div class="chat">
       <span class="state-label">默认封面 · 未领</span>
       <div class="rp-c">
         <span class="stamp">福</span>
-        <span class="frame"></span>
         <div class="txt"><span class="note">恭喜发财，大吉大利</span><span class="sub">等他领取</span></div>
       </div>
       <span class="state-label">自定义照片 · 未领</span>
       <div class="rp-c">
         <div class="photo"></div>
         <span class="stamp">福</span>
-        <span class="frame"></span>
         <div class="txt"><span class="note">去看晚霞吧</span><span class="sub">等他领取</span></div>
       </div>
       <span class="state-label">已领取</span>
       <div class="rp-c claimed">
         <span class="stamp">福</span>
-        <span class="frame"></span>
         <div class="txt"><span class="note">恭喜发财，大吉大利</span><span class="sub">他已领取</span></div>
         <div class="veil"></div>
       </div>
@@ -249,7 +297,18 @@
   </section>
 
   <footer>
-    挑一版告诉我（<b>甲</b> 金带封条／<b>乙</b> 火漆開印／<b>丙</b> 红笺金框），也可以混着点——比如「甲的底＋乙的火漆印」。定了我再把它落进真正的聊天卡、开红包页和制作封面那几处，三处跟着一起换。
+    挑一版（<b>甲</b> 金带封条／<b>乙</b> 火漆開印／<b>丙</b> 洒金红笺），也可以混搭——比如「甲的底＋乙的火漆印」。定了我落进真正的聊天卡、开红包页和制作封面三处。
   </footer>
+
+  <script>
+    var b1 = document.getElementById('z1'), b2 = document.getElementById('z2');
+    function setZoom(on) {
+      document.body.classList.toggle('zoomed', on);
+      b1.classList.toggle('on', !on);
+      b2.classList.toggle('on', on);
+    }
+    b1.addEventListener('click', function () { setZoom(false); });
+    b2.addEventListener('click', function () { setZoom(true); });
+  </script>
 </body>
 </html>
