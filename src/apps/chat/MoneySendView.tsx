@@ -792,6 +792,27 @@ const coverSheetPaperStyle: CSSProperties = {
   color: T.ink,
 };
 
+/** 封面弹窗的抓手：墨色的淡痕（发红包那页那根浅痕是给墨底纸备的，浅纸上看不见）。 */
+const coverGripStyle: CSSProperties = {
+  ...gripStyle,
+  background: "rgba(20,19,24,.16)",
+};
+
+/** 封面弹窗的页头字与「×」：纸是浅底，得用墨色（发红包那页那对白字白描边是给墨底纸备的）。 */
+const coverTitleStyle: CSSProperties = {
+  fontFamily: WALLET_TITLE,
+  fontSize: 18,
+  fontWeight: 500,
+  letterSpacing: ".08em",
+  color: T.ink,
+};
+
+const coverCloseBtnStyle: CSSProperties = {
+  ...closeBtnStyle,
+  border: "1.5px solid rgba(20,19,24,.38)",
+  color: T.ink,
+};
+
 /** 封面那几页共用的弹窗骨架：遮罩＋贴底的浅底圆角纸（顶上一根抓手），正文塞中间。
  *  大预览页那份「预览」全屏蒙层得贴在这一层的外面（铺满整屏），所以那一页自己摆、不走这个。 */
 function CoverSheet({ children }: { children: ReactNode }) {
@@ -799,7 +820,7 @@ function CoverSheet({ children }: { children: ReactNode }) {
     <div style={studioRootStyle}>
       <div style={coverSheetScrimStyle} />
       <div style={coverSheetPaperStyle}>
-        <div style={gripStyle} />
+        <div style={coverGripStyle} />
         {children}
       </div>
     </div>
@@ -836,6 +857,7 @@ const studioFootStyle: CSSProperties = {
   flexShrink: 0,
   padding: "12px 20px calc(var(--safe-area-bottom, 0px) + 16px)",
   background: "#FFFFFF",
+  borderTop: `1px solid ${T.line}`,
   display: "flex",
   flexDirection: "column",
   gap: 4,
@@ -982,10 +1004,10 @@ function RedCoverStudio({
     return (
       <CoverSheet>
         <div style={headerStyle}>
-          <button type="button" aria-label="返回" onClick={() => setMoreOpen(false)} style={closeBtnStyle}>
+          <button type="button" aria-label="返回" onClick={() => setMoreOpen(false)} style={coverCloseBtnStyle}>
             <X size={17} strokeWidth={2} />
           </button>
-          <span style={headerTitleStyle}>更多内容</span>
+          <span style={coverTitleStyle}>更多内容</span>
         </div>
 
         <div style={studioScrollStyle}>
@@ -1036,12 +1058,12 @@ function RedCoverStudio({
     <div style={studioRootStyle}>
       <div style={coverSheetScrimStyle} />
       <div style={coverSheetPaperStyle}>
-        <div style={gripStyle} />
+        <div style={coverGripStyle} />
         <div style={headerStyle}>
-          <button type="button" aria-label="返回" onClick={onBack} style={closeBtnStyle}>
+          <button type="button" aria-label="返回" onClick={onBack} style={coverCloseBtnStyle}>
             <X size={17} strokeWidth={2} />
           </button>
-          <span style={headerTitleStyle}>制作我的红包封面</span>
+          <span style={coverTitleStyle}>制作我的红包封面</span>
         </div>
 
         <div
@@ -1174,10 +1196,10 @@ function RedCoverGallery({
   return (
     <CoverSheet>
       <div style={headerStyle}>
-        <button type="button" aria-label="关闭" onClick={onClose} style={closeBtnStyle}>
+        <button type="button" aria-label="关闭" onClick={onClose} style={coverCloseBtnStyle}>
           <X size={17} strokeWidth={2} />
         </button>
-        <span style={headerTitleStyle}>我的封面</span>
+        <span style={coverTitleStyle}>我的封面</span>
       </div>
 
       <div style={studioScrollStyle}>
@@ -1380,10 +1402,10 @@ function RedCoverFramer({
   return (
     <CoverSheet>
       <div style={headerStyle}>
-        <button type="button" aria-label="返回" onClick={onCancel} style={closeBtnStyle}>
+        <button type="button" aria-label="返回" onClick={onCancel} style={coverCloseBtnStyle}>
           <X size={17} strokeWidth={2} />
         </button>
-        <span style={headerTitleStyle}>调整位置</span>
+        <span style={coverTitleStyle}>调整位置</span>
       </div>
 
       <div
