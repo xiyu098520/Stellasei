@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { usePhone } from "@/context/PhoneContext";
 import { getArchives } from "@/lib/settings/contact";
-import { getApiSettings, getConversations, ensureAssistant } from "@/lib/settings/chat";
+import { getApiSettings, getChatPrefs, getConversations, ensureAssistant } from "@/lib/settings/chat";
 import { getMyIdentity, saveMyIdentity } from "@/lib/settings/identity";
 import { DEFAULT_MASK_ID, ensureMasks, migrateLegacySignature, saveMasks, type Mask } from "@/lib/settings/mask";
 import { APP_VERSION } from "@/lib/version";
@@ -26,6 +26,7 @@ import ContactList from "./ContactList";
 import MomentsPage from "./MomentsPage";
 import MinePage, { SIGNATURE_FALLBACK } from "./MinePage";
 import WalletView from "./WalletView";
+import ChatGlobalSettingsPanel from "./ChatGlobalSettingsPanel";
 import { AVATAR_GRADIENT, EN, SANS, T } from "./shared";
 import type { ArchiveEntry } from "@/types/contact";
 import type { ChatApiSettings, Conversation } from "@/types/chat";
@@ -47,8 +48,10 @@ export default function ChatApp() {
      返回只是把这间屋子藏起来，TA 那一轮回复／配图／记忆照跑，回来接着看）。
      彻底不要了（删好友）才从这张表里剔掉。 */
   const [visitedChats, setVisitedChats] = useState<{ characterId: string; maskId: string }[]>([]);
-  /** 应用内视图：消息列表 ⇄ 通讯人 ⇄ 动态 ⇄ 我的 ⇄ 钱包（侧边栏进入）。 */
-  const [view, setView] = useState<"list" | "contacts" | "moments" | "mine" | "wallet">("list");
+  /** 应用内视图：消息列表 ⇄ 通讯人 ⇄ 动态 ⇄ 我的 ⇄ 钱包 ⇄ 聊天全局设定（侧边栏进入）。 */
+  const [view, setView] = useState<"list" | "contacts" | "moments" | "mine" | "wallet" | "chat-global">(
+    "list",
+  );
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [failed, setFailed] = useState(false);
   const [toast, setToast] = useState("");
@@ -60,6 +63,8 @@ export default function ChatApp() {
     void (async () => {
       try {
         await ensureAssistant().catch(() => undefined);
+        /* 顺手把全局聊天偏好读进内存快照：主动引擎的同步回落要用（见 chatPrefsSnapshot）。 */
+        await getChatPrefs().catch(() => undefined);
         const [a, c, s, legacy, ms] = await Promise.all([
           getArchives(),
           getConversations(),
@@ -216,6 +221,7 @@ export default function ChatApp() {
             archives={archives}
             /* 动态跟通讯人同一口径：只看当前面具的朋友圈 */
             conversations={scopedConversations}
+            maskId={scopeMaskId}
             maskName={effectiveName}
             maskAvatar={currentMask?.avatar ?? ""}
             /* 签名跟「我的」页同一口径：没写就用兜底那句 */
@@ -249,6 +255,9 @@ export default function ChatApp() {
             onBack={() => setView("list")}
             showToast={showToast}
           />
+        ) : view === "chat-global" ? (
+          /* 聊天全局设定：全局默认那一层（主动找我、对话偏好）。 */
+          <ChatGlobalSettingsPanel onBack={() => setView("list")} showToast={showToast} />
         ) : (
           <MessageList
             archives={archives}
@@ -380,7 +389,7 @@ function ChatSidebar({
   showToast,
 }: {
   open: boolean;
-  activeView: "list" | "contacts" | "moments" | "mine" | "wallet";
+  activeView: "list" | "contacts" | "moments" | "mine" | "wallet" | "chat-global";
   /** 名字（使用中的面具决定）；空串以「我」展示。 */
   mineName: string;
   /** 头像（使用中的面具；空串用渐变底＋首字）。 */
@@ -388,7 +397,7 @@ function ChatSidebar({
   /** 签名（「我的」页设定）；空串用预设文案。 */
   mineSignature: string;
   onClose: () => void;
-  onNavigate: (view: "list" | "contacts" | "moments" | "mine" | "wallet") => void;
+  onNavigate: (view: "list" | "contacts" | "moments" | "mine" | "wallet" | "chat-global") => void;
   onExit: () => void;
   showToast: (msg: string) => void;
 }) {
@@ -400,7 +409,7 @@ function ChatSidebar({
     { name: "动态", icon: Clock, action: () => onNavigate("moments"), active: activeView === "moments" },
     { name: "我的收藏", icon: Bookmark, action: () => { onClose(); showToast("我的收藏 · 预览"); } },
     { name: "我的钱包", icon: Wallet, action: () => onNavigate("wallet"), active: activeView === "wallet" },
-    { name: "聊天全局设定", icon: Settings, action: () => { onClose(); showToast("聊天全局设定 · 打造中"); } },
+    { name: "聊天全局设定", icon: Settings, action: () => onNavigate("chat-global"), active: activeView === "chat-global" },
     /* iOS 主屏幕 App 从快照复活、不重新加载页面，改版后可能一直跑旧代码；
        这里给一个手动重载入口兜底。 */
     { name: "检查更新", icon: RefreshCw, action: () => { onClose(); window.location.reload(); } },

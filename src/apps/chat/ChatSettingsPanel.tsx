@@ -2,7 +2,14 @@
 
 import { useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight, ImagePlus, Minus, Plus, Trash2, X } from "lucide-react";
-import { clampBubbleMax, type ConversationPatch } from "@/lib/settings/chat";
+import {
+  clampBubbleMax,
+  clampProactiveBaseMin,
+  proactiveBaseMinOf,
+  proactiveOnOf,
+  proactiveQuietOf,
+  type ConversationPatch,
+} from "@/lib/settings/chat";
 import { AVATAR_GRADIENT, CHAT_BG_DEFAULT, EN, SANS, T } from "./shared";
 import type { ArchiveEntry } from "@/types/contact";
 import { TRANSLATE_LANGS, type Conversation, type TranslateSetting } from "@/types/chat";
@@ -139,7 +146,7 @@ export function refImageToDataUrl(file: File): Promise<string> {
 /** 条数步进器（与「字体大小」那行同款手感）：− 数字 ＋。
  *  不用输入框是故意的——数字框清空会送出 0，正打字时会被夹取弹回，
  *  连起来打「13」能变成「1」「3」两次落库；步进器没有这个中间态。 */
-function StepCount({ value, onStep }: { value: number; onStep: (delta: number) => void }) {
+function StepCount({ value, onStep }: { value: ReactNode; onStep: (delta: number) => void }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
       <button type="button" aria-label="减少" onClick={() => onStep(-1)} style={stepBtnStyle}>
@@ -162,6 +169,14 @@ function StepCount({ value, onStep }: { value: number; onStep: (delta: number) =
       </button>
     </div>
   );
+}
+
+/** 主动基础时间的显示文案：不足 1 小时说分钟，整点说小时，否则「X 小时 Y 分」。 */
+function fmtGapMin(min: number): string {
+  if (min < 60) return `${min} 分钟`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m === 0 ? `${h} 小时` : `${h} 小时 ${m} 分`;
 }
 
 export default function ChatSettingsPanel({
@@ -260,6 +275,18 @@ export default function ChatSettingsPanel({
     const next = clampBubbleMax(bubbleMax + delta);
     if (next === bubbleMax) return;
     void onUpdate({ bubbleMax: next });
+  };
+
+  /* 主动找我：每个角色单独调。本聊天没单独设过＝跟随「聊天全局设定」里的全局默认。
+     步长跟着当前值走：1 小时内按 15 分钟、4 小时内按 30 分钟、再往上按 1 小时。 */
+  const proactiveOn = proactiveOnOf(conv);
+  const proactiveBase = proactiveBaseMinOf(conv);
+  const proactiveQuiet = proactiveQuietOf(conv);
+  const stepProactiveBase = (delta: number) => {
+    const step = proactiveBase < 60 ? 15 : proactiveBase < 240 ? 30 : 60;
+    const next = clampProactiveBaseMin(proactiveBase + delta * step);
+    if (next === proactiveBase) return;
+    void onUpdate({ proactiveBaseMin: next });
   };
 
   /** 参考图等重配置已迁至「角色设置」（通讯人 → 资料页 → 角色设置）。 */
@@ -646,6 +673,48 @@ export default function ChatSettingsPanel({
               showArrow={false}
               right={<StepCount value={bubbleMax} onStep={stepBubbleMax} />}
             />
+          ) : null}
+          {/* 主动找我（1.10.30）：每个角色单独调——要不要 TA 自己来、隔多久来、
+              深夜来不来。这里的基础时间只是标称值，TA 会按你们的情景自己浮动。 */}
+          <SettingRow
+            title="主动找我"
+            desc={
+              proactiveOn
+                ? "TA 没被喊也会自己来消息、自己发动态"
+                : "关掉后 TA 不会再主动来找你，也不会自己发动态"
+            }
+            showArrow={false}
+            right={
+              <Switch
+                on={proactiveOn}
+                onClick={() => void onUpdate({ proactiveOn: !proactiveOn })}
+              />
+            }
+          />
+          {proactiveOn ? (
+            <>
+              <SettingRow
+                title="基础时间"
+                desc="只是标称——TA 会按你们聊到哪儿、什么气氛自己决定多久再来"
+                showArrow={false}
+                right={<StepCount value={fmtGapMin(proactiveBase)} onStep={stepProactiveBase} />}
+              />
+              <SettingRow
+                title="深夜模式"
+                desc={
+                  proactiveQuiet
+                    ? "23:00–08:00 不会主动来消息，也不会发动态"
+                    : "深夜也照来，几点都可能收到 TA 的消息"
+                }
+                showArrow={false}
+                right={
+                  <Switch
+                    on={proactiveQuiet}
+                    onClick={() => void onUpdate({ proactiveQuiet: !proactiveQuiet })}
+                  />
+                }
+              />
+            </>
           ) : null}
         </div>
 

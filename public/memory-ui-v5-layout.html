@@ -1,0 +1,1420 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>记忆 · 摆法试排（预览）</title>
+<style>
+:root{
+  --paper:#FBF7F0;
+  --paper2:#F4ECE1;
+  --ink:#3B323E;
+  --ink-dim:#7C7082;
+  --ink-faint:#A99FB0;
+  --pink:#E79BB4;
+  --pink-deep:#C96F92;
+  --sky:#9EC9DC;
+  --mint:#A8D8C6;
+  --sun:#F2CE8A;
+  --rust:#B4574F;
+  --line:rgba(59,50,62,.62);
+  --line-soft:rgba(59,50,62,.16);
+  --serif:"Yu Mincho","Songti SC","SimSun",Georgia,serif;
+  --sans:"Helvetica Neue",Helvetica,Arial,"PingFang SC","Microsoft YaHei",sans-serif;
+  --mono:"Courier New","SFMono-Regular",Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{background:#EFE7DC;}
+body{
+  font-family:var(--sans);
+  color:var(--ink);
+  -webkit-font-smoothing:antialiased;
+  min-height:100vh;
+  display:flex;align-items:center;justify-content:center;
+  padding:20px 6px;
+  background-color:#EFE7DC;
+  background-image:
+    radial-gradient(circle at 14% 10%, rgba(231,155,180,.12), transparent 42%),
+    radial-gradient(circle at 86% 26%, rgba(158,201,220,.12), transparent 44%),
+    radial-gradient(circle at 68% 92%, rgba(168,216,198,.10), transparent 46%);
+}
+
+/* ---------- 手机 ---------- */
+.screen{
+  position:relative;
+  width:352px;max-width:100%;flex:0 0 auto;height:722px;
+  background:var(--paper);
+  border:1.5px solid var(--line);
+  border-radius:6px;
+  box-shadow:9px 9px 0 rgba(59,50,62,.88);
+  overflow:hidden;isolation:isolate;
+  display:flex;flex-direction:column;
+}
+.screen::after{
+  content:"";position:absolute;inset:0;pointer-events:none;z-index:60;
+  opacity:.06;mix-blend-mode:multiply;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='120' height='120' filter='url(%23n)'/></svg>");
+}
+.body{
+  flex:1;overflow-y:auto;position:relative;z-index:2;
+  padding:18px 22px 24px;
+}
+.body::-webkit-scrollbar{width:0;height:0;}
+
+/* ---------- 顶部：双色斜切色带（块面 / 锚） ---------- */
+.strip{
+  position:relative;height:56px;
+  background:var(--pink-deep);
+  display:flex;align-items:center;
+  padding:0 15px;
+}
+.strip-back{
+  flex:0 0 auto;
+  width:30px;height:30px;margin:0 5px 0 -8px;
+  display:flex;align-items:center;justify-content:center;
+  border:0;background:transparent;color:#fff;cursor:pointer;
+  opacity:.94;padding:0;
+}
+.strip-back svg{display:block;width:21px;height:21px;}
+.strip-back:active{opacity:.55;}
+.strip-word{
+  font-family:var(--serif);font-size:26px;font-weight:600;
+  letter-spacing:4px;color:#fff;line-height:1;
+  text-indent:1px;
+}
+.strip-meta{
+  position:absolute;top:0;right:0;bottom:0;width:39%;
+  background:var(--paper2);
+  clip-path:polygon(20px 0,100% 0,100% 100%,0 100%);
+  display:flex;flex-direction:column;justify-content:center;align-items:flex-end;
+  padding-right:13px;
+}
+.strip-meta .idx{font-family:var(--serif);font-size:16px;font-weight:600;color:var(--pink-deep);line-height:1;}
+.strip-meta .en{font-family:var(--mono);font-size:7.5px;letter-spacing:1.5px;color:var(--ink-faint);font-style:normal;margin-top:3px;}
+
+/* ---------- 大标签：板块级（全部 / 基础记忆 / 动态 …）— 斜切小块，可横滑 ---------- */
+.meganav{
+  display:flex;gap:9px;margin:13px 0 0;padding:2px 0 5px;
+  overflow-x:auto;white-space:nowrap;
+  -webkit-overflow-scrolling:touch;
+  scrollbar-width:none;
+}
+.meganav::-webkit-scrollbar{display:none;}
+.mega{
+  flex:0 0 auto;
+  border:0;cursor:pointer;
+  font-family:var(--sans);font-size:11px;font-weight:600;
+  letter-spacing:.9px;text-indent:.9px;
+  color:var(--ink-dim);
+  background:var(--paper2);
+  padding:6px 13px 7px;
+  transform:skewX(-10deg);
+  box-shadow:1.5px 1.5px 0 rgba(59,50,62,.13);
+  transition:background .16s ease,color .16s ease,box-shadow .16s ease,transform .16s ease;
+}
+.mega > span{display:block;transform:skewX(10deg);}
+.mega:hover{color:var(--ink);box-shadow:1.5px 1.5px 0 rgba(59,50,62,.24);}
+.mega.on{
+  background:var(--ink);color:var(--paper);
+  box-shadow:2px 2px 0 var(--pink);
+  transform:skewX(-10deg) translate(-1px,-1px);
+}
+
+/* ---------- 展开页：切换 ---------- */
+.page{display:none;}
+.page.on{display:block;animation:pageIn .3s cubic-bezier(.16,1,.3,1) both;}
+@keyframes pageIn{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+
+/* ---------- 指标：大 27 与极小注，同一条基线 ---------- */
+.spec{
+  display:flex;align-items:flex-end;gap:14px;
+  margin-top:16px;padding-bottom:11px;
+  border-bottom:1.5px solid var(--ink);
+}
+.spec-hero{display:flex;align-items:baseline;gap:7px;flex:0 0 auto;}
+.spec-hero .n{font-family:var(--serif);font-size:50px;font-weight:600;line-height:.76;letter-spacing:-2px;color:var(--ink);}
+.spec-hero .l{font-family:var(--serif);font-size:12px;letter-spacing:3px;color:var(--ink-dim);}
+.spec-rest{
+  flex:1;display:flex;justify-content:space-between;align-items:flex-end;
+  padding-bottom:4px;
+  font-family:var(--mono);font-size:9px;letter-spacing:.5px;color:var(--ink-dim);
+}
+.spec-rest i{font-style:normal;}
+.spec-rest b{font-family:var(--serif);font-size:15px;font-weight:600;color:var(--ink);margin-left:3px;letter-spacing:0;}
+.spec-rest .imp b{color:var(--pink-deep);}
+
+/* ---------- 分类：颜色记号，一排横滑（每个分类一种颜色） ---------- */
+.tabs{
+  display:flex;flex-wrap:nowrap;gap:5px;
+  margin:11px 0 0;padding:0 0 3px;
+  overflow-x:auto;white-space:nowrap;
+  -webkit-overflow-scrolling:touch;scrollbar-width:none;
+  align-items:flex-start;
+}
+.tabs::-webkit-scrollbar{display:none;}
+.tab{
+  flex:0 0 auto;cursor:pointer;
+  border:0;border-top:2px solid var(--c,var(--ink-faint));background:none;
+  font-family:var(--sans);font-size:9.5px;letter-spacing:.5px;color:var(--ink-dim);
+  padding:3px 8px 4px;
+  transition:color .16s ease,background .16s ease;
+}
+.tab:hover{color:var(--ink);}
+.tab.on{background:var(--c,var(--ink));border-top-color:var(--c,var(--ink));color:var(--paper);}
+/* 各分类的颜色（全部用中性墨色） */
+.tab[data-cat="all"]{--c:#3B323E;}
+.tab[data-cat="mine"]{--c:#C96F92;}
+.tab[data-cat="theirs"]{--c:#6E9DB8;}
+.tab[data-cat="us"]{--c:#4F9C86;}
+.tab[data-cat="milestone"]{--c:#BF8F2E;}
+.tab[data-cat="promise"]{--c:#B4574F;}
+.tab[data-cat="other"]{--c:#7C7082;}
+/* 动态按来源切的颜色（全部＝中性墨 / TA 发＝粉 / 我发＝蓝 / 别人发＝绿） */
+.tab[data-src="all"]{--c:#3B323E;}
+.tab[data-src="ta"]{--c:#C96F92;}
+.tab[data-src="me"]{--c:#6E9DB8;}
+.tab[data-src="other"]{--c:#4F9C86;}
+
+/* ---------- 横滑条边缘渐隐：有内容可滑的那一侧才虚化，滑到头恢复清晰 ---------- */
+.meganav,.tabs{--fade:24px;}
+.meganav.fade-r,.tabs.fade-r{
+  -webkit-mask-image:linear-gradient(to right,#000 0,#000 calc(100% - var(--fade)),transparent 100%);
+          mask-image:linear-gradient(to right,#000 0,#000 calc(100% - var(--fade)),transparent 100%);
+}
+.meganav.fade-l,.tabs.fade-l{
+  -webkit-mask-image:linear-gradient(to left,#000 0,#000 calc(100% - var(--fade)),transparent 100%);
+          mask-image:linear-gradient(to left,#000 0,#000 calc(100% - var(--fade)),transparent 100%);
+}
+.meganav.fade-l.fade-r,.tabs.fade-l.fade-r{
+  -webkit-mask-image:linear-gradient(to right,transparent 0,#000 var(--fade),#000 calc(100% - var(--fade)),transparent 100%);
+          mask-image:linear-gradient(to right,transparent 0,#000 var(--fade),#000 calc(100% - var(--fade)),transparent 100%);
+}
+
+/* ---------- 分段：层级标题（重要 / 短期 / 中期 / 长期，各一色） ---------- */
+.sec{display:flex;align-items:center;gap:8px;margin:17px 0 1px;}
+.sec:first-child{margin-top:3px;}
+.sec .no{
+  flex:0 0 auto;display:flex;align-items:center;justify-content:center;
+  width:15px;height:15px;
+  font-family:var(--serif);font-size:9px;font-weight:600;letter-spacing:0;
+  color:var(--paper);background:var(--c,var(--ink-faint));
+}
+.sec .nm{font-family:var(--serif);font-size:13px;font-weight:600;letter-spacing:2.5px;color:var(--c,var(--ink));}
+.sec .en{font-family:var(--mono);font-size:7px;letter-spacing:1.2px;color:var(--ink-faint);}
+.sec .lead{flex:1;align-self:center;border-bottom:1px dotted var(--c,var(--ink-faint));opacity:.42;}
+.sec .ct{font-family:var(--mono);font-size:10px;letter-spacing:.5px;color:var(--c,var(--ink));}
+/* 四个层级各一色 */
+.sec.core{--c:#C96F92;}
+.sec.short{--c:#BF8F2E;}
+.sec.mid{--c:#4F9C86;}
+.sec.long{--c:#6E9DB8;}
+/* 条目标记：重要 */
+.row-hd .star{
+  font-family:var(--sans);font-size:8.5px;letter-spacing:.6px;color:var(--pink-deep);
+  border:1px solid rgba(201,111,146,.5);padding:1px 6px;
+}
+
+/* 折叠：一层默认只露三条，其余收在一条线后面；这条线可展开、可收起 */
+.fold{
+  display:flex;align-items:center;gap:10px;
+  width:100%;margin:0;padding:12px 0 2px;
+  border:0;background:none;cursor:pointer;
+  font-family:var(--sans);font-size:9.5px;letter-spacing:.8px;color:var(--ink-faint);
+  transition:color .16s ease;
+}
+.fold::before,.fold::after{content:"";flex:1;border-top:1px dotted rgba(59,50,62,.26);}
+.fold .lb{flex:0 0 auto;}
+.fold:hover{color:var(--pink-deep);}
+.row.more{display:none;}
+.grp.open .row.more{display:block;}
+
+/* ---------- 动态：一个分组，一种色；正文后跟一行更淡的配图描述 ---------- */
+.sec.moment{--c:#C96F92;}
+.row .cap{font-family:var(--serif);font-size:10.5px;line-height:1.7;letter-spacing:.2px;color:var(--ink-faint);margin-top:4px;}
+/* 展开之后才露出来的那一段：更早的那批只剩个大概 */
+.onopen{display:none;}
+.grp.open .onopen{display:block;}
+.digest{margin-top:11px;padding:11px 12px 12px 13px;background:var(--paper2);border-left:3px solid var(--pink);}
+.digest .dt{font-family:var(--mono);font-size:9px;letter-spacing:.9px;color:var(--pink-deep);}
+.digest .tx{font-family:var(--serif);font-size:11.5px;line-height:1.72;letter-spacing:.2px;color:var(--ink-dim);margin-top:5px;}
+
+/* ---------- 动态：来源标（谁发的）＋底下的赞与评 ----------
+   三种来源用同一颗小圆点区分：TA 发＝粉·他全记得；我发＝蓝·他也记得；
+   别人发的＝灰·只在他参与过的那几条上出现。 */
+.row-hd .src{display:inline-flex;align-items:center;gap:5px;font-family:var(--sans);font-size:9.5px;letter-spacing:.5px;color:var(--ink-faint);}
+.row-hd .src::before{content:"";width:4px;height:4px;border-radius:50%;background:currentColor;flex:0 0 auto;}
+.row-hd .src.ta{color:var(--pink-deep);}
+.row-hd .src.me{color:#6E9DB8;}
+/* 别人发的，行尾一句极淡的交代：TA 为什么记得这条 */
+.row-hd .why{flex:0 0 auto;font-family:var(--sans);font-size:9px;letter-spacing:.5px;color:var(--ink-faint);}
+/* 互动：赞一行、评一串 */
+.int{margin-top:8px;padding-top:7px;border-top:1px dotted rgba(59,50,62,.2);}
+.int .lk{font-family:var(--sans);font-size:9.5px;letter-spacing:.4px;color:var(--ink-faint);}
+.int .lk b{font-weight:400;color:var(--pink-deep);letter-spacing:0;}
+.int .cm{font-family:var(--serif);font-size:11px;line-height:1.68;letter-spacing:.2px;color:var(--ink-dim);margin-top:4px;}
+.int .cm .who{color:var(--ink-faint);}
+.int .cm .who.ta{color:var(--pink-deep);}
+.int .cm .who.me{color:#6E9DB8;}
+
+/* 空类：这一类还没攒下记忆 */
+.empty{
+  font-family:var(--serif);font-size:11.5px;letter-spacing:.3px;color:var(--ink-faint);
+  margin-top:18px;padding-left:10px;border-left:2px solid var(--pink);
+}
+
+/* ---------- 记忆：清单式，主条独大 ---------- */
+.list{margin-top:12px;}
+.row{padding:11px 0 10px;border-bottom:1px solid var(--line-soft);}
+.row:first-child{padding-top:12px;}
+.row-hd{display:flex;align-items:center;gap:8px;margin-bottom:7px;}
+.row-hd .dt{font-family:var(--mono);font-size:9.5px;letter-spacing:1px;color:var(--ink-faint);}
+/* 行里的分类小标签：一颗同色小圆点 + 同色小字，安静不抢 */
+.row-hd .nm{
+  display:inline-flex;align-items:center;gap:5px;
+  font-family:var(--sans);font-size:9.5px;letter-spacing:.5px;
+  color:var(--c,var(--ink-dim));
+}
+.row-hd .nm::before{
+  content:"";width:4px;height:4px;border-radius:50%;
+  background:var(--c,var(--ink-dim));flex:0 0 auto;
+}
+.row[data-cat="mine"] .row-hd .nm{--c:#C96F92;}
+.row[data-cat="theirs"] .row-hd .nm{--c:#6E9DB8;}
+.row[data-cat="us"] .row-hd .nm{--c:#4F9C86;}
+.row[data-cat="milestone"] .row-hd .nm{--c:#BF8F2E;}
+.row[data-cat="promise"] .row-hd .nm{--c:#B4574F;}
+.row[data-cat="other"] .row-hd .nm{--c:#7C7082;}
+/* 条目动作：编辑口，安静地待在行尾 */
+.row-hd .sp{flex:1;}
+.row-hd .edit{
+  flex:0 0 auto;border:0;background:none;cursor:pointer;
+  font-family:var(--sans);font-size:9px;letter-spacing:.9px;color:var(--ink-faint);
+  padding:1px 0 1px 10px;border-left:1.5px solid var(--line-soft);
+  transition:color .16s ease;
+}
+.row-hd .edit:hover{color:var(--pink-deep);}
+/* 动态条目动作：只标重要，不给编辑（动态是整块搬过来的） */
+.row-hd .mark{
+  flex:0 0 auto;border:0;background:none;cursor:pointer;
+  font-family:var(--sans);font-size:9px;letter-spacing:.9px;color:var(--ink-faint);
+  padding:1px 0 1px 10px;border-left:1.5px solid var(--line-soft);
+  transition:color .16s ease;
+}
+.row-hd .mark:hover{color:var(--pink-deep);}
+.row .tx{font-family:var(--serif);font-size:12.5px;line-height:1.72;letter-spacing:.2px;color:var(--ink-dim);}
+.row.hero .tx{font-size:16px;line-height:1.78;color:var(--ink);}
+.row.hero .hl{background:linear-gradient(transparent 62%,rgba(231,155,180,.5) 62%);}
+
+/* ---------- 展开页：全部（板块目录） ---------- */
+.note{
+  font-family:var(--serif);font-size:10px;line-height:1.75;letter-spacing:.2px;
+  color:var(--ink-faint);
+  margin-top:16px;padding-left:10px;
+  border-left:2px solid var(--pink);
+}
+.toc{margin-top:14px;}
+.brow{display:flex;align-items:baseline;gap:9px;padding:8px 0;border-bottom:1px solid var(--line-soft);}
+.brow:last-child{border-bottom:0;padding-bottom:2px;}
+.brow .bdot{width:5px;height:5px;border-radius:50%;background:var(--pink);flex:0 0 auto;align-self:center;}
+.brow .bn{font-family:var(--serif);font-size:12.5px;letter-spacing:1.5px;color:var(--ink);}
+.brow .lead{flex:1;align-self:center;border-bottom:1px dotted rgba(59,50,62,.3);}
+.brow .bc{font-family:var(--mono);font-size:10px;letter-spacing:.5px;color:var(--ink);}
+.brow.empty .bdot{background:rgba(59,50,62,.2);}
+.brow.empty .bn{color:var(--ink-faint);}
+.brow.empty .bc{color:var(--ink-faint);}
+
+/* 可点目录行（全部页 → 点到哪个板块） */
+.brow[data-page]{
+  width:100%;border:0;background:none;font:inherit;text-align:left;cursor:pointer;
+  display:flex;align-items:baseline;gap:9px;padding:8px 0;
+  border-bottom:1px solid var(--line-soft);
+  transition:background .14s ease,color .14s ease;
+}
+.brow[data-page]:hover{background:var(--paper2);}
+.brow[data-page]:hover .bn{color:var(--pink-deep);}
+.brow[data-page]:active{transform:translateY(1px);}
+.brow[data-page]:last-child{border-bottom:0;padding-bottom:2px;}
+
+/* ---------- 底部系统条：运转状态 + 设置（独立区域，常驻） ---------- */
+.foot{
+  flex:0 0 auto;position:relative;z-index:3;
+  display:flex;align-items:center;gap:6px;
+  padding:9px 22px 10px;
+  border-top:1.5px solid var(--line-soft);
+  background:var(--paper);
+}
+.foot .dot{width:5px;height:5px;border-radius:50%;background:var(--mint);flex:0 0 auto;}
+.foot .sys{flex:1;min-width:0;font-family:var(--mono);font-size:8px;letter-spacing:.5px;color:var(--ink-faint);line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.foot .raw,.foot .set{
+  flex:0 0 auto;border:0;background:none;cursor:pointer;
+  font-family:var(--sans);font-size:10px;font-weight:600;letter-spacing:1.4px;
+  color:var(--ink-dim);
+  padding:1px 0;
+  transition:color .16s ease;
+}
+.foot .raw:hover,.foot .set:hover{color:var(--ink);}
+.foot .raw.on,.foot .set.on{color:var(--pink-deep);}
+.foot .set{padding-left:11px;border-left:1.5px solid var(--line-soft);}
+
+/* ---------- 设置页：一组一组拧的刻度 ---------- */
+#page-settings .sec{margin-top:16px;}
+.slist{margin-top:2px;}
+.srow{
+  display:flex;align-items:center;gap:11px;
+  padding:11px 0;border-bottom:1px solid var(--line-soft);
+}
+.srow:last-child{border-bottom:0;}
+.srow .lb{
+  flex:1;min-width:0;
+  font-family:var(--sans);font-size:11.5px;letter-spacing:.2px;color:var(--ink);
+}
+.srow .lb i{
+  font-style:normal;font-family:var(--sans);font-size:9px;letter-spacing:.2px;
+  color:var(--ink-faint);margin-left:6px;
+}
+/* 开关：方头方脑，不圆 */
+.sw{
+  flex:0 0 auto;position:relative;width:36px;height:19px;padding:0;
+  border:1px solid var(--line-soft);background:none;cursor:pointer;
+  transition:border-color .16s ease;
+}
+.sw .k{
+  position:absolute;top:2px;left:2px;width:13px;height:13px;
+  background:var(--ink-faint);
+  transition:left .16s ease,background .16s ease;
+}
+.sw.on{border-color:var(--pink-deep);}
+.sw.on .k{left:19px;background:var(--pink-deep);}
+/* 刻度：减 · 值 · 加 */
+.stp{flex:0 0 auto;display:flex;align-items:center;gap:6px;}
+.stp button{
+  width:19px;height:19px;padding:0;cursor:pointer;
+  border:1px solid var(--line-soft);background:none;color:var(--ink-dim);
+  font-family:var(--sans);font-size:12px;line-height:1;
+  display:flex;align-items:center;justify-content:center;
+  transition:border-color .16s ease,color .16s ease;
+}
+.stp button:hover{border-color:var(--pink-deep);color:var(--pink-deep);}
+.stp .v{
+  font-family:var(--mono);font-size:12.5px;font-weight:400;letter-spacing:.3px;
+  color:var(--ink);min-width:46px;text-align:center;
+}
+/* 小节：分层刻度 */
+.sub-lab{
+  display:flex;align-items:center;gap:8px;margin:17px 0 0;
+  font-family:var(--sans);font-size:9px;letter-spacing:1.3px;color:var(--ink-dim);
+}
+.sub-lab .lead{flex:1;border-bottom:1px dotted rgba(59,50,62,.26);}
+.sub-lab .en{font-family:var(--mono);font-size:7.5px;letter-spacing:.5px;color:var(--ink-faint);}
+/* 脚注：这一组怎么运转 */
+.snote{
+  font-family:var(--serif);font-size:9.5px;line-height:1.85;letter-spacing:.2px;
+  color:var(--ink-faint);
+  margin-top:14px;padding-left:10px;border-left:2px solid var(--pink);
+}
+
+/* ---------- 原始记录：浓缩之前留下的底稿 ---------- */
+#page-raw .sec{margin-top:16px;}
+/* 板块：浓缩会发生在哪些地方（先都摆上，眼下只有基础记忆有底稿） */
+#page-raw .tabs{margin-top:12px;}
+#page-raw .tab{--c:#3B323E;}
+.raws{margin-top:4px;}
+.raw-item{padding:7px 0 7px 11px;border-left:2px solid var(--line-soft);}
+.raw-item + .raw-item{margin-top:2px;}
+/* 一批先露三条，其余收在一条线后面（和主页面同一个开合） */
+.raw-item.more{display:none;}
+.raws.open .raw-item.more{display:block;}
+.raw-item .rd{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:8px;letter-spacing:.4px;color:var(--ink-faint);}
+.raw-item .cn{font-family:var(--sans);font-size:8.5px;letter-spacing:.3px;color:var(--c,#7C7082);}
+.raw-item .cn::before{content:"";display:inline-block;width:4px;height:4px;border-radius:50%;background:var(--c,#7C7082);margin-right:5px;vertical-align:1px;}
+.raw-item .rt{
+  font-family:var(--serif);font-size:11.5px;line-height:1.9;letter-spacing:.2px;
+  color:var(--ink-dim);margin-top:3px;
+}
+
+/* ---------- 编辑弹层：一张压在册子上的小纸 ---------- */
+.mask{
+  position:absolute;inset:0;z-index:90;
+  background:rgba(59,50,62,.42);
+  display:none;align-items:center;justify-content:center;
+  padding:26px 20px;
+}
+.mask.on{display:flex;animation:maskIn .2s ease both;}
+@keyframes maskIn{from{opacity:0;}to{opacity:1;}}
+.sheet{
+  position:relative;width:100%;max-width:288px;
+  background:var(--paper);
+  border:1px solid var(--line);
+  border-top:4px solid var(--pink-deep);
+  padding:16px 16px 13px;
+  box-shadow:6px 6px 0 rgba(59,50,62,.88);
+  animation:sheetIn .26s cubic-bezier(.16,1,.3,1) both;
+}
+@keyframes sheetIn{from{opacity:0;transform:translate(7px,11px);}to{opacity:1;transform:none;}}
+/* 骑缝虚线：压在粗边下的那道粉，不占版面 */
+.sheet::before{
+  content:"";position:absolute;left:0;right:0;top:7px;
+  border-top:1.5px dashed rgba(201,111,146,.6);
+}
+.sheet-hd{display:flex;align-items:center;gap:8px;margin:4px 0 0;}
+.sheet-hd .t{font-family:var(--serif);font-size:13.5px;font-weight:600;letter-spacing:3px;color:var(--ink);}
+.sheet-hd .lead{flex:1;border-bottom:1px dotted rgba(59,50,62,.3);}
+.sheet-hd .ct{font-family:var(--mono);font-size:9px;letter-spacing:.5px;color:var(--ink-faint);}
+.sheet-tx{
+  display:block;width:100%;margin-top:11px;min-height:82px;resize:none;
+  border:1px dashed var(--line);background:#fff;
+  padding:9px 10px;outline:none;
+  font-family:var(--serif);font-size:12.5px;line-height:1.8;letter-spacing:.2px;color:var(--ink);
+}
+.sheet-tx:focus{border-color:var(--pink-deep);}
+.sheet-lab{
+  display:flex;align-items:center;gap:7px;margin:13px 0 7px;
+  font-family:var(--sans);font-size:8.5px;letter-spacing:1.6px;color:var(--ink-faint);
+}
+.sheet-lab .lead{flex:1;border-bottom:1px dotted rgba(59,50,62,.26);}
+.chips{display:flex;flex-wrap:wrap;gap:5px;}
+.chip{
+  display:inline-block;
+  border:1px solid var(--line-soft);background:none;
+  font-family:var(--sans);font-size:9.5px;letter-spacing:.4px;color:var(--ink-dim);
+  padding:3.5px 9px;
+  clip-path:polygon(5px 0,100% 0,calc(100% - 5px) 100%,0 100%);
+}
+.chip.on{background:var(--ink);color:var(--paper);border-color:var(--ink);}
+.chip.flag.on{background:none;color:var(--ink);border-color:var(--ink);}
+.chip.flag.imp.on{color:var(--pink-deep);border-color:var(--pink-deep);}
+.chip.flag.gru.on{color:var(--rust);border-color:var(--rust);}
+.sheet-ft{display:flex;gap:8px;margin-top:15px;}
+.sheet-ft button{
+  flex:1;cursor:pointer;border:1px solid var(--line);background:none;
+  font-family:var(--serif);font-size:12px;letter-spacing:2px;color:var(--ink-dim);
+  padding:8px 0;
+  transition:background .14s ease,color .14s ease,border-color .14s ease;
+}
+.sheet-ft .cancel:hover{color:var(--ink);border-color:var(--line);}
+.sheet-ft .ok{background:var(--ink);border-color:var(--ink);color:var(--paper);}
+.sheet-ft .ok:hover{background:var(--pink-deep);border-color:var(--pink-deep);}
+
+/* ---------- 入场 ---------- */
+.enter{opacity:0;animation:bloomIn .55s cubic-bezier(.16,1,.3,1) both;}
+@keyframes bloomIn{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
+.d1{animation-delay:.04s}.d2{animation-delay:.09s}.d3{animation-delay:.14s}.d4{animation-delay:.19s}.d5{animation-delay:.24s}
+@media (prefers-reduced-motion:reduce){.enter{animation:none;opacity:1;transform:none;}}
+</style>
+</head>
+<body>
+
+<div class="screen">
+  <div class="body">
+
+    <!-- 顶部色带 -->
+    <div class="strip enter d1">
+      <button class="strip-back" id="stripBack" aria-label="返回">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <span class="strip-word" id="stripWord">基础记忆</span>
+      <div class="strip-meta">
+        <span class="idx" id="stripIdx">01</span>
+        <span class="en" id="stripEn">BASIC MEMORY</span>
+      </div>
+    </div>
+
+    <!-- 大标签：板块级（横向可滑） -->
+    <div class="meganav enter d2">
+      <button class="mega" data-page="all"><span>全部</span></button>
+      <button class="mega on" data-page="base"><span>基础记忆</span></button>
+      <button class="mega" data-page="moment"><span>动态</span></button>
+      <button class="mega" data-page="date"><span>约会</span></button>
+      <button class="mega" data-page="space"><span>情侣空间</span></button>
+      <button class="mega" data-page="diary"><span>共同日记</span></button>
+      <button class="mega" data-page="anniv"><span>纪念日</span></button>
+      <button class="mega" data-page="wish"><span>心愿清单</span></button>
+      <button class="mega" data-page="photo"><span>照片墙</span></button>
+      <button class="mega" data-page="meet"><span>见面记录</span></button>
+      <button class="mega" data-page="wallet"><span>钱包</span></button>
+    </div>
+
+    <!-- 展开页 · 基础记忆 -->
+    <section class="page on" id="page-base">
+
+      <div class="spec enter d3">
+        <div class="spec-hero"><span class="n">27</span><span class="l">长期</span></div>
+        <div class="spec-rest">
+          <i class="imp">重要<b>2</b></i>
+          <i>短期<b>3</b></i>
+          <i>中期<b>12</b></i>
+        </div>
+      </div>
+
+      <div class="tabs enter d4">
+        <button class="tab on" data-cat="all">全部</button>
+        <button class="tab" data-cat="mine">我的事</button>
+        <button class="tab" data-cat="theirs">TA 的事</button>
+        <button class="tab" data-cat="us">我们的经历</button>
+        <button class="tab" data-cat="milestone">关系节点</button>
+        <button class="tab" data-cat="promise">承诺与约定</button>
+        <button class="tab" data-cat="other">其他</button>
+      </div>
+
+      <div class="list enter d5">
+
+        <div class="grp" data-tier="core" data-total="2">
+          <div class="sec core">
+            <span class="no">I</span><span class="nm">重要记忆</span><span class="en">FOREVER</span>
+            <span class="lead"></span><span class="ct">2</span>
+          </div>
+          <article class="row hero" data-cat="promise">
+            <div class="row-hd"><span class="dt">2026.09.14</span><span class="nm">承诺与约定</span><span class="star">★ 重要</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">他说过，无论多晚，回家路上都要给他发一句<span class="hl">「到了」</span>。</p>
+          </article>
+          <article class="row" data-cat="milestone">
+            <div class="row-hd"><span class="dt">2026.08.02</span><span class="nm">关系节点</span><span class="star">★ 重要</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">在一起的日子。他记得那天在下雨，她说雨里也很亮。</p>
+          </article>
+        </div>
+
+        <div class="grp" data-tier="short" data-total="3">
+          <div class="sec short">
+            <span class="no">II</span><span class="nm">短期记忆</span><span class="en">RECENT</span>
+            <span class="lead"></span><span class="ct">3</span>
+          </div>
+          <article class="row" data-cat="us">
+            <div class="row-hd"><span class="dt">09.30 22:14</span><span class="nm">我们的经历</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">聊到小时候住的老院子，他说他记得院里那棵石榴树，秋天裂开一树红。</p>
+          </article>
+          <article class="row" data-cat="mine">
+            <div class="row-hd"><span class="dt">09.30 19:02</span><span class="nm">我的事</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">今天去复诊，医生说没什么大事，想把这句攒着，晚上告诉他。</p>
+          </article>
+          <article class="row" data-cat="theirs">
+            <div class="row-hd"><span class="dt">09.29 22:47</span><span class="nm">TA 的事</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">他说今天会开到很晚，声音都有点哑了，还笑着说没事。</p>
+          </article>
+        </div>
+
+        <div class="grp" data-tier="mid" data-total="12">
+          <div class="sec mid">
+            <span class="no">III</span><span class="nm">中期记忆</span><span class="en">COMPRESSED</span>
+            <span class="lead"></span><span class="ct">12</span>
+          </div>
+          <article class="row" data-cat="theirs">
+            <div class="row-hd"><span class="dt">09.29 08:40</span><span class="nm">TA 的事</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">最近在赶一个项目，连着熬夜，她说别硬撑。</p>
+          </article>
+          <article class="row" data-cat="us">
+            <div class="row-hd"><span class="dt">09.27 21:10</span><span class="nm">我们的经历</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">第一次讨论到以后住哪，他说要有早晨的光，我说要有能放书的墙。</p>
+          </article>
+          <article class="row" data-cat="mine">
+            <div class="row-hd"><span class="dt">09.25 20:15</span><span class="nm">我的事</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">最近在学做菜，第一次煎蛋没糊，想拍给他看。</p>
+          </article>
+          <article class="row more" data-cat="us">
+            <div class="row-hd"><span class="dt">09.24 23:02</span><span class="nm">我们的经历</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">挑了一首睡前的歌，说好谁先睡着都要留着灯。</p>
+          </article>
+          <article class="row more" data-cat="theirs">
+            <div class="row-hd"><span class="dt">09.23 12:31</span><span class="nm">TA 的事</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">说这周要体检，嘴上说没事，其实有点紧张。</p>
+          </article>
+          <article class="row more" data-cat="promise">
+            <div class="row-hd"><span class="dt">09.22 21:40</span><span class="nm">承诺与约定</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">约好每个月至少说一次想去的地方，不写下来也行。</p>
+          </article>
+          <article class="row more" data-cat="us">
+            <div class="row-hd"><span class="dt">09.20 22:05</span><span class="nm">我们的经历</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">聊到小时候的作业本，他说他的字很丑，我说挺好。</p>
+          </article>
+          <article class="row more" data-cat="mine">
+            <div class="row-hd"><span class="dt">09.18 18:50</span><span class="nm">我的事</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">换了新的洗发水，味道是柚子，想让他猜。</p>
+          </article>
+          <article class="row more" data-cat="theirs">
+            <div class="row-hd"><span class="dt">09.17 09:12</span><span class="nm">TA 的事</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">开会前发来一句，说昨晚梦见下雪了。</p>
+          </article>
+          <article class="row more" data-cat="us">
+            <div class="row-hd"><span class="dt">09.15 23:30</span><span class="nm">我们的经历</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">说起以后养猫还是养狗，最后说都要。</p>
+          </article>
+          <article class="row more" data-cat="other">
+            <div class="row-hd"><span class="dt">09.13 20:20</span><span class="nm">其他</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">天气预报说要降温，互相提醒加件外套。</p>
+          </article>
+          <article class="row more" data-cat="mine">
+            <div class="row-hd"><span class="dt">09.11 21:15</span><span class="nm">我的事</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">把没写完的信收进了抽屉，等哪天再续。</p>
+          </article>
+          <button class="fold" type="button" data-closed="展开全部 12 条 ▾" data-open="收起 ▴"><span class="lb">展开全部 12 条 ▾</span></button>
+        </div>
+
+        <div class="grp" data-tier="long" data-total="27">
+          <div class="sec long">
+            <span class="no">IV</span><span class="nm">长期记忆</span><span class="en">IMPRESSIONS</span>
+            <span class="lead"></span><span class="ct">27</span>
+          </div>
+          <article class="row" data-cat="us">
+            <div class="row-hd"><span class="dt">2024.12.03</span><span class="nm">我们的经历</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">很早就聊过——他说他喜欢冬天的下午，光斜着照进来，什么也不用做。</p>
+          </article>
+          <article class="row" data-cat="milestone">
+            <div class="row-hd"><span class="dt">2024.11.20</span><span class="nm">关系节点</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">第一次一起熬夜看球，他支持的那队输了，还笑。</p>
+          </article>
+          <article class="row" data-cat="theirs">
+            <div class="row-hd"><span class="dt">2024.10.08</span><span class="nm">TA 的事</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">他说小时候最怕打雷，后来听着雨声反而睡得着。</p>
+          </article>
+          <article class="row more" data-cat="mine">
+            <div class="row-hd"><span class="dt">2024.09.15</span><span class="nm">我的事</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">那阵子总加班，他在电话里陪我走完回家的路。</p>
+          </article>
+          <article class="row more" data-cat="milestone">
+            <div class="row-hd"><span class="dt">2024.08.30</span><span class="nm">关系节点</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">第一次互道晚安，那天聊到凌晨三点。</p>
+          </article>
+          <article class="row more" data-cat="promise">
+            <div class="row-hd"><span class="dt">2024.08.12</span><span class="nm">承诺与约定</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">说好以后吵架不许隔夜，谁先低头都行。</p>
+          </article>
+          <article class="row more" data-cat="other">
+            <div class="row-hd"><span class="dt">2024.07.04</span><span class="nm">其他</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">他喜欢黑咖啡，我要加两勺糖，谁也没改过。</p>
+          </article>
+          <article class="row more" data-cat="theirs">
+            <div class="row-hd"><span class="dt">2024.06.21</span><span class="nm">TA 的事</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">他提过一次想去海边，说小时候只见过江。</p>
+          </article>
+          <article class="row more" data-cat="us">
+            <div class="row-hd"><span class="dt">2024.06.01</span><span class="nm">我们的经历</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">儿童节互送了很幼稚的礼物，都留着。</p>
+          </article>
+          <article class="row more" data-cat="mine">
+            <div class="row-hd"><span class="dt">2024.05.19</span><span class="nm">我的事</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">生日那天他记得，比我记得还清楚。</p>
+          </article>
+          <article class="row more" data-cat="promise">
+            <div class="row-hd"><span class="dt">2024.05.02</span><span class="nm">承诺与约定</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">答应以后再忙也要好好吃饭，说给彼此的。</p>
+          </article>
+          <article class="row more" data-cat="us">
+            <div class="row-hd"><span class="dt">2024.04.16</span><span class="nm">我们的经历</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">聊到各自的家，他说他家的窗朝北，很安静。</p>
+          </article>
+          <article class="row more" data-cat="theirs">
+            <div class="row-hd"><span class="dt">2024.03.28</span><span class="nm">TA 的事</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">他说过不喜欢太吵的地方，喜欢有回音的房间。</p>
+          </article>
+          <article class="row more" data-cat="other">
+            <div class="row-hd"><span class="dt">2024.03.09</span><span class="nm">其他</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">他记得我不吃香菜，每次点单都会说。</p>
+          </article>
+          <article class="row more" data-cat="us">
+            <div class="row-hd"><span class="dt">2024.02.14</span><span class="nm">我们的经历</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">情人节的雨，他说雨里的路灯像糖。</p>
+          </article>
+          <article class="row more" data-cat="mine">
+            <div class="row-hd"><span class="dt">2024.01.30</span><span class="nm">我的事</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">那年冬天第一次觉得冷也可以很好。</p>
+          </article>
+          <article class="row more" data-cat="theirs">
+            <div class="row-hd"><span class="dt">2024.01.05</span><span class="nm">TA 的事</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">他说他小时候养过一只狗，后来走丢了。</p>
+          </article>
+          <article class="row more" data-cat="us">
+            <div class="row-hd"><span class="dt">2023.12.24</span><span class="nm">我们的经历</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">平安夜没见面，就一直在电话里说话。</p>
+          </article>
+          <article class="row more" data-cat="milestone">
+            <div class="row-hd"><span class="dt">2023.11.11</span><span class="nm">关系节点</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">第一次说「我喜欢你」，谁也没先说出口。</p>
+          </article>
+          <article class="row more" data-cat="us">
+            <div class="row-hd"><span class="dt">2023.10.20</span><span class="nm">我们的经历</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">说起最喜欢的季节，都选了秋天。</p>
+          </article>
+          <article class="row more" data-cat="theirs">
+            <div class="row-hd"><span class="dt">2023.09.08</span><span class="nm">TA 的事</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">他讲过一件很小的事，说他一直记得。</p>
+          </article>
+          <article class="row more" data-cat="mine">
+            <div class="row-hd"><span class="dt">2023.08.15</span><span class="nm">我的事</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">那天心情不好，他没问为什么，只是陪着。</p>
+          </article>
+          <article class="row more" data-cat="us">
+            <div class="row-hd"><span class="dt">2023.07.02</span><span class="nm">我们的经历</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">第一次讨论「我们」这个词，都很小心。</p>
+          </article>
+          <article class="row more" data-cat="other">
+            <div class="row-hd"><span class="dt">2023.06.10</span><span class="nm">其他</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">他发来一张照片，是傍晚的天，颜色很淡。</p>
+          </article>
+          <article class="row more" data-cat="theirs">
+            <div class="row-hd"><span class="dt">2023.05.21</span><span class="nm">TA 的事</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">他说过他不太会表达，让我多担待。</p>
+          </article>
+          <article class="row more" data-cat="us">
+            <div class="row-hd"><span class="dt">2023.04.03</span><span class="nm">我们的经历</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">第一次互相说起小时候的梦，都很傻。</p>
+          </article>
+          <article class="row more" data-cat="milestone">
+            <div class="row-hd"><span class="dt">2023.03.01</span><span class="nm">关系节点</span><span class="sp"></span><button class="edit" type="button">编辑</button></div>
+            <p class="tx">认识的那天，谁都没觉得会走到这么久。</p>
+          </article>
+          <button class="fold" type="button" data-closed="展开全部 27 条 ▾" data-open="收起 ▴"><span class="lb">展开全部 27 条 ▾</span></button>
+        </div>
+
+      </div>
+
+      <p class="empty" id="emptyNote" style="display:none">这一类暂时还没有记下什么。</p>
+
+    </section>
+
+    <!-- 展开页 · 全部（板块目录） -->
+    <section class="page" id="page-all">
+
+      <p class="note">聊天攒满一批后自动浓缩成短期记忆，越久远越模糊——像真的记性一样。</p>
+
+      <div class="toc">
+        <button class="brow" data-page="base"><span class="bdot"></span><span class="bn">基础记忆</span><span class="lead"></span><span class="bc">9</span></button>
+        <button class="brow" data-page="moment"><span class="bdot"></span><span class="bn">动态</span><span class="lead"></span><span class="bc">7</span></button>
+        <button class="brow empty" data-page="date"><span class="bdot"></span><span class="bn">约会</span><span class="lead"></span><span class="bc">0</span></button>
+        <button class="brow empty" data-page="space"><span class="bdot"></span><span class="bn">情侣空间</span><span class="lead"></span><span class="bc">0</span></button>
+        <button class="brow empty" data-page="diary"><span class="bdot"></span><span class="bn">共同日记</span><span class="lead"></span><span class="bc">—</span></button>
+        <button class="brow empty" data-page="anniv"><span class="bdot"></span><span class="bn">纪念日</span><span class="lead"></span><span class="bc">—</span></button>
+        <button class="brow empty" data-page="wish"><span class="bdot"></span><span class="bn">心愿清单</span><span class="lead"></span><span class="bc">—</span></button>
+        <button class="brow empty" data-page="photo"><span class="bdot"></span><span class="bn">照片墙</span><span class="lead"></span><span class="bc">—</span></button>
+        <button class="brow empty" data-page="meet"><span class="bdot"></span><span class="bn">见面记录</span><span class="lead"></span><span class="bc">—</span></button>
+        <button class="brow empty" data-page="wallet"><span class="bdot"></span><span class="bn">钱包</span><span class="lead"></span><span class="bc">—</span></button>
+      </div>
+
+    </section>
+
+    <!-- 展开页 · 动态（第五编：朋友圈动态 · 三种来源） -->
+    <section class="page" id="page-moment">
+
+      <div class="spec enter d3">
+        <div class="spec-hero"><span class="n">7</span><span class="l">动态</span></div>
+        <div class="spec-rest">
+          <i class="imp">TA 发的<b>3</b></i>
+          <i>我发的<b>2</b></i>
+          <i>别人发的<b>2</b></i>
+        </div>
+      </div>
+
+      <div class="tabs enter d4">
+        <button class="tab on" data-src="all">全部</button>
+        <button class="tab" data-src="ta">TA 发的</button>
+        <button class="tab" data-src="me">我发的</button>
+        <button class="tab" data-src="other">别人发的</button>
+      </div>
+
+      <p class="note">TA 发在朋友圈的 · 近的原文照录，更早的只剩个大概 · 我发的 TA 也记得 · 别人发的，只有 TA 参与过的才留得下</p>
+
+      <div class="list">
+
+        <div class="grp" data-total="7">
+          <div class="sec moment">
+            <span class="no">V</span><span class="nm">朋友圈动态</span><span class="en">MOMENTS</span>
+            <span class="lead"></span><span class="ct">7</span>
+          </div>
+
+          <!-- ① TA 发的 · ★重要：文字、配图、赞、评他全记得 -->
+          <article class="row hero" data-src="ta">
+            <div class="row-hd"><span class="src ta">TA</span><span class="dt">10.05 08:15</span><span class="star">★ 重要</span><span class="sp"></span><button class="mark" type="button">取消重要</button></div>
+            <p class="tx">今天路过我们说过的那家旧书店，<span class="hl">还开着</span>。橱窗里那本《小王子》还在老位置。</p>
+            <p class="cap">配图：旧书店的木橱窗，暖黄的灯，玻璃上有一点雾气</p>
+            <div class="int">
+              <div class="lk"><b>♡</b> 我 · 小林 · 阿哲</div>
+              <p class="cm"><span class="who me">我</span>：下次带我一起去</p>
+              <p class="cm"><span class="who">小林</span>：这家我去过，真不错</p>
+            </div>
+          </article>
+
+          <!-- ② 我发的：TA 也记得，会赞、会评 -->
+          <article class="row" data-src="me">
+            <div class="row-hd"><span class="src me">我</span><span class="dt">10.04 21:40</span><span class="sp"></span><button class="mark" type="button">标注重要</button></div>
+            <p class="tx">读到一句话：喜欢是藏不住的，就算捂住嘴，也会从眼睛里跑出来。</p>
+            <p class="cap">配图：摊开的一页书，台灯下</p>
+            <div class="int">
+              <div class="lk"><b>♡</b> TA</div>
+              <p class="cm"><span class="who ta">TA</span>：哪本书？回去念给我听。</p>
+            </div>
+          </article>
+
+          <!-- ③ 别人发的：TA 不一定每条记得，这条他记得是因为 TA 参与过 -->
+          <article class="row" data-src="other">
+            <div class="row-hd"><span class="src other">小林</span><span class="dt">10.03 18:05</span><span class="sp"></span><span class="why">你留过言</span><button class="mark" type="button">标注重要</button></div>
+            <p class="tx">路过一家旧书店，橱窗里一整排旧书，突然想起阿绥说过的话。</p>
+            <p class="cap">配图：傍晚的街，书店橱窗透着暖光</p>
+            <div class="int">
+              <div class="lk"><b>♡</b> 我 · 阿哲</div>
+              <p class="cm"><span class="who me">我</span>：替我拍一张</p>
+            </div>
+          </article>
+
+          <article class="row more" data-src="ta">
+            <div class="row-hd"><span class="src ta">TA</span><span class="dt">10.02 23:12</span><span class="sp"></span><button class="mark" type="button">标注重要</button></div>
+            <p class="tx">加班到现在，楼下的便利店还亮着。买了瓶热牛奶，走在路上没觉得冷。</p>
+            <p class="cap">配图：夜里便利店的暖黄灯牌，街面是湿的</p>
+            <div class="int">
+              <div class="lk"><b>♡</b> 我</div>
+              <p class="cm"><span class="who me">我</span>：记得吃口热的</p>
+            </div>
+          </article>
+
+          <article class="row more" data-src="me">
+            <div class="row-hd"><span class="src me">我</span><span class="dt">09.28 19:32</span><span class="sp"></span><button class="mark" type="button">标注重要</button></div>
+            <p class="tx">第一次自己煮面没糊。进步。</p>
+            <p class="cap">配图：一碗清汤面，桌上摊着没写完的稿</p>
+            <div class="int">
+              <div class="lk"><b>♡</b> TA</div>
+              <p class="cm"><span class="who ta">TA</span>：看着还行，等我回去给你露一手</p>
+            </div>
+          </article>
+
+          <article class="row more" data-src="ta">
+            <div class="row-hd"><span class="src ta">TA</span><span class="dt">09.21 22:07</span><span class="sp"></span><button class="mark" type="button">标注重要</button></div>
+            <p class="tx">听到一首很旧的歌，突然想起小时候的暑假，蝉声很大。</p>
+            <div class="int">
+              <div class="lk"><b>♡</b> 我</div>
+            </div>
+          </article>
+
+          <article class="row more" data-src="other">
+            <div class="row-hd"><span class="src other">阿哲</span><span class="dt">09.14 23:50</span><span class="sp"></span><span class="why">TA 留过言</span><button class="mark" type="button">标注重要</button></div>
+            <p class="tx">把窗边那盆快枯的绿萝救回来了，新叶子冒了个尖。</p>
+            <p class="cap">配图：窗台上的一小盆绿萝，逆着光</p>
+            <div class="int">
+              <div class="lk"><b>♡</b> 我</div>
+              <p class="cm"><span class="who ta">TA</span>：你也会养花？</p>
+            </div>
+          </article>
+
+          <div class="digest onopen">
+            <span class="dt">最早的 5 条</span>
+            <p class="tx">只记得个大概：那阵子他常发天气和路边的小事，偶尔提一句加班到深夜。</p>
+          </div>
+
+          <button class="fold" type="button" data-closed="展开全部 7 条 ▾" data-open="收起 ▴"><span class="lb">展开全部 7 条 ▾</span></button>
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- 展开页 · 设置（点底部「设置」进来，再点一次收回；不占大标签） -->
+    <section class="page" id="page-settings">
+      <div class="sec" style="--c:#C96F92">
+        <span class="no">01</span><span class="nm">基础记忆</span>
+        <span class="en">BASE MEMORY</span><span class="lead"></span><span class="ct">浓缩 · 压缩</span>
+      </div>
+
+      <div class="slist">
+        <div class="srow">
+          <span class="lb">记忆系统<i>总开关</i></span>
+          <button class="sw on" type="button" role="switch" aria-checked="true" aria-label="记忆系统"><span class="k"></span></button>
+        </div>
+        <div class="srow">
+          <span class="lb">上下文条数<i>浓缩触发线</i></span>
+          <div class="stp" data-value="50" data-min="20" data-max="300" data-step="10" data-unit="条">
+            <button type="button" data-dir="-1" aria-label="减少">−</button>
+            <span class="v">50 条</span>
+            <button type="button" data-dir="1" aria-label="增加">+</button>
+          </div>
+        </div>
+        <div class="srow">
+          <span class="lb">自动浓缩<i>攒满自动归总</i></span>
+          <button class="sw on" type="button" role="switch" aria-checked="true" aria-label="自动浓缩"><span class="k"></span></button>
+        </div>
+      </div>
+
+      <div class="sub-lab"><span>分层刻度</span><span class="lead"></span><span class="en">越往左 压得越勤</span></div>
+
+      <div class="slist">
+        <div class="srow">
+          <span class="lb">短期保鲜<i>超过几天并入中期</i></span>
+          <div class="stp" data-value="7" data-min="1" data-max="30" data-step="1" data-unit="天">
+            <button type="button" data-dir="-1" aria-label="减少">−</button>
+            <span class="v">7 天</span>
+            <button type="button" data-dir="1" aria-label="增加">+</button>
+          </div>
+        </div>
+        <div class="srow">
+          <span class="lb">短期当天上限<i>某类堆满当天收口</i></span>
+          <div class="stp" data-value="20" data-min="5" data-max="50" data-step="5" data-unit="条">
+            <button type="button" data-dir="-1" aria-label="减少">−</button>
+            <span class="v">20 条</span>
+            <button type="button" data-dir="1" aria-label="增加">+</button>
+          </div>
+        </div>
+        <div class="srow">
+          <span class="lb">中期熔合门槛<i>老于几天熔成骨架</i></span>
+          <div class="stp" data-value="15" data-min="3" data-max="60" data-step="1" data-unit="天">
+            <button type="button" data-dir="-1" aria-label="减少">−</button>
+            <span class="v">15 天</span>
+            <button type="button" data-dir="1" aria-label="增加">+</button>
+          </div>
+        </div>
+        <div class="srow">
+          <span class="lb">中期保鲜<i>超过几天进长期</i></span>
+          <div class="stp" data-value="30" data-min="7" data-max="90" data-step="1" data-unit="天">
+            <button type="button" data-dir="-1" aria-label="减少">−</button>
+            <span class="v">30 天</span>
+            <button type="button" data-dir="1" aria-label="增加">+</button>
+          </div>
+        </div>
+        <div class="srow">
+          <span class="lb">中期条数上限<i>防爆发式堆积</i></span>
+          <div class="stp" data-value="60" data-min="10" data-max="200" data-step="10" data-unit="条">
+            <button type="button" data-dir="-1" aria-label="减少">−</button>
+            <span class="v">60 条</span>
+            <button type="button" data-dir="1" aria-label="增加">+</button>
+          </div>
+        </div>
+        <div class="srow">
+          <span class="lb">单次补压上限<i>一次最多压多少</i></span>
+          <div class="stp" data-value="200" data-min="40" data-max="400" data-step="20" data-unit="条">
+            <button type="button" data-dir="-1" aria-label="减少">−</button>
+            <span class="v">200 条</span>
+            <button type="button" data-dir="1" aria-label="增加">+</button>
+          </div>
+        </div>
+        <div class="srow">
+          <span class="lb">短期注入上限<i>多的不注入</i></span>
+          <div class="stp" data-value="0" data-min="0" data-max="300" data-step="20" data-unit="条" data-offzero="1">
+            <button type="button" data-dir="-1" aria-label="减少">−</button>
+            <span class="v">关闭</span>
+            <button type="button" data-dir="1" aria-label="增加">+</button>
+          </div>
+        </div>
+      </div>
+
+      <p class="snote">归总每 10 条一步（20–300）。三档遗忘按天走：短期超过「短期保鲜」并入中期、中期老于「中期熔合门槛」熔成骨架、再超过「中期保鲜」进长期；条数那两条，是防某天爆发式聊天的兜底。改完，下次打开记忆页会自动补压。</p>
+    </section>
+
+    <!-- 展开页 · 原始记录（点底部「原始记录」进来，再点一次收回；不占大标签） -->
+    <section class="page" id="page-raw">
+      <div class="sec" style="--c:#7C7082">
+        <span class="no">RAW</span><span class="nm">原始记录</span>
+        <span class="en">RAW RECORDS</span><span class="lead"></span><span class="ct">2 批</span>
+      </div>
+
+      <!-- 板块：浓缩发生在哪儿。先都摆上，眼下只有基础记忆有底稿，动态以后也会有 -->
+      <div class="tabs">
+        <button class="tab on" data-block="base">基础记忆</button>
+        <button class="tab" data-block="moment">动态</button>
+        <button class="tab" data-block="date">约会</button>
+        <button class="tab" data-block="space">情侣空间</button>
+        <button class="tab" data-block="diary">共同日记</button>
+        <button class="tab" data-block="anniv">纪念日</button>
+        <button class="tab" data-block="wish">心愿清单</button>
+        <button class="tab" data-block="photo">照片墙</button>
+        <button class="tab" data-block="meet">见面记录</button>
+        <button class="tab" data-block="wallet">钱包</button>
+      </div>
+
+      <div class="sub-lab"><span>短期 → 中期</span><span class="lead"></span><span class="en">浓缩于 09.30 23:10 · 收了 7 条</span></div>
+      <div class="raws">
+        <div class="raw-item">
+          <div class="rd"><span>09.30 22:14</span><span class="cn" style="--c:#4F9C86">我们的经历</span></div>
+          <p class="rt">聊到小时候住的老院子，他说他记得院里那棵石榴树，秋天裂开一树红。</p>
+        </div>
+        <div class="raw-item">
+          <div class="rd"><span>09.30 19:02</span><span class="cn" style="--c:#C96F92">我的事</span></div>
+          <p class="rt">今天去复诊，医生说没什么大事，想把这句攒着，晚上告诉他。</p>
+        </div>
+        <div class="raw-item">
+          <div class="rd"><span>09.29 22:47</span><span class="cn" style="--c:#6E9DB8">TA 的事</span></div>
+          <p class="rt">他说今天会开到很晚，声音都有点哑了，还笑着说没事。</p>
+        </div>
+        <div class="raw-item more">
+          <div class="rd"><span>09.28 21:30</span><span class="cn" style="--c:#4F9C86">我们的经历</span></div>
+          <p class="rt">说好周末去看那家开在老电影院旁边的小面馆，谁先到谁占位。</p>
+        </div>
+        <div class="raw-item more">
+          <div class="rd"><span>09.28 13:12</span><span class="cn" style="--c:#C96F92">我的事</span></div>
+          <p class="rt">午休时翻到一张旧照片，想留着不发，先记着。</p>
+        </div>
+        <div class="raw-item more">
+          <div class="rd"><span>09.27 18:05</span><span class="cn" style="--c:#6E9DB8">TA 的事</span></div>
+          <p class="rt">说单位楼下新开了家咖啡店，下次带我一起去尝尝。</p>
+        </div>
+        <div class="raw-item more">
+          <div class="rd"><span>09.26 23:18</span><span class="cn" style="--c:#B4574F">承诺与约定</span></div>
+          <p class="rt">约好以后每周末一起挑一部老片子看，谁选都行。</p>
+        </div>
+        <button class="fold" type="button" data-closed="展开全部 7 条 ▾" data-open="收起 ▴"><span class="lb">展开全部 7 条 ▾</span></button>
+      </div>
+
+      <div class="sub-lab"><span>短期 → 中期</span><span class="lead"></span><span class="en">浓缩于 09.27 23:40 · 收了 5 条</span></div>
+      <div class="raws">
+        <div class="raw-item">
+          <div class="rd"><span>09.27 21:10</span><span class="cn" style="--c:#4F9C86">我们的经历</span></div>
+          <p class="rt">第一次讨论到以后住哪，他说要有早晨的光，我说要有能放书的墙。</p>
+        </div>
+        <div class="raw-item">
+          <div class="rd"><span>09.25 20:15</span><span class="cn" style="--c:#C96F92">我的事</span></div>
+          <p class="rt">最近在学做菜，第一次煎蛋没糊，想拍给他看。</p>
+        </div>
+        <div class="raw-item">
+          <div class="rd"><span>09.24 23:02</span><span class="cn" style="--c:#4F9C86">我们的经历</span></div>
+          <p class="rt">挑了一首睡前的歌，说好谁先睡着都要留着灯。</p>
+        </div>
+        <div class="raw-item more">
+          <div class="rd"><span>09.23 22:40</span><span class="cn" style="--c:#C96F92">我的事</span></div>
+          <p class="rt">把想说的话写在备忘录里，等见面了再一条条说给他听。</p>
+        </div>
+        <div class="raw-item more">
+          <div class="rd"><span>09.22 21:05</span><span class="cn" style="--c:#6E9DB8">TA 的事</span></div>
+          <p class="rt">说最近在重看小时候的动画，片头曲还记得怎么哼。</p>
+        </div>
+        <button class="fold" type="button" data-closed="展开全部 5 条 ▾" data-open="收起 ▴"><span class="lb">展开全部 5 条 ▾</span></button>
+      </div>
+
+      <p class="snote">这些是被浓缩之前的原话，留在本地，不上传、也不再压。哪一批收走了哪些，都按日子记着。</p>
+    </section>
+
+    <!-- 展开页 · 其余板块（暂空） -->
+    <section class="page" id="page-stub">
+      <div class="toc">
+        <article class="brow empty"><span class="bdot"></span><span class="bn" id="stubName">动态</span><span class="lead"></span><span class="bc">—</span></article>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- 底部系统条：运转状态 + 设置（独立区域） -->
+  <div class="foot">
+    <span class="dot"></span>
+    <span class="sys">记忆系统 · 运转中 · 会自动浓缩与注入</span>
+    <button class="raw" id="btnRaw">原始记录</button>
+    <button class="set" id="btnSet">设置</button>
+  </div>
+
+  <!-- 编辑弹层：一张压在册子上的小纸（这一张是写死的样张，不做功能） -->
+  <div class="mask" id="editMask">
+    <div class="sheet" role="dialog" aria-modal="true" aria-label="编辑记忆">
+      <div class="sheet-hd">
+        <span class="t">编辑记忆</span>
+        <span class="lead"></span>
+        <span class="ct">25/200</span>
+      </div>
+
+      <textarea class="sheet-tx" spellcheck="false">他说过，无论多晚，回家路上都要给他发一句「到了」。</textarea>
+
+      <div class="sheet-lab"><span>放进哪一类</span><span class="lead"></span></div>
+      <div class="chips">
+        <span class="chip">我的事</span>
+        <span class="chip">TA 的事</span>
+        <span class="chip">我们的经历</span>
+        <span class="chip">关系节点</span>
+        <span class="chip on">承诺与约定</span>
+        <span class="chip">其他</span>
+      </div>
+
+      <div class="sheet-lab"><span>标记 · 只在短期与重要两层</span><span class="lead"></span></div>
+      <div class="chips">
+        <span class="chip flag imp on">★ 重要</span>
+        <span class="chip flag secret">秘密</span>
+        <span class="chip flag gru">心结</span>
+      </div>
+
+      <div class="sheet-ft">
+        <button class="cancel" type="button" id="editCancel">取消</button>
+        <button class="ok" type="button" id="editOk">保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  /* 抬头跟随当前板块：nm 标题 / idx 序号 / en 英文
+     序号按板块顺序排：基础记忆 01、动态 02、约会 03 … */
+  var META = {
+    all:    { nm:"全部",     idx:"00", en:"ALL BOARDS" },
+    base:   { nm:"基础记忆", idx:"01", en:"BASIC MEMORY" },
+    moment: { nm:"动态",     idx:"02", en:"MOMENTS" },
+    date:   { nm:"约会",     idx:"03", en:"DATES" },
+    space:  { nm:"情侣空间", idx:"04", en:"COUPLE SPACE" },
+    diary:  { nm:"共同日记", idx:"05", en:"SHARED DIARY" },
+    anniv:  { nm:"纪念日",   idx:"06", en:"ANNIVERSARY" },
+    wish:   { nm:"心愿清单", idx:"07", en:"WISH LIST" },
+    photo:  { nm:"照片墙",   idx:"08", en:"PHOTO WALL" },
+    meet:   { nm:"见面记录", idx:"09", en:"MEETINGS" },
+    wallet: { nm:"钱包",     idx:"10", en:"WALLET" },
+    raw:    { nm:"原始记录", idx:"—",  en:"RAW RECORDS" },
+    settings:{ nm:"设置",     idx:"—",  en:"SETTINGS" }
+  };
+  var WITH_PAGE = { all:1, base:1, moment:1 };   /* 目前这几个板块做完了展开页 */
+  var stripWord = document.getElementById("stripWord");
+  var stripIdx  = document.getElementById("stripIdx");
+  var stripEn   = document.getElementById("stripEn");
+  var megs = document.querySelectorAll(".mega");
+  var meganav = document.querySelector(".meganav");   /* 大标签那条，进设置时整条藏掉 */
+  var pages = {
+    all:    document.getElementById("page-all"),
+    base:   document.getElementById("page-base"),
+    moment: document.getElementById("page-moment")
+  };
+  var stub     = document.getElementById("page-stub");
+  var stubName = document.getElementById("stubName");
+  var setPage  = document.getElementById("page-settings");
+  var btnSet   = document.getElementById("btnSet");
+  var rawPage  = document.getElementById("page-raw");
+  var btnRaw   = document.getElementById("btnRaw");
+  var stripBack = document.getElementById("stripBack");
+  var lastKey  = "base";   /* 进设置/原始记录前停留的板块：再点一次就收回这里 */
+
+  function go(key){
+    var isPanel = (key === "settings" || key === "raw");   /* 大标签之外的两个展开页 */
+    if (!isPanel) lastKey = key;
+    for (var i = 0; i < megs.length; i++){
+      megs[i].classList.toggle("on", megs[i].getAttribute("data-page") === key);
+    }
+    if (btnSet) btnSet.classList.toggle("on", key === "settings");
+    if (btnRaw) btnRaw.classList.toggle("on", key === "raw");
+    /* 返回键：板块页显示（回主屏幕）；设置/原始记录不出现返回键，靠再点一次收回。
+       用 visibility 藏，标题位置不跳动。 */
+    if (stripBack) stripBack.style.visibility = isPanel ? "hidden" : "";
+    /* 这两个页是大标签之外的地方：把大标签整条收掉，免得在那儿点来点去 */
+    if (meganav) meganav.style.display = isPanel ? "none" : "";
+    for (var k in pages){
+      if (pages[k]) pages[k].classList.toggle("on", !!WITH_PAGE[key] && k === key);
+    }
+    if (stub) stub.classList.toggle("on", !WITH_PAGE[key] && !isPanel);
+    if (setPage) setPage.classList.toggle("on", key === "settings");
+    if (rawPage) rawPage.classList.toggle("on", key === "raw");
+    if (stubName && META[key]) stubName.textContent = META[key].nm;
+    var m = META[key];
+    if (m){
+      if (stripWord) stripWord.textContent = m.nm;
+      if (stripIdx)  stripIdx.textContent  = m.idx;
+      if (stripEn)   stripEn.textContent   = m.en;
+    }
+    updateFades();
+  }
+
+  for (var i = 0; i < megs.length; i++){
+    (function(el){
+      el.addEventListener("click", function(){ go(el.getAttribute("data-page")); });
+    })(megs[i]);
+  }
+  /* 设置：点一下进设置页，再点一下收回原来的板块（设置页本身不带返回键） */
+  if (btnSet) btnSet.addEventListener("click", function(){
+    go(btnSet.classList.contains("on") ? lastKey : "settings");
+  });
+  /* 原始记录：和设置一样，点一下进来，再点一下收回原来的板块 */
+  if (btnRaw) btnRaw.addEventListener("click", function(){
+    go(btnRaw.classList.contains("on") ? lastKey : "raw");
+  });
+
+  /* 设置页交互（纯演示，不落数据）：开关翻转 / 刻度按上下限加减、
+     值显示「数字 单位」，刻度为 0 且标了 data-offzero 就显示「关闭」 */
+  if (setPage){
+    var sws = setPage.querySelectorAll(".sw");
+    for (var w = 0; w < sws.length; w++){
+      (function(el){
+        el.addEventListener("click", function(){
+          var on = el.classList.toggle("on");
+          el.setAttribute("aria-checked", on ? "true" : "false");
+        });
+      })(sws[w]);
+    }
+
+    function renderStp(stp){
+      var v    = parseInt(stp.getAttribute("data-value"), 10);
+      var unit = stp.getAttribute("data-unit") || "";
+      var off  = stp.getAttribute("data-offzero") === "1" && v === 0;
+      stp.querySelector(".v").textContent = off ? "关闭" : (v + " " + unit);
+    }
+    var stps = setPage.querySelectorAll(".stp");
+    for (var p = 0; p < stps.length; p++){
+      (function(stp){
+        renderStp(stp);
+        var btns = stp.querySelectorAll("button");
+        for (var q = 0; q < btns.length; q++){
+          (function(btn){
+            btn.addEventListener("click", function(){
+              var min  = parseInt(stp.getAttribute("data-min"), 10);
+              var max  = parseInt(stp.getAttribute("data-max"), 10);
+              var step = parseInt(stp.getAttribute("data-step"), 10);
+              var dir  = btn.getAttribute("data-dir") === "1" ? step : -step;
+              var v    = parseInt(stp.getAttribute("data-value"), 10) + dir;
+              v = Math.max(min, Math.min(max, v));
+              stp.setAttribute("data-value", v);
+              renderStp(stp);
+            });
+          })(btns[q]);
+        }
+      })(stps[p]);
+    }
+  }
+
+  /* 全部页：板块行也可点 */
+  var brows = document.querySelectorAll(".brow[data-page]");
+  for (var b = 0; b < brows.length; b++){
+    (function(el){
+      el.addEventListener("click", function(){ go(el.getAttribute("data-page")); });
+    })(brows[b]);
+  }
+
+  /* 桌面：滚轮横滑（板块大标签条 / 层级·分类筛选条） */
+  var hScrollers = document.querySelectorAll(".meganav, .tabs");
+  for (var h = 0; h < hScrollers.length; h++){
+    (function(nav){
+      nav.addEventListener("wheel", function(e){
+        if (nav.scrollWidth > nav.clientWidth){
+          nav.scrollLeft += (e.deltaY || e.deltaX);
+          e.preventDefault();
+        }
+      }, {passive:false});
+    })(hScrollers[h]);
+  }
+
+  /* 横滑条的边缘渐隐：有内容可滑的那一侧加 fade，滑到头就恢复清晰 */
+  function updateFade(nav){
+    if (!nav) return;
+    var max = nav.scrollWidth - nav.clientWidth;
+    nav.classList.toggle("fade-l", nav.scrollLeft > 2);
+    nav.classList.toggle("fade-r", max > 2 && nav.scrollLeft < max - 2);
+  }
+  function updateFades(){
+    for (var f = 0; f < hScrollers.length; f++) updateFade(hScrollers[f]);
+  }
+  for (var s2 = 0; s2 < hScrollers.length; s2++){
+    (function(nav){
+      nav.addEventListener("scroll", function(){ updateFade(nav); }, {passive:true});
+    })(hScrollers[s2]);
+  }
+  window.addEventListener("resize", updateFades);
+  updateFades();
+
+  /* 分类筛选：单选；选中哪一类就只留哪一类，段标题条数实时跟着变 */
+  var catTabs = document.querySelectorAll("#page-base .tab");
+  var groups  = document.querySelectorAll("#page-base .grp");
+  var emptyNote = document.getElementById("emptyNote");
+
+  function applyCat(cat){
+    var grandShown = 0;
+    for (var g = 0; g < groups.length; g++){
+      var grp   = groups[g];
+      var rows  = grp.querySelectorAll(".row");
+      var fold  = grp.querySelector(".fold");
+      var ct    = grp.querySelector(".sec .ct");
+      var shown = 0;
+      for (var r = 0; r < rows.length; r++){
+        var keep = (cat === "all") || (rows[r].getAttribute("data-cat") === cat);
+        rows[r].style.display = keep ? (cat === "all" ? "" : "block") : "none";
+        if (keep) shown++;
+      }
+      grp.style.display = (shown > 0) ? "" : "none";
+      if (fold) fold.style.display = (cat === "all") ? "" : "none";
+      if (cat !== "all"){
+        grp.classList.remove("open");
+        if (fold) fold.querySelector(".lb").textContent = fold.getAttribute("data-closed");
+      }
+      if (ct) ct.textContent = (cat === "all") ? grp.getAttribute("data-total") : shown;
+      grandShown += shown;
+    }
+    if (emptyNote) emptyNote.style.display = (grandShown === 0) ? "" : "none";
+  }
+
+  for (var c = 0; c < catTabs.length; c++){
+    (function(el){
+      el.addEventListener("click", function(){
+        for (var m = 0; m < catTabs.length; m++) catTabs[m].classList.remove("on");
+        el.classList.add("on");
+        applyCat(el.getAttribute("data-cat"));
+      });
+    })(catTabs[c]);
+  }
+
+  /* 动态来源筛选：全部（总览） / TA 发的 / 我发的 / 别人发的，单选 */
+  var srcTabs = document.querySelectorAll("#page-moment .tab");
+  var mGroups = document.querySelectorAll("#page-moment .grp");
+
+  function applySrc(src){
+    for (var g = 0; g < mGroups.length; g++){
+      var grp   = mGroups[g];
+      var rows  = grp.querySelectorAll(".row");
+      var fold  = grp.querySelector(".fold");
+      var ct    = grp.querySelector(".sec .ct");
+      var shown = 0;
+      for (var r = 0; r < rows.length; r++){
+        var keep = (src === "all") || (rows[r].getAttribute("data-src") === src);
+        rows[r].style.display = keep ? (src === "all" ? "" : "block") : "none";
+        if (keep) shown++;
+      }
+      grp.style.display = (shown > 0) ? "" : "none";
+      if (fold) fold.style.display = (src === "all") ? "" : "none";
+      if (src !== "all"){
+        grp.classList.remove("open");
+        if (fold) fold.querySelector(".lb").textContent = fold.getAttribute("data-closed");
+      }
+      if (ct) ct.textContent = (src === "all") ? grp.getAttribute("data-total") : shown;
+    }
+  }
+
+  for (var s = 0; s < srcTabs.length; s++){
+    (function(el){
+      el.addEventListener("click", function(){
+        for (var m = 0; m < srcTabs.length; m++) srcTabs[m].classList.remove("on");
+        el.classList.add("on");
+        applySrc(el.getAttribute("data-src"));
+      });
+    })(srcTabs[s]);
+  }
+
+  /* 动态：标注／取消重要（点一下给这条加上或去掉 ★ 重要） */
+  var markBtns = document.querySelectorAll("#page-moment .mark");
+  for (var mb = 0; mb < markBtns.length; mb++){
+    (function(el){
+      el.addEventListener("click", function(){
+        var hd   = el.parentNode;
+        var star = hd.querySelector(".star");
+        if (star){
+          star.parentNode.removeChild(star);
+          el.textContent = "标注重要";
+        } else {
+          var s = document.createElement("span");
+          s.className = "star";
+          s.textContent = "★ 重要";
+          hd.insertBefore(s, hd.querySelector(".sp"));
+          el.textContent = "取消重要";
+        }
+      });
+    })(markBtns[mb]);
+  }
+
+  /* 折叠：一层默认三条，点这条线展开，再点收起（基础记忆的分层、动态共用） */
+  var folds = document.querySelectorAll(".fold");
+  for (var fd = 0; fd < folds.length; fd++){
+    (function(el){
+      el.addEventListener("click", function(){
+        var grp  = el.parentNode;
+        var open = grp.classList.toggle("open");
+        el.querySelector(".lb").textContent = open ? el.getAttribute("data-open") : el.getAttribute("data-closed");
+      });
+    })(folds[fd]);
+  }
+
+  /* 编辑弹层：只有开合，没有功能——这一页只是把样式翻出来看一眼 */
+  var editMask = document.getElementById("editMask");
+  function closeEdit(){ editMask.classList.remove("on"); }
+
+  var editBtns = document.querySelectorAll("#page-base .edit");
+  for (var eb = 0; eb < editBtns.length; eb++){
+    (function(el){
+      el.addEventListener("click", function(){ editMask.classList.add("on"); });
+    })(editBtns[eb]);
+  }
+  editMask.addEventListener("click", function(e){ if (e.target === editMask) closeEdit(); });
+  document.getElementById("editCancel").addEventListener("click", closeEdit);
+  document.getElementById("editOk").addEventListener("click", closeEdit);
+})();
+</script>
+</body>
+</html>

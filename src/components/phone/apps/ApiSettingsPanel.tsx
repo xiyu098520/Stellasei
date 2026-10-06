@@ -44,6 +44,7 @@ import {
   synthesizeSpeech,
   testTextApi,
 } from "@/lib/chat/chatApi";
+import { ensurePlaybackSession } from "@/lib/audio-session";
 import {
   DEFAULT_CHAT_PREFS,
   deleteApiPreset,
@@ -446,6 +447,8 @@ export function ApiCategoryForm({ category }: { category: ApiCategory }) {
   /* 「自动生成」总开关：属于全局对话习惯（ChatPrefs），不在这份配置里，
      所以它一点就存、不等下面那颗「保存」——切预设方案也不该带走它。 */
   const [autoGenImage, setAutoGenImage] = useState(DEFAULT_CHAT_PREFS.autoGenerateImage);
+  /* 「自动合成」总开关：同「自动生成」，全局对话习惯，一点就存。 */
+  const [autoGenVoice, setAutoGenVoice] = useState(DEFAULT_CHAT_PREFS.autoGenerateVoice);
 
   const providers = providersOfCategory(category);
 
@@ -496,6 +499,7 @@ export function ApiCategoryForm({ category }: { category: ApiCategory }) {
     void Promise.all([getApiBundle(), getApiPresets(category), getChatPrefs()]).then(([b, list, prefs]) => {
       if (!alive) return;
       setAutoGenImage(prefs.autoGenerateImage);
+      setAutoGenVoice(prefs.autoGenerateVoice);
       const s = b[category];
       setStreamOn(s.stream !== false);
       /* 采样参数：不填＝没设过（不发这个值）；温度存了 null＝明确「不发温度」。 */
@@ -809,6 +813,9 @@ export function ApiCategoryForm({ category }: { category: ApiCategory }) {
 
   /** 测试语音：用当前表单值＋语音参数合成一句固定试听语。 */
   const runVoiceTest = async () => {
+    /* 1.10.22：在手势里先把本页音频会话声明成「媒体播放」，否则 iOS 主屏 PWA 下
+       下面的 <audio controls> 会「假播放」（详见 @/lib/audio-session）。 */
+    ensurePlaybackSession();
     if (!baseUrl.trim() || !model.trim()) {
       setTestResult({ ok: false, msg: "请先填好地址和模型再测试" });
       return;
@@ -1434,6 +1441,24 @@ export function ApiCategoryForm({ category }: { category: ApiCategory }) {
         {/* 语音生成参数：音色／语速／音调（仅语音 API） */}
         {category === "voice" ? (
           <div className="border-t-2 border-dashed border-[#EDEAE2] pt-4">
+            {/* 自动合成摆在语音页最上面：它决定的是「这条要不要合」，比下面「怎么合」更靠前；
+                也是全局习惯（ChatPrefs），一点就存、不等下面那颗「保存」。 */}
+            <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border-2 border-[#141414] bg-[#FFF4DC] px-3 py-3 shadow-[3px_3px_0_#141414]">
+              <div className="min-w-0">
+                <div className="text-[12.5px] font-bold text-[#141414]">自动合成</div>
+                <div className={`mt-1 ${POP_HINT}`}>
+                  开：TA 要发语音就立刻合；关：先摆一条语音气泡，点一下才合（不点就不合）
+                </div>
+              </div>
+              <AmberSwitch
+                on={autoGenVoice}
+                onClick={() => {
+                  const next = !autoGenVoice;
+                  setAutoGenVoice(next);
+                  void saveChatPrefs({ autoGenerateVoice: next });
+                }}
+              />
+            </div>
             <div className="mb-3">
               <span className="rounded-full border-2 border-[#141414] bg-[#A78BFA] px-2.5 py-1 text-[10px] font-extrabold text-[#141414]">
                 生成参数

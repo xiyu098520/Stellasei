@@ -7,18 +7,18 @@
  * 名字与签名落在封面外、右对齐一列。底下是「连成一片」的信息流：每条左边圆头像（白圈），
  * 右边名字＋正文＋相纸图（可选）＋时间＋互动行。整页跟着滚动，左上角菜单钮浮着不滚。
  * 【数据】只看**当前面具**那份（`conversations` 传进来的就是）；动态照旧存在
- * `Conversation.moments` 里（TA 用〔动态〕标记发、由 `appendMetaUpdates` 追加），这里只是摊平了读。
- * 【生图】TA 用〔动态图〕写画面描述；开「自动生图」就直接跑接口，关着就先摆一张描述卡——
- * TA 写的原话看得见、改得动，确认了才花钱，改过的描述顺手写回那条动态。点图 → 放大预览 ＋ 保存图片。
+ * `Conversation.moments` 里，这里只是摊平了读（读路径保留；TA 主动发动态那条生产链路已撤）。
+ * 【生图】动态配图在条目上手动点生成——描述卡里看得见、改得动，确认了才花钱；
+ * 点图 → 放大预览 ＋ 保存图片。
  * 【只读】点条目不进聊天；
- * 赞／评／转三枚按钮现在是占位（点了报「还在做」），互动数据还没有存储。
- * 【通知】**这一页现在不摆通知气泡**（2026-09-22 恩熙：「把上面这个通知气泡去删除了，
- * 留他的逻辑在就好」）——前一版那枚挂在封面下沿的玻璃气泡是**样品**，连它那段
- * 「按 seen-at 算新动态、推成通知」的假触发一起撤了。
- * **逻辑留着、一个字没动**：`lib/chat/moments-notice.ts`（`MomentNotice` 类型、
- * `getMomentNotices／getMomentsSeenAt／setMomentsSeenAt／pushMomentNotices／clearMomentNotices`
- * 一整套仓库）原封不动；将来接真逻辑那轮（**只收「角色对你做的事」**：赞／评论／回复／艾特／转发，
- * 角色自己发新帖不算）直接往那个仓库推，再在顶栏右上角开一个「全部通知栏」入口。
+ * 赞／评从 2026-10-05 起接真数据（我赞／取消赞、平铺评论 ＋ 二级回复、@ 点名）；
+ * 转发那枚仍是占位（点了报「还在做」），角色侧的赞/评由后续步骤接。
+ * 【通知】**封面下沿那枚玻璃气泡**（2026-10-05 接真渠道回来了）：**只收「角色对你做的事」**
+ * ——角色赞／评论／回复我的动态时，引擎 `lib/chat/moment-social.ts` 往
+ * `lib/chat/moments-notice.ts` 那个仓库推一条，这一页读出来、按 `moments-seen-at`
+ * 算未读、滤掉人已不在页上的几条，摆成气泡。**角色自己发新帖不算我的通知。**
+ * 点气泡＝认下这几条（记「看过了」、随手收起）；真正的「全部通知栏」入口
+ * 与点击跳转留到后面那步再开。
  *
  * ── 设计判据（动这一页之前先读这几条）──
  * · 参考图只借**骨架**，零件必须是我们自己的：
@@ -36,14 +36,25 @@
  */
 
 import {
+  Camera,
+  ChevronRight,
   Download,
+  Globe,
   Heart,
   Image as ImageIcon,
   Loader2,
+  Lock,
   Menu,
   MessageCircle,
+  Plus,
   Share2,
+  Settings,
+  Smartphone,
+  SquarePen,
   Star,
+  Trash2,
+  Type as TypeIcon,
+  Users,
   X,
 } from "lucide-react";
 import {
@@ -54,19 +65,41 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { AVATAR_GRADIENT, SANS, SERIF, T, momentFullTime, momentTime } from "./shared";
-import type { ArchiveEntry } from "@/types/contact";
-import type { Conversation } from "@/types/chat";
+import type { ArchiveCategory, ArchiveEntry } from "@/types/contact";
+import type {
+  ApiPresetEntry,
+  Conversation,
+  MomentComment,
+  MomentLike,
+  MomentVisibility,
+  SelfMoment,
+} from "@/types/chat";
+import { MOMENT_SELF_ID } from "@/types/chat";
+import { uuid } from "@/lib/uuid";
+import { getCategories } from "@/lib/settings/contact";
 import {
   generateMomentImage,
   isMomentImageGenerating,
   subscribeMomentImage,
 } from "@/lib/chat/moment-image";
+import { describeSelfMomentImage } from "@/lib/chat/moment-vision";
+import { generateImage } from "@/lib/chat/chatApi";
 import {
+  addSelfMoment,
+  getApiBundle,
+  getApiPresets,
   getChatPrefs,
   getMomentsCover,
+  getSelfMoments,
+  removeSelfMoment,
+  saveChatPrefs,
   saveMomentsCover,
+  setMomentComments,
   setMomentImagePrompt,
+  setMomentLikes,
   setMomentPinned,
+  setSelfMomentComments,
+  setSelfMomentLikes,
 } from "@/lib/settings/chat";
 import {
   getCachedMediaBlob,
@@ -75,6 +108,13 @@ import {
   saveImageToDevice,
   useMediaSrc,
 } from "@/lib/chat/media-asset";
+import {
+  getMomentNotices,
+  getMomentsSeenAt,
+  setMomentsSeenAt,
+  type MomentNotice,
+} from "@/lib/chat/moments-notice";
+import { kickMomentSocial } from "@/lib/chat/moment-social";
 
 /** 摊平后的一条动态（正文＋作者信息＋配图状态）。 */
 interface FeedItem {
@@ -88,11 +128,25 @@ interface FeedItem {
   imagePrompt?: string;
   /** 点生成后回写的 media-store:// 引用串。 */
   imageRef?: string;
+  /** 我发的：「文字描述当图」——没画真图，拿这段文字当这张配图（可选）。 */
+  imageText?: string;
   /** 用来回写 imageRef（conversationId 唯一确定角色×面具，momentId 指向某条动态）。 */
   conversationId: string;
   momentId: string;
   /** 标了「重要」的那条：永远原文留在 TA 的记忆里（记忆页也会星标出来）。 */
   pinnedByUser?: boolean;
+  /** 这一条是**我自己**发的（作者＝当前面具；右上角小书签／标重要对我不适用）。 */
+  isSelf?: boolean;
+  /** 我发的：自定义标签（存纯词，展示时前面带 #）。 */
+  tags?: string[];
+  /** 我发的：可见范围。 */
+  visibility?: MomentVisibility;
+  /** 我发的：部分可见时，可见的人名（展示用；由 visibleTo 的角色 id 换算）。 */
+  visibleNames?: string[];
+  /** 这条动态的赞（我／任何角色）。缺省＝还没人赞。 */
+  likes?: MomentLike[];
+  /** 这条动态的评论（含二级回复）。缺省＝还没人评。 */
+  comments?: MomentComment[];
 }
 
 /** 封面里的字色：封面是**浅**马卡龙底（粉→香芋→蓝），白字压不住（对比度不到 1.5:1），
@@ -108,6 +162,47 @@ const ICON_BTN: CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
   color: T.ink3,
+  cursor: "pointer",
+};
+
+/** 评论输入框（评论区里内联那一只）：一枚药丸，跟聊天输入框同一口气。 */
+const COMMENT_INPUT: CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+  border: `1px solid ${T.line}`,
+  background: "#fff",
+  borderRadius: 999,
+  padding: "6px 12px",
+  fontFamily: SANS,
+  fontSize: 12.5,
+  letterSpacing: ".01em",
+  color: T.ink,
+  outline: "none",
+};
+
+/** 评论「发送」按钮：有内容才亮（粉底白字），空着就是一枚灰。 */
+const COMMENT_SEND = (on: boolean): CSSProperties => ({
+  border: "none",
+  background: on ? T.pink : "rgba(20,19,24,.10)",
+  color: on ? "#fff" : T.ink3,
+  borderRadius: 999,
+  padding: "6px 14px",
+  fontFamily: SANS,
+  fontSize: 12,
+  letterSpacing: ".05em",
+  cursor: on ? "pointer" : "default",
+});
+
+/** 评论区里那枚小小的「回复」。 */
+const COMMENT_REPLY_BTN: CSSProperties = {
+  border: "none",
+  background: "transparent",
+  padding: 0,
+  marginLeft: 6,
+  color: T.ink3,
+  fontFamily: SANS,
+  fontSize: 11,
+  letterSpacing: ".03em",
   cursor: "pointer",
 };
 
@@ -128,6 +223,26 @@ const COVER_PILL: CSSProperties = {
   cursor: "pointer",
 };
 
+/** 发动态里「可见范围」三选一（图标 ＋ 文案）。 */
+const VISIBILITY_OPTIONS: { key: MomentVisibility; label: string; icon: typeof Globe }[] = [
+  { key: "public", label: "公开", icon: Globe },
+  { key: "private", label: "私密", icon: Lock },
+  { key: "partial", label: "部分可见", icon: Users },
+];
+
+/** 「部分可见」里「世界／角色」那种勾选 chip 的底样（选中＝粉底粉字）。 */
+const pickChip = (on: boolean): CSSProperties => ({
+  padding: "6px 12px",
+  borderRadius: 999,
+  border: `1px solid ${on ? "rgba(232,106,155,.5)" : T.line}`,
+  background: on ? T.pinkSoft : "rgba(20,19,24,.04)",
+  color: on ? T.pink : T.ink2,
+  fontFamily: SANS,
+  fontSize: 12,
+  letterSpacing: ".04em",
+  cursor: "pointer",
+});
+
 /* ⚠︎ 这里原本有个 `paperTilt(uid)`——按 uid 算死一个 ±0.5° 的微斜角，专给相纸用。
    2026-09-22 恩熙说「**照片不要有倾斜，就是正常的照片就好**」，那一处用法已撤，
    函数本身没有第二个调用者，于是**一并删掉**（留着只会变成没人认领的死代码）。 */
@@ -135,6 +250,7 @@ const COVER_PILL: CSSProperties = {
 export default function MomentsPage({
   archives,
   conversations,
+  maskId,
   maskName,
   maskAvatar,
   signature,
@@ -145,6 +261,8 @@ export default function MomentsPage({
   archives: ArchiveEntry[];
   /** 当前面具下的会话（动态就是从这里摊出来的）。 */
   conversations: Conversation[];
+  /** 当前使用中的面具 id（我发的动态按面具存，一册一份）。 */
+  maskId: string;
   /** 我：当前使用中面具的名字（压在封面左下那格名片上）。 */
   maskName: string;
   /** 我：当前使用中面具的头像（那格名片上的圆头像）。 */
@@ -154,6 +272,40 @@ export default function MomentsPage({
   onOpenSidebar: () => void;
   showToast: (msg: string) => void;
 }) {
+  /* 我发过的动态：按面具读一册（跟 TA 的动态分开存，见 settings/chat.ts 的 self。）。
+     存进来之后跟 TA 的一起摊进同一条信息流。 */
+  const [selfMoments, setSelfMoments] = useState<SelfMoment[]>([]);
+  useEffect(() => {
+    let alive = true;
+    /* 我这一册动态会被好几处改：我发／删、我在别处手动赞评、以及 `moment-social`
+       那边角色来赞我（它会广播 `moments-updated`）。所以不能只读一次——
+       跟着事件重读，页面上的赞名单／通知才跟得上。 */
+    const reload = () => {
+      void getSelfMoments(maskId).then((list) => {
+        if (alive) setSelfMoments(list);
+      });
+    };
+    reload();
+    window.addEventListener("moments-updated", reload);
+    return () => {
+      alive = false;
+      window.removeEventListener("moments-updated", reload);
+    };
+  }, [maskId]);
+
+  /* 「部分可见」里能整批勾的「世界」（通讯人页那条世界条里的分类）——存世界 id，
+     世界里的角色跟着名单走。空＝还没建过世界，那一节就不露。 */
+  const [worlds, setWorlds] = useState<ArchiveCategory[]>([]);
+  useEffect(() => {
+    let alive = true;
+    void getCategories().then((list) => {
+      if (alive) setWorlds(list);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   /* 摊平：每条动态挂上作者（名字／头像）。头像与会话列表同一条兜底链——
      会话里单独设过就用单独设的，没设过用档案照片。
 
@@ -161,27 +313,81 @@ export default function MomentsPage({
      ① 假删／待同意的朋友不显示（跟列表一致）；
      ② 角色档案已经找不到的会话不显示（否则只能挂个「未命名」）；
      ③ 档案连名字都没填的也不显示——动态页上绝不冒出没头没脸的人。 */
-  const feed: FeedItem[] = conversations.flatMap((conv) => {
+  const shown = conversations.flatMap((conv) => {
     if (conv.friendStatus === "removed" || conv.friendStatus === "requested") return [];
     const archive = archives.find((a) => a.id === conv.characterId);
     if (!archive) return [];
     const d = archive.data;
     const name = (d?.name || d?.nickname || "").trim();
     if (!name) return [];
-    const avatar = conv.charAvatar || d?.photo || "";
-    return (conv.moments ?? []).map((m) => ({
-      uid: `${conv.id}::${m.id}`,
+    return [{ conv, name, avatar: conv.charAvatar || d?.photo || "" }];
+  });
+
+  /* 「部分可见」勾人用：就是上面这些人（同一条过滤口径）。 */
+  const friends = shown.map((s) => ({ id: s.conv.characterId, name: s.name }));
+
+  /* 我那条动态的「可见人」名单：勾的角色 ＋ 勾的世界里的角色（世界按当前名册展开，
+     角色进出世界就跟着变）。只用来在条尾报个「· N 人」。 */
+  const visibleNamesOf = (m: SelfMoment): string[] => {
+    const ids = new Set<string>(m.visibleTo ?? []);
+    const worldIds = m.visibleWorlds ?? [];
+    if (worldIds.length > 0) {
+      shown.forEach((s) => {
+        const arch = archives.find((a) => a.id === s.conv.characterId);
+        if (arch && worldIds.includes(arch.categoryId)) ids.add(s.conv.characterId);
+      });
+    }
+    return [...ids]
+      .map((id) => (archives.find((a) => a.id === id)?.data?.name || "").trim())
+      .filter(Boolean);
+  };
+
+  /* 信息流＝TA 的动态（摊平）＋我自己的动态（作者＝当前面具）。 */
+  const feed: FeedItem[] = [
+    ...shown.flatMap(({ conv, name, avatar }) =>
+      (conv.moments ?? [])
+        /* 我视角：这条角色动态给不给我看？public 全见／private 谁都看不见／partial
+           只看名单里有没有我（「我」不属于任何世界，`visibleWorlds` 对我不生效——
+           跟 `my-moments.ts` 里「角色看我动态」那套互为镜像，同一口径）。 */
+        .filter((m) => {
+          const v = m.visibility ?? "public";
+          if (v === "public") return true;
+          if (v === "private") return false;
+          return (m.visibleTo ?? []).includes(MOMENT_SELF_ID);
+        })
+        .map((m) => ({
+          uid: `${conv.id}::${m.id}`,
+          content: m.content,
+          createdAt: m.createdAt,
+          name,
+          avatar,
+          imagePrompt: m.imagePrompt,
+          imageRef: m.imageRef,
+          pinnedByUser: m.pinnedByUser,
+          conversationId: conv.id,
+          momentId: m.id,
+          likes: m.likes,
+          comments: m.comments,
+        })),
+    ),
+    ...selfMoments.map((m) => ({
+      uid: `self::${m.id}`,
       content: m.content,
       createdAt: m.createdAt,
-      name,
-      avatar,
-      imagePrompt: m.imagePrompt,
+      name: maskName,
+      avatar: maskAvatar,
+      isSelf: true,
       imageRef: m.imageRef,
-      pinnedByUser: m.pinnedByUser,
-      conversationId: conv.id,
+      imageText: m.imageText,
+      tags: m.tags,
+      visibility: m.visibility ?? "public",
+      visibleNames: visibleNamesOf(m),
+      conversationId: "",
       momentId: m.id,
-    }));
-  });
+      likes: m.likes,
+      comments: m.comments,
+    })),
+  ];
   // 新→旧：各会话自己的动态本来是有序的，混到一页得重新排。
   feed.sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
 
@@ -198,14 +404,35 @@ export default function MomentsPage({
   const [, setGenTick] = useState(0);
   useEffect(() => subscribeMomentImage(() => setGenTick((n) => n + 1)), []);
 
-  /* ── 通知气泡已撤（2026-09-22 恩熙：「去删除了，留他的逻辑在就好」）。
-        原先这儿有两样东西，现在一起没了：
-        ① 一枚 `notices` state ＋ 下面那段 effect——它按 `seen-at` 把「比上次看动态页
-           更新的动态」推成通知（**假触发，只推 `kind:"post"`**，是给那枚玻璃气泡看的样品）；
-        ② 页面里那枚气泡本身（挂在封面下沿、跟着封面滚的那一枚）。
-        留下的只有**逻辑层**：`lib/chat/moments-notice.ts` 那套仓库一个字没动（见文件头【通知】）。
-        将来接真渠道时，那条「谁对你做了什么」的通知往那个仓库推就行——**别再把这段
-        假触发贴回来**（它把动态当通知，跟「只收角色对你做的事」那条口径是反的）。 */
+  /* ── 通知气泡（2026-10-05 接真渠道）。**只收「角色对我做的事」**：
+        角色赞／评论／回复我的动态时，引擎（`moment-social.ts`）会往
+        `moments-notice.ts` 那个仓库推一条；这里读出来，只留**上次看动态页之后**的
+        （`moments-seen-at`），再滤掉人已经不在这一页上的（换面具／朋友被假删之后
+        不该再冒出来）。角色自己发新帖不算我的通知。 */
+  const [notices, setNotices] = useState<MomentNotice[]>([]);
+  const [seenAt, setSeenAt] = useState("");
+  useEffect(() => {
+    let alive = true;
+    const reload = () => {
+      void Promise.all([getMomentNotices(), getMomentsSeenAt()]).then(([list, seen]) => {
+        if (!alive) return;
+        setNotices(list);
+        setSeenAt(seen);
+      });
+    };
+    reload();
+    window.addEventListener("moments-updated", reload);
+    return () => {
+      alive = false;
+      window.removeEventListener("moments-updated", reload);
+    };
+  }, []);
+
+  /* 未读那几条（新→旧，最多摆 3 条的量）：来的人得还在这页上，头像／名字才对得上。 */
+  const shownConvIds = new Set(shown.map((s) => s.conv.id));
+  const unseenNotices = notices
+    .filter((n) => (!seenAt || n.createdAt > seenAt) && shownConvIds.has(n.convId))
+    .slice(0, 3);
 
   /* 「自动生图」开着的时候，这一页不摆中间那一步：点「生成配图」直接跑。TA 发动态那一刻
      聊天那边通常已经画好了（见 ChatWindow），所以这里多半是「生成失败后重试」那条路。
@@ -259,6 +486,343 @@ export default function MomentsPage({
     await setMomentPinned(item.conversationId, item.momentId, next);
     window.dispatchEvent(new CustomEvent("moments-updated"));
     showToast(next ? "标为重要了，TA 会一直记着这条" : "已取消重要");
+  };
+
+  /* ── 互动（2026-10-05）：我手动点赞／评论／回复。
+       写库之后要重读：TA 的动态发给上层重读会话（广播 `moments-updated`）；
+       我自己的动态是本页一册，直接重读本册。 ── */
+  const refreshAfterSocial = async (isSelf: boolean) => {
+    if (isSelf) setSelfMoments(await getSelfMoments(maskId));
+    else window.dispatchEvent(new CustomEvent("moments-updated"));
+  };
+
+  /* 删「我」的动态（2026-10-05）：先弹一句确认（见下面的 confirmDelete 弹层），
+     确认后从这一册滤掉、重读——它的赞／评挂在这条上，跟着一起消失。 */
+  const deleteMoment = async (item: FeedItem) => {
+    await removeSelfMoment(maskId, item.momentId);
+    setSelfMoments(await getSelfMoments(maskId));
+    setConfirmDelete(null);
+    showToast("已删除这条动态");
+  };
+
+  /* 点赞＝在这份「赞名单」里有我／没我：我在就撤掉，不在就顺手加上。
+     角色自己赞的那一份将来也落在同一格，我这一下不碰它们。 */
+  const toggleLike = async (item: FeedItem) => {
+    const likes = item.likes ?? [];
+    const mine = likes.some((l) => l.byId === MOMENT_SELF_ID);
+    const next: MomentLike[] = mine
+      ? likes.filter((l) => l.byId !== MOMENT_SELF_ID)
+      : [
+          ...likes,
+          {
+            byId: MOMENT_SELF_ID,
+            byName: maskName,
+            byAvatar: maskAvatar,
+            at: new Date().toISOString(),
+          },
+        ];
+    if (item.isSelf) await setSelfMomentLikes(maskId, item.momentId, next);
+    else await setMomentLikes(item.conversationId, item.momentId, next);
+    await refreshAfterSocial(!!item.isSelf);
+  };
+
+  /* 发一条评论：平铺（没有 replyToId）＋点名（mentions，嘴里照常写着 @名字）。
+     `replyToId` 有值＝挂在那条评论底下，即「艾特出来的那一层」。 */
+  const submitComment = async (
+    item: FeedItem,
+    content: string,
+    mentions: string[],
+    replyToId?: string,
+  ) => {
+    const text = content.trim();
+    if (!text) return;
+    const comment: MomentComment = {
+      id: uuid(),
+      byId: MOMENT_SELF_ID,
+      byName: maskName,
+      byAvatar: maskAvatar,
+      content: text,
+      at: new Date().toISOString(),
+      ...(replyToId ? { replyToId } : {}),
+      ...(mentions.length > 0 ? { mentions } : {}),
+    };
+    const next = [...(item.comments ?? []), comment];
+    if (item.isSelf) await setSelfMomentComments(maskId, item.momentId, next);
+    else await setMomentComments(item.conversationId, item.momentId, next);
+    await refreshAfterSocial(!!item.isSelf);
+  };
+
+  /* ── 发动态（2026-10-04）：底部弹层的那份草稿（正文／配图／标签／可见范围）。null＝没开着。
+        `imageRef` 是相册选来的图的仓库引用串（2026-10-05 起支持配图）。 ── */
+  const [composer, setComposer] = useState<{
+    text: string;
+    imageRef?: string;
+    imageText?: string;
+    tags: string[];
+    tagDraft: string;
+    visibility: MomentVisibility;
+    visibleTo: string[];
+    visibleWorlds: string[];
+  } | null>(null);
+
+  /* 「配图」那枚按钮点开之后：先问图从哪来——`seals`＝四枚章的那面墙（相册／拍照／
+     小手机相册／文字描述）；`text`＝写文字描述的子面板。null＝没开着。
+     跟草稿同生共死：关弹层、发布完都收回。 */
+  const [imgPick, setImgPick] = useState<null | "seals" | "text">(null);
+  /* 文字描述的那份草稿（子面板里写的那段话）——确认了才落进 composer.imageText。 */
+  const [textDraft, setTextDraft] = useState("");
+  /* 发布中（开关开着时「文字描述」要先画真图、画完才落库）——挡住重复点。 */
+  const [publishing, setPublishing] = useState(false);
+
+  /* 草稿里那张配图的地址（引用串 → 能喂 <img> 的地址；没选图就是 undefined）。 */
+  const composerSrc = useMediaSrc(composer?.imageRef);
+
+  /* 选图那个藏起来的 `<input type="file">`（iOS 只认用户手势触发的 `.click()`）。 */
+  const composerInput = useRef<HTMLInputElement | null>(null);
+
+  /* 选好一张配图：压图进仓库 → 引用串写进草稿；换图时把旧图回收掉。
+     选了真图就把「文字当图」那份清掉——一张动态只留一种配图。 */
+  const pickComposerImage = async (file: File) => {
+    const url = URL.createObjectURL(file);
+    try {
+      const stored = await persistImageAsset(url);
+      if (!stored) {
+        showToast("这张图读不出来，换一张试试");
+        return;
+      }
+      const previous = composer?.imageRef;
+      if (previous) releaseImageAsset(previous);
+      setComposer((c) => (c ? { ...c, imageRef: stored.ref, imageText: undefined } : c));
+      setImgPick(null);
+      setTextDraft("");
+    } catch {
+      showToast("图片没读进来，再试一次");
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  };
+
+  /* 「配图」→ 四枚章里挑来源。相册／拍照共用那个藏起来的 input（拍照临时挂 `capture`，
+     走系统相册必须摘掉，不然 iOS 直接开相机把图库那一路砍掉）；小手机相册还没做，
+     如实说一句；文字描述开子面板写。 */
+  const pickComposerSource = (source: "device" | "camera" | "stellasei") => {
+    if (source === "stellasei") {
+      showToast("小手机相册还在做，先留个位置");
+      return;
+    }
+    const el = composerInput.current;
+    if (!el) return;
+    if (source === "camera") el.setAttribute("capture", "environment");
+    else el.removeAttribute("capture");
+    el.click();
+  };
+
+  /* 文字描述确认落成「这张图」：把已选的真图回收掉（两边只能留一边）。 */
+  const applyComposerText = () => {
+    const t = textDraft.trim();
+    if (!t) {
+      showToast("写点画面描述再确认");
+      return;
+    }
+    const previous = composer?.imageRef;
+    if (previous) releaseImageAsset(previous);
+    setComposer((c) => (c ? { ...c, imageRef: undefined, imageText: t } : c));
+    setImgPick(null);
+    setTextDraft("");
+  };
+
+  /* 拿掉配图（真图没人引用了就回收；文字当图直接清掉，不然仓库只进不出）。 */
+  const removeComposerImage = () => {
+    const previous = composer?.imageRef;
+    if (previous) releaseImageAsset(previous);
+    setComposer((c) => (c ? { ...c, imageRef: undefined, imageText: undefined } : c));
+    setImgPick(null);
+    setTextDraft("");
+  };
+
+  /* 关掉弹层：草稿里若选过图、又没发布，那张图没人引用——顺手回收掉。 */
+  const closeComposer = () => {
+    const ref = composer?.imageRef;
+    if (ref) releaseImageAsset(ref);
+    setComposer(null);
+    setImgPick(null);
+    setTextDraft("");
+  };
+
+  /* 往里加一个标签：去掉开头的 # 与首尾空格，重复就不再加。 */
+  const addTag = () => {
+    if (!composer) return;
+    const t = composer.tagDraft.trim().replace(/^#+/, "");
+    if (!t || composer.tags.includes(t)) {
+      setComposer({ ...composer, tagDraft: "" });
+      return;
+    }
+    setComposer({ ...composer, tags: [...composer.tags, t], tagDraft: "" });
+  };
+
+  /* 「部分可见」勾人。 */
+  const toggleVisibleTo = (id: string) => {
+    if (!composer) return;
+    const on = composer.visibleTo.includes(id);
+    setComposer({
+      ...composer,
+      visibleTo: on ? composer.visibleTo.filter((x) => x !== id) : [...composer.visibleTo, id],
+    });
+  };
+
+  /* 「部分可见」勾一整个世界（整批可见，跟着世界的名单走）。 */
+  const toggleVisibleWorld = (id: string) => {
+    if (!composer) return;
+    const on = composer.visibleWorlds.includes(id);
+    setComposer({
+      ...composer,
+      visibleWorlds: on
+        ? composer.visibleWorlds.filter((x) => x !== id)
+        : [...composer.visibleWorlds, id],
+    });
+  };
+
+  /* 发布：正文与配图至少有一个才发（纯图、纯文字、图文都行）；落库之后重读这一册。
+     带着「文字描述」时看动态设置里那枚「配图自动生成」——
+     关着（默认）＝这段描述**就当这张图**（落 imageText，TA 认为它是一张图片）；
+     开着＝先把描述交给生图接口画成真图（落 imageRef），画不成再退回文字当图。 */
+  const publishSelf = async () => {
+    if (!composer || publishing) return;
+    const text = composer.text.trim();
+    const imageRef0 = composer.imageRef;
+    const imageText0 = imageRef0 ? undefined : composer.imageText?.trim();
+    if (!text && !imageRef0 && !imageText0) {
+      showToast("写点什么或配张图再发");
+      return;
+    }
+    const draft = composer;
+    let finalRef = imageRef0;
+    let finalText = imageText0;
+    setPublishing(true);
+    try {
+      if (!finalRef && finalText) {
+        const prefs = await getChatPrefs();
+        if (prefs.autoGenerateMyMomentImage) {
+          showToast("正在把这段描述画成图…");
+          try {
+            const bundle = await getApiBundle();
+            /* 生图接口：动态设置里「配图接口」填了自定义就走它，没填就跟随主图文 API。
+               自定义那套**只换地址／密钥／模型**，生图参数仍沿用主图文 API 的 extras
+               （省得这一处再养一份画风／尺寸，恩熙定的：简单点）。 */
+            const custom = prefs.myMomentImageApi;
+            const api = custom?.baseUrl?.trim()
+              ? {
+                  ...bundle.image,
+                  baseUrl: custom.baseUrl.trim(),
+                  apiKey: custom.apiKey.trim(),
+                  model: custom.model.trim(),
+                  enabled: true,
+                }
+              : bundle.image;
+            /* 我自己的配图不带参考图／人设（那不是角色锁脸那条路），只把描述当提示词。 */
+            const res = await generateImage(api, finalText, bundle.imageExtras, bundle.text);
+            const stored = await persistImageAsset(res.image);
+            if (stored) {
+              finalRef = stored.ref;
+              finalText = undefined;
+            }
+          } catch {
+            /* 画不成：退回文字当图，别把发布打断。 */
+            showToast("图没画成，先把这段描述当图带上");
+          }
+        }
+      }
+      const saved = await addSelfMoment(maskId, {
+        content: text,
+        imageRef: finalRef,
+        imageText: finalText,
+        tags: draft.tags,
+        visibility: draft.visibility,
+        visibleTo: draft.visibleTo,
+        visibleWorlds: draft.visibleWorlds,
+      });
+      setSelfMoments(await getSelfMoments(maskId));
+      /* 刚发的这条立刻摇一下引擎：给看得见的人排上「过 2～15 分钟来赞」那件，
+         别干等下一分钟那一轮 tick（引擎自带首跑标记与去重，摇多少次都只排一次）。 */
+      kickMomentSocial();
+      setComposer(null);
+      setImgPick(null);
+      setTextDraft("");
+      showToast("发出去了");
+      /* 带真图：发布后异步让 TA 看一眼、写下「图里是什么」——失败静默，不影响这条动态。
+         文字当图那条不用看图：那段描述本身就已经是 TA 眼里这张图的内容。 */
+      if (finalRef) void describeSelfMomentImage(maskId, saved.id, finalRef);
+    } catch {
+      /* 落库没成：这趟新画的图没人引用，回收掉，不然仓库只进不出。 */
+      if (finalRef && finalRef !== imageRef0) releaseImageAsset(finalRef);
+      showToast("没发出去，再试一次");
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  /** 待删的那条动态：非空＝删除确认弹层开着（只有「我发的」才可能被放进来）。 */
+  const [confirmDelete, setConfirmDelete] = useState<FeedItem | null>(null);
+
+  /* ── 动态设置（2026-10-05）：动态页聚合了所有人，动态页里只留「我」发动态相关的配图设置。
+        null＝弹层没开着。 ── */
+  const [momentSet, setMomentSet] = useState<{
+    autoImg: boolean;
+    /** 「配图自动生成」用的生图接口：null＝跟随主图文 API（这一处自己填的那套）。 */
+    imgApi: { baseUrl: string; apiKey: string; model: string } | null;
+  } | null>(null);
+
+  /* 「配图接口」编辑态：只在弹层里活着，不入库。 */
+  const [imgApiEdit, setImgApiEdit] = useState(false);
+  const [imgApiDraft, setImgApiDraft] = useState({ baseUrl: "", apiKey: "", model: "" });
+  /* 设置里已经建好的「图文预设」，开弹层时读一次给「配图接口」挑用（只读，不往回写）。 */
+  const [imgPresets, setImgPresets] = useState<ApiPresetEntry[]>([]);
+
+  const openMomentSet = async () => {
+    const p = await getChatPrefs();
+    setMomentSet({
+      autoImg: p.autoGenerateMyMomentImage,
+      imgApi: p.myMomentImageApi ?? null,
+    });
+    setImgApiEdit(false);
+    setImgPresets(await getApiPresets("image"));
+  };
+
+  /* 「配图自动生成」：**我**发动态时用「文字描述」当配图，要不要交给生图接口真画一张。
+     关（默认）＝不画不花钱，这段描述就当这张图；开＝自动画成真图再发。 */
+  const toggleAutoMyMomentImage = () => {
+    if (!momentSet) return;
+    const autoImg = !momentSet.autoImg;
+    setMomentSet({ ...momentSet, autoImg });
+    void saveChatPrefs({ autoGenerateMyMomentImage: autoImg });
+  };
+
+  /* 存下「配图接口」自己那套（只换地址／密钥／模型；生图参数仍沿用主图文 API）。 */
+  const saveImgApi = () => {
+    if (!momentSet) return;
+    const baseUrl = imgApiDraft.baseUrl.trim();
+    if (!baseUrl) {
+      showToast("填一下接口地址");
+      return;
+    }
+    const next = {
+      baseUrl,
+      apiKey: imgApiDraft.apiKey.trim(),
+      model: imgApiDraft.model.trim(),
+    };
+    setMomentSet({ ...momentSet, imgApi: next });
+    void saveChatPrefs({ myMomentImageApi: next });
+    setImgApiEdit(false);
+    showToast("配图接口存下了");
+  };
+
+  /* 改回跟随主图文 API：把这一处自己那套清掉（清空即回落）。 */
+  const resetImgApi = () => {
+    if (!momentSet) return;
+    setMomentSet({ ...momentSet, imgApi: null });
+    void saveChatPrefs({ myMomentImageApi: undefined });
+    setImgApiEdit(false);
+    showToast("已改回跟随主图文 API");
   };
 
   /* 顶栏压在封面里时不显形（全透明、深梅色字），滚过封面下沿才落成实底墨字——见文件头 ②。
@@ -368,12 +932,16 @@ export default function MomentsPage({
     showToast("封面还原了");
   };
 
-  /* ⚠︎ 这里原本有一处 `noticeLead／noticeLine`——把仓库里的通知揉成**气泡上那一行字**
-     （多条「{名字} 等 N 条新消息」，单条按 `kind` 说具体的事）。
-     气泡撤了，这一处跟着撤（它唯一的用处就是喂那枚气泡）。将来真做「全部通知栏」时，
-     那一行字的**口径照旧**：**多条用一个罩得住「发了动态／评论了／点赞了」三种事的词**
-     （中文里最不别扭的就是「**新消息**」——谁做了什么，都算一条消息到你手上），
-     **单条才说具体的事**。 */
+  /* 气泡上那一行字：多条用一个**罩得住「赞了／评论了」两种事**的泛词
+     （中文里最不别扭的就是「新消息」），单条才说具体的事。 */
+  const noticeLead = unseenNotices[0];
+  const noticeLine = !noticeLead
+    ? ""
+    : unseenNotices.length > 1
+      ? `${noticeLead.fromName} 等 ${unseenNotices.length} 条新消息`
+      : noticeLead.kind === "like"
+        ? `${noticeLead.fromName} 赞了你`
+        : `${noticeLead.fromName} 评论了你`;
 
   return (
     <div
@@ -391,9 +959,35 @@ export default function MomentsPage({
       <style>{`
         .mp-act { transition: opacity .16s ease; }
         .mp-act:active { opacity: .45; }
+        /* 「配图」那四枚章（相册／拍照／小手机相册／文字描述）。
+           ⚠️ 章的底与边**必须写在样式表里、不能写内联**：内联样式永远压过样式表，
+           写内联的话下面「按下」那条规则一辈子不生效（聊天加号面板踩过同一个坑）。
+           这是动态页自己的**浅色粉系**语言：白面／粉图标；按下整枚翻粉、图标转纸白。 */
+        .mp-seal .mp-seal-face {
+          width: 46px;
+          height: 46px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 12px;
+          border: 1px solid rgba(232,106,155,.24);
+          color: #E86A9B;
+          background: #FFF;
+          box-shadow: 0 6px 14px -10px rgba(20,19,24,.4);
+          transition: background .16s ease, border-color .16s ease, color .16s ease;
+        }
+        /* 枚本身不再走 .mp-act 那层淡出——它翻粉，不需要再叠一层透明度。 */
+        .mp-seal:active { opacity: 1; }
+        /* 按下去那一瞬：整枚翻成粉底、边收掉、图标转纸白（图标走 currentColor，跟着变）。 */
+        .mp-seal:active .mp-seal-face {
+          border-color: transparent;
+          color: #FFFDF8;
+          background: linear-gradient(180deg, #E8709C 0%, #C9346A 100%);
+        }
         @keyframes spin { to { transform: rotate(360deg); } }
         @media (prefers-reduced-motion: reduce) {
           .mp-act { transition: none }
+          .mp-seal .mp-seal-face { transition: none }
         }
       `}</style>
 
@@ -711,34 +1305,111 @@ export default function MomentsPage({
                   else setEditor({ item: target, text: target.imagePrompt ?? "" });
                 }}
                 onTogglePin={(target) => void togglePin(target)}
+                friends={friends}
+                onToggleLike={(target) => void toggleLike(target)}
+                onSubmitComment={(target, text, mentions, replyToId) =>
+                  void submitComment(target, text, mentions, replyToId)
+                }
+                onDelete={(target) => setConfirmDelete(target)}
               />
             ))}
           </div>
         )}
 
-      {/* ⚠︎ **这里原本是那枚「动态通知气泡」**（挂在封面下沿、跟着封面一起滚、
-             头像 ＋ 一行字 ＋ `›` 的一枚玻璃胶囊）。2026-09-22 恩熙：「把上面这个通知气泡
-             去删除了，留他的逻辑在就好」——**展示撤了，逻辑留在数据层**
-             （`lib/chat/moments-notice.ts` 一个字没动，见文件头【通知】）。
-             留给以后接真逻辑的几条备忘（都是那一版踩出来的，别重踩）：
-             ① 位置的口径：**它属于封面那一块**——挂在滚动格里面、`top` 钉死在
-                `calc(safe-area-top + sim-status-h + 272px + 32px)`（封面高 `272`），
-                这样**永远在封面下面**，往下滑就跟封面一起滚走；
-                ⚠️ **别改 `fixed`**（1.3.75 试过，更糟）：真机上 iOS 会把整个壳子连文档
-                一起拖（键盘避让那条通路 ＋ 顶页橡皮筋），`fixed` 相对**视口**、壳子一挪
-                它就脱开页面 ⇒ 相对页面看反而更飘。治「整页被拖走」的是上面那枚**手势闸**。
-                ⚠️ 走 `fixed` 的前提：祖先链上不许留 transform（`.animate-app-rise` 的
-                收尾已改成 `transform: none`、填充模式 `backwards`）。
-             ② 它在流外、**不占高度**：所以信息流顶部留白仍按 `108／112` 给，
-                第一张卡一开始就落在它斜下方。
-             ③ 材质：玻璃的**薄纱档**（`--glass-bg-veil`，定义在 `globals.css`）——
-                薄雾白底 ＋ 小半径模糊（**别照抄底栏那 20px**，会把上方紧邻的封面化白吸进来）、
-                不用 `saturate`、不用白顶棱；`iOS 的 `WebkitBackdropFilter` 必须同值，
-                外加 `translateZ(0)` ＋ `willChange` 才会真进独立合成层。
-             ④ 文案口径：多条一个泛词「{名字} 等 N 条新消息」，单条按 `kind` 说具体的事。 */}
-      {/* ⚠︎ 上面那条注释里说的那一枚「动态通知气泡」，**整块撤掉了**
-             （注释留着＝以后接真逻辑时的口径）。撤的时候顺手带走的还有：
-             一枚 `notices` state、喂它的那段假触发 effect、`noticeLine` 那段文案、`ChevronRight` 的引用。 */}
+      {/* ── 动态通知气泡（2026-10-05 接真渠道回来了）：头像 ＋ 一行字 ＋ `›` 的玻璃胶囊。
+             **只收「角色对我做的事」**——角色赞／评论／回复我的动态时，引擎往
+             `moments-notice.ts` 推一条，这里读出来（见上面那段注释）。
+             位置的口径：**它属于封面那一块**——挂在滚动格里面、`top` 钉死在封面下沿
+             （封面高 `272`）再往下一点，往下滑就跟封面一起滚走。
+             ⚠️ **别改 `fixed`**（1.3.75 试过，更糟）：真机上 iOS 会把整个壳子连文档一起拖
+             （键盘避让那条通路 ＋ 顶页橡皮筋），`fixed` 相对**视口**、壳子一挪它就脱开页面
+             ⇒ 相对页面看反而更飘。治「整页被拖走」的是滚动格那枚**手势闸**。
+             ⚠️ 它在流外、**不占高度**：信息流顶部留白仍按 `108／112` 给，第一张卡一开始
+             就落在它斜下方。
+             ⚠️ 靠**左**摆（`left: 18`）：封面下沿右侧是右对齐的那一列名字／签名，气泡贴左
+             才跟骑边头像同一行、谁也不压谁。
+             材质：玻璃的**薄纱档**——薄雾白底 ＋ 中小半径模糊（**别照抄底栏那 20px**，
+             会把上方紧邻的封面化白吸进来）；`WebkitBackdropFilter` 必须同值。 */}
+      {unseenNotices.length > 0 ? (
+        <div
+          style={{
+            position: "absolute",
+            left: 18,
+            top: "calc(var(--safe-area-top, 0px) + var(--sim-status-h, 0px) + 272px + 6px)",
+            zIndex: 2,
+            maxWidth: "calc(100% - 36px)",
+          }}
+        >
+          <button
+            type="button"
+            className="mp-act"
+            onClick={() => {
+              /* 点开＝认下这几条：记下「看过了」，气泡随即收起。
+                 真正的「全部通知栏」与点击跳转留到后面那步再开入口。 */
+              const now = new Date().toISOString();
+              setSeenAt(now);
+              void setMomentsSeenAt(now);
+              showToast("通知详情还在做");
+            }}
+            style={{
+              ...COVER_PILL,
+              maxWidth: "100%",
+              gap: 8,
+              padding: "7px 12px 7px 7px",
+              background:
+                "linear-gradient(152deg, rgba(255,255,255,.5) 0%, rgba(255,255,255,.14) 26%, rgba(255,255,255,.08) 48%, rgba(255,255,255,.34) 76%, rgba(255,255,255,.18) 100%)",
+              backdropFilter: "blur(16px) saturate(2) brightness(1.04)",
+              WebkitBackdropFilter: "blur(16px) saturate(2) brightness(1.04)",
+              border: "1px solid rgba(255,255,255,.85)",
+              color: COVER_INK,
+              boxShadow:
+                "inset 0 1px 0 rgba(255,255,255,.95), inset 0 -1px 0 rgba(255,255,255,.35), 0 0 0 .5px rgba(255,255,255,.6), 0 0 0 1px rgba(20,19,24,.04), 0 14px 26px -18px rgba(96,62,84,.45), 0 0 22px rgba(255,255,255,.55)",
+            }}
+          >
+            {noticeLead.fromAvatar ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={noticeLead.fromAvatar}
+                alt=""
+                style={{ flex: "none", width: 26, height: 26, borderRadius: 999, objectFit: "cover" }}
+              />
+            ) : (
+              <span
+                style={{
+                  flex: "none",
+                  width: 26,
+                  height: 26,
+                  borderRadius: 999,
+                  background: AVATAR_GRADIENT,
+                  color: "#FFFFFF",
+                  fontFamily: SERIF,
+                  fontSize: 11,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                {noticeLead.fromName.slice(0, 1)}
+              </span>
+            )}
+            <span
+              style={{
+                minWidth: 0,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                fontFamily: SERIF,
+                fontWeight: 500,
+                fontSize: 13,
+                letterSpacing: ".01em",
+              }}
+            >
+              {noticeLine}
+            </span>
+            <ChevronRight size={15} strokeWidth={1.9} style={{ flex: "none", opacity: 0.45 }} />
+          </button>
+        </div>
+      ) : null}
       </div>
 
       {/* ── 顶栏：压在封面里时**不显形**（全透明、深梅色图标与字），滚过封面下沿才落成
@@ -822,6 +1493,58 @@ export default function MomentsPage({
             STELLASEI MOMENTS
           </div>
         </div>
+
+        {/* 发动态：顶栏右端一枚入口，点开底部弹层写正文／标签／可见范围（2026-10-04）。 */}
+        <button
+          type="button"
+          className="mp-act"
+          onClick={() =>
+            setComposer({ text: "", tags: [], tagDraft: "", visibility: "public", visibleTo: [], visibleWorlds: [] })
+          }
+          aria-label="发动态"
+          style={{
+            flex: "none",
+            display: "flex",
+            alignItems: "center",
+            gap: 5,
+            height: 34,
+            padding: "0 12px 0 10px",
+            borderRadius: 11,
+            border: `1px solid ${stuck ? "rgba(20,19,24,.12)" : "rgba(91,42,64,.18)"}`,
+            background: stuck ? "rgba(20,19,24,.055)" : "rgba(255,255,255,.62)",
+            color: stuck ? T.ink : COVER_INK,
+            fontFamily: SANS,
+            fontSize: 12,
+            letterSpacing: ".06em",
+            cursor: "pointer",
+          }}
+        >
+          <SquarePen size={14} strokeWidth={1.9} />
+          发动态
+        </button>
+
+        {/* 动态设置：顶栏最右一枚入口，点开底部弹层拨「发动态间隔」（2026-10-05，恩熙定位置）。 */}
+        <button
+          type="button"
+          className="mp-act"
+          onClick={() => void openMomentSet()}
+          aria-label="动态设置"
+          style={{
+            flex: "none",
+            width: 34,
+            height: 34,
+            borderRadius: 11,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            border: `1px solid ${stuck ? "rgba(20,19,24,.12)" : "rgba(91,42,64,.18)"}`,
+            background: stuck ? "rgba(20,19,24,.055)" : "rgba(255,255,255,.62)",
+            color: stuck ? T.ink : COVER_INK,
+            cursor: "pointer",
+          }}
+        >
+          <Settings size={16} strokeWidth={1.9} />
+        </button>
       </div>
 
       {/* 配图放大层：点动态里那张图弹出来——大图 + 底下「保存图片」，点背景或右上角 X 关掉。
@@ -1027,6 +1750,784 @@ export default function MomentsPage({
           </div>
         </div>
       ) : null}
+
+      {/* 发动态：底部弹层——正文 ＋ 标签 ＋ 可见范围，点了「发布」才落库（2026-10-04）。
+          `data-mp-scroll`：给上面那枚手势闸认，弹层自己滚得动、到头不拖整页。 */}
+      {composer ? (
+        <div
+          onClick={closeComposer}
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: "rgba(20,19,24,.42)",
+            zIndex: 80,
+            display: "flex",
+            alignItems: "flex-end",
+          }}
+        >
+          <div
+            data-mp-scroll="1"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%",
+              maxHeight: "calc(100% - 40px)",
+              overflowY: "auto",
+              overscrollBehavior: "none",
+              background: T.card,
+              borderTopLeftRadius: 20,
+              borderTopRightRadius: 20,
+              padding: "20px 18px calc(var(--safe-area-bottom, 0px) + 18px)",
+              boxShadow: "0 -14px 44px -20px rgba(20,19,24,.5)",
+              boxSizing: "border-box",
+            }}
+          >
+            <div style={{ fontSize: 15.5, fontWeight: 500, fontFamily: SERIF,
+                          letterSpacing: ".1em", color: T.ink }}>
+              发动态
+            </div>
+
+            <textarea
+              aria-label="动态正文"
+              data-mp-scroll="1"
+              value={composer.text}
+              onChange={(e) => setComposer({ ...composer, text: e.target.value })}
+              placeholder="这一刻，想说点什么…"
+              rows={4}
+              style={{
+                marginTop: 12,
+                width: "100%",
+                minHeight: 96,
+                maxHeight: 200,
+                resize: "none",
+                padding: "11px 12px",
+                borderRadius: 12,
+                border: `1px solid ${T.line}`,
+                background: "rgba(20,19,24,.04)",
+                color: T.ink,
+                fontFamily: SANS,
+                fontSize: 13.5,
+                lineHeight: 1.7,
+                letterSpacing: ".02em",
+                outline: "none",
+                boxSizing: "border-box",
+              }}
+            />
+
+            {/* 配图（2026-10-05；2026-10-05 二次改：先问图从哪来）：
+                点「配图」先摊四枚章——相册／拍照（共用藏起来的 input，拍照临时挂 `capture`）／
+                小手机相册（还没做，如实说一句）／文字描述（写段画面当图）。
+                选好摊一张小图（真图）或一张印着描述的相纸（文字当图），右上角一枚叉可拿掉。
+                带图时正文可留空。 */}
+            <div style={{ marginTop: 12 }}>
+              <input
+                ref={composerInput}
+                type="file"
+                accept="image/*"
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0] ?? null;
+                  /* 选完立刻清空：同一张图连选两次也得能触发 onChange。 */
+                  e.target.value = "";
+                  if (file) void pickComposerImage(file);
+                }}
+              />
+              {composer.imageRef || composer.imageText ? (
+                <div style={{ position: "relative", display: "inline-block" }}>
+                  {composer.imageRef ? (
+                    composerSrc ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img
+                        src={composerSrc}
+                        alt="配图"
+                        style={{
+                          display: "block",
+                          width: 108,
+                          height: 108,
+                          objectFit: "cover",
+                          borderRadius: 10,
+                          border: `1px solid ${T.line}`,
+                        }}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          width: 108,
+                          height: 108,
+                          borderRadius: 10,
+                          border: `1px solid ${T.line}`,
+                          background: "rgba(20,19,24,.04)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          color: T.ink3,
+                        }}
+                      >
+                        <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />
+                      </div>
+                    )
+                  ) : (
+                    /* 文字当图：摊一张相纸，里头印着这段描述（跟发布后卡片上那张同一副样子）。 */
+                    <div
+                      style={{
+                        width: 128,
+                        minHeight: 108,
+                        padding: 7,
+                        borderRadius: 3,
+                        background: "#FFF",
+                        boxShadow:
+                          "0 0 0 1px rgba(20,19,24,.06), 0 8px 18px -12px rgba(20,19,24,.35)",
+                        boxSizing: "border-box",
+                      }}
+                    >
+                      <div
+                        style={{
+                          padding: "9px 8px",
+                          maxHeight: 94,
+                          overflow: "hidden",
+                          background: "rgba(255,247,249,.92)",
+                          border: "1px dashed rgba(20,19,24,.14)",
+                          borderRadius: 2,
+                          fontSize: 10.5,
+                          lineHeight: 1.6,
+                          color: T.ink2,
+                          fontFamily: SANS,
+                          whiteSpace: "pre-line",
+                        }}
+                      >
+                        {composer.imageText}
+                      </div>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    className="mp-act"
+                    aria-label="拿掉配图"
+                    onClick={removeComposerImage}
+                    style={{
+                      position: "absolute",
+                      top: -6,
+                      right: -6,
+                      width: 22,
+                      height: 22,
+                      borderRadius: "50%",
+                      border: "none",
+                      background: "rgba(20,19,24,.72)",
+                      color: "#FFF",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <X size={12} strokeWidth={2.4} />
+                  </button>
+                </div>
+              ) : imgPick === "text" ? (
+                /* 文字描述子面板：写一段画面。发布时看「配图自动生成」——
+                   关着＝这段描述就当这张图；开着＝先画成真图再发。 */
+                <div>
+                  <textarea
+                    aria-label="画面描述"
+                    value={textDraft}
+                    onChange={(e) => setTextDraft(e.target.value)}
+                    placeholder="写下这张图的样子。它就当这张图；开了「配图自动生成」就会照它画一张。"
+                    rows={3}
+                    style={{
+                      width: "100%",
+                      minHeight: 76,
+                      maxHeight: 160,
+                      resize: "none",
+                      padding: "10px 12px",
+                      borderRadius: 10,
+                      border: `1px solid rgba(232,106,155,.4)`,
+                      background: "rgba(255,247,249,.92)",
+                      color: T.ink,
+                      fontFamily: SANS,
+                      fontSize: 13,
+                      lineHeight: 1.7,
+                      outline: "none",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                  <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                    <button
+                      type="button"
+                      className="mp-act"
+                      onClick={() => {
+                        setImgPick(null);
+                        setTextDraft("");
+                      }}
+                      style={{
+                        height: 34,
+                        padding: "0 14px",
+                        border: "none",
+                        borderRadius: 10,
+                        background: "rgba(20,19,24,.06)",
+                        color: T.ink2,
+                        fontFamily: SANS,
+                        fontSize: 12.5,
+                        cursor: "pointer",
+                      }}
+                    >
+                      取消
+                    </button>
+                    <button
+                      type="button"
+                      className="mp-act"
+                      onClick={applyComposerText}
+                      style={{
+                        height: 34,
+                        padding: "0 16px",
+                        border: "none",
+                        borderRadius: 10,
+                        background: T.pink,
+                        color: "#FFF",
+                        fontFamily: SANS,
+                        fontSize: 12.5,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      就这张
+                    </button>
+                    <span style={{ flex: 1, fontSize: 10.5, lineHeight: 1.6, color: T.ink3,
+                                   letterSpacing: ".03em" }}>
+                      发布时按「配图自动生成」定：关着＝描述当图，开着＝先画真图。
+                    </span>
+                  </div>
+                </div>
+              ) : imgPick === "seals" ? (
+                /* 四枚章：这张图从哪来。 */
+                <div>
+                  <div style={{ fontSize: 11, letterSpacing: ".08em", color: T.ink3 }}>
+                    这张图从哪来
+                  </div>
+                  <div style={{ marginTop: 10, display: "flex", gap: 20, alignItems: "flex-start" }}>
+                    {(
+                      [
+                        { key: "device", icon: ImageIcon, title: "相册" },
+                        { key: "camera", icon: Camera, title: "拍照" },
+                        { key: "stellasei", icon: Smartphone, title: "小手机相册" },
+                        { key: "text", icon: TypeIcon, title: "文字描述" },
+                      ] as const
+                    ).map((row) => (
+                      <button
+                        key={row.key}
+                        type="button"
+                        className="mp-act mp-seal"
+                        onClick={() =>
+                          row.key === "text" ? setImgPick("text") : pickComposerSource(row.key)
+                        }
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          gap: 6,
+                          padding: 0,
+                          border: "none",
+                          background: "transparent",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <span className="mp-seal-face">
+                          <row.icon size={20} strokeWidth={1.6} />
+                        </span>
+                        <span style={{ fontFamily: SANS, fontSize: 10.5, color: T.ink2,
+                                       letterSpacing: ".03em" }}>
+                          {row.title}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="mp-act"
+                  onClick={() => setImgPick("seals")}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    height: 36,
+                    padding: "0 14px",
+                    borderRadius: 10,
+                    border: "1px dashed rgba(20,19,24,.18)",
+                    background: "rgba(20,19,24,.03)",
+                    color: T.ink2,
+                    fontFamily: SANS,
+                    fontSize: 12.5,
+                    letterSpacing: ".04em",
+                    cursor: "pointer",
+                  }}
+                >
+                  <ImageIcon size={14} strokeWidth={1.9} />
+                  配图
+                </button>
+              )}
+            </div>
+
+            {/* 标签：已加的成一排小 chips，后面跟着输入框与「＋」。 */}
+            <div style={{ marginTop: 16 }}>
+              <div style={{ fontSize: 11, letterSpacing: ".08em", color: T.ink3 }}>标签</div>
+              <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap",
+                            alignItems: "center", gap: 6 }}>
+                {composer.tags.map((t) => (
+                  <span
+                    key={t}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 3,
+                      padding: "3px 6px 3px 9px",
+                      borderRadius: 999,
+                      background: T.pinkSoft,
+                      color: T.pink,
+                      fontSize: 11.5,
+                      letterSpacing: ".02em",
+                    }}
+                  >
+                    #{t}
+                    <button
+                      type="button"
+                      aria-label={`删除标签 ${t}`}
+                      onClick={() =>
+                        setComposer({ ...composer, tags: composer.tags.filter((x) => x !== t) })
+                      }
+                      style={{ border: 0, background: "none", padding: 2, display: "flex",
+                               color: T.pink, cursor: "pointer" }}
+                    >
+                      <X size={10} strokeWidth={2.2} />
+                    </button>
+                  </span>
+                ))}
+                <input
+                  value={composer.tagDraft}
+                  onChange={(e) => setComposer({ ...composer, tagDraft: e.target.value })}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addTag();
+                    }
+                  }}
+                  placeholder="加个标签"
+                  style={{
+                    width: 88,
+                    padding: "4px 8px",
+                    borderRadius: 999,
+                    border: `1px solid ${T.line}`,
+                    background: "transparent",
+                    color: T.ink,
+                    fontFamily: SANS,
+                    fontSize: 12,
+                    outline: "none",
+                  }}
+                />
+                <button
+                  type="button"
+                  className="mp-act"
+                  aria-label="添加标签"
+                  onClick={addTag}
+                  style={{ width: 26, height: 26, borderRadius: "50%",
+                           border: `1px solid ${T.line}`, background: "rgba(20,19,24,.04)",
+                           color: T.ink2, display: "flex", alignItems: "center",
+                           justifyContent: "center", cursor: "pointer" }}
+                >
+                  <Plus size={13} strokeWidth={2} />
+                </button>
+              </div>
+            </div>
+
+            {/* 可见范围：公开／私密／部分可见三选一；部分可见时才摊出联系人勾选。 */}
+            <div style={{ marginTop: 16 }}>
+              <div style={{ fontSize: 11, letterSpacing: ".08em", color: T.ink3 }}>可见范围</div>
+              <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
+                {VISIBILITY_OPTIONS.map(({ key, label, icon: Icon }) => {
+                  const on = composer.visibility === key;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      className="mp-act"
+                      onClick={() => setComposer({ ...composer, visibility: key })}
+                      style={{
+                        flex: 1,
+                        height: 38,
+                        borderRadius: 12,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 5,
+                        border: `1px solid ${on ? "rgba(232,106,155,.5)" : T.line}`,
+                        background: on ? T.pinkSoft : "rgba(20,19,24,.04)",
+                        color: on ? T.pink : T.ink2,
+                        fontFamily: SANS,
+                        fontSize: 12.5,
+                        letterSpacing: ".04em",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <Icon size={13} strokeWidth={1.9} />
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {composer.visibility === "partial" ? (
+                worlds.length === 0 && friends.length === 0 ? (
+                  <div style={{ marginTop: 10, fontSize: 11.5, color: T.ink3, letterSpacing: ".04em" }}>
+                    还没有可选的联系人
+                  </div>
+                ) : (
+                  <div style={{ marginTop: 12 }}>
+                    {worlds.length > 0 ? (
+                      <div>
+                        <div style={{ fontSize: 11, letterSpacing: ".08em", color: T.ink3 }}>世界</div>
+                        <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 8 }}>
+                          {worlds.map((w) => (
+                            <button
+                              key={w.id}
+                              type="button"
+                              className="mp-act"
+                              onClick={() => toggleVisibleWorld(w.id)}
+                              style={pickChip(composer.visibleWorlds.includes(w.id))}
+                            >
+                              {w.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                    {friends.length > 0 ? (
+                      <div style={{ marginTop: worlds.length > 0 ? 12 : 0 }}>
+                        <div style={{ fontSize: 11, letterSpacing: ".08em", color: T.ink3 }}>角色</div>
+                        <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 8 }}>
+                          {friends.map((f) => (
+                            <button
+                              key={f.id}
+                              type="button"
+                              className="mp-act"
+                              onClick={() => toggleVisibleTo(f.id)}
+                              style={pickChip(composer.visibleTo.includes(f.id))}
+                            >
+                              {f.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                )
+              ) : null}
+            </div>
+
+            <div style={{ marginTop: 18, display: "flex", gap: 10 }}>
+              <button
+                type="button"
+                className="mp-act"
+                onClick={closeComposer}
+                style={{ flex: 1, height: 44, border: "none", borderRadius: 12,
+                         background: "rgba(20,19,24,.06)", color: T.ink2, fontFamily: SANS,
+                         fontSize: 13.5, letterSpacing: ".04em", cursor: "pointer" }}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="mp-act"
+                onClick={() => void publishSelf()}
+                style={{ flex: "1.6", height: 44, border: "none", borderRadius: 12,
+                         background: T.pink, color: "#FFF", fontFamily: SANS, fontSize: 13.5,
+                         fontWeight: 600, letterSpacing: ".04em", cursor: "pointer", display: "flex",
+                         alignItems: "center", justifyContent: "center", gap: 6 }}
+              >
+                <SquarePen size={14} />
+                发布
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* 删除动态：二次确认（2026-10-05）。就一枚居中卡片、两枚按钮——删掉连它的赞评
+          一起从这一册消失（见 removeSelfMoment），所以先问一句，别点错。 */}
+      {confirmDelete ? (
+        <div
+          onClick={() => setConfirmDelete(null)}
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: "rgba(20,19,24,.42)",
+            zIndex: 84,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "0 40px",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: 300,
+              background: T.card,
+              borderRadius: 18,
+              padding: "20px 18px 16px",
+              boxShadow: "0 18px 50px -20px rgba(20,19,24,.5)",
+              boxSizing: "border-box",
+            }}
+          >
+            <div style={{ fontSize: 14.5, fontWeight: 500, fontFamily: SERIF,
+                          letterSpacing: ".08em", color: T.ink, textAlign: "center" }}>
+              删除这条动态？
+            </div>
+            <div style={{ marginTop: 8, fontSize: 11.5, lineHeight: 1.6, color: T.ink3,
+                          textAlign: "center" }}>
+              删掉就没了，它底下的赞和评论也一起走。
+            </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+              <button
+                type="button"
+                className="mp-act"
+                onClick={() => setConfirmDelete(null)}
+                style={{ flex: 1, height: 38, border: "none", borderRadius: 12,
+                         background: "rgba(20,19,24,.06)", color: T.ink2, fontSize: 13,
+                         fontFamily: SANS, cursor: "pointer" }}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="mp-act"
+                onClick={() => void deleteMoment(confirmDelete)}
+                style={{ flex: 1, height: 38, border: "none", borderRadius: 12,
+                         background: T.danger, color: "#fff", fontSize: 13,
+                         fontFamily: SANS, cursor: "pointer" }}
+              >
+                确认删除
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* 动态设置：底部弹层——只留「我」发动态相关的配图设置（配图自动生成／配图接口），
+          拨一下即存即生效（2026-10-05 恩熙定位置：动态页右上角）。`data-mp-scroll` 同上，自己滚得动。 */}
+      {momentSet ? (
+        <div
+          onClick={() => setMomentSet(null)}
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: "rgba(20,19,24,.42)",
+            zIndex: 82,
+            display: "flex",
+            alignItems: "flex-end",
+          }}
+        >
+          <div
+            data-mp-scroll="1"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%",
+              maxHeight: "calc(100% - 40px)",
+              overflowY: "auto",
+              overscrollBehavior: "none",
+              background: T.card,
+              borderTopLeftRadius: 20,
+              borderTopRightRadius: 20,
+              padding: "20px 18px calc(var(--safe-area-bottom, 0px) + 18px)",
+              boxShadow: "0 -14px 44px -20px rgba(20,19,24,.5)",
+              boxSizing: "border-box",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ fontSize: 15.5, fontWeight: 500, fontFamily: SERIF,
+                            letterSpacing: ".1em", color: T.ink }}>
+                动态设置
+              </div>
+              <button
+                type="button"
+                className="mp-act"
+                onClick={() => setMomentSet(null)}
+                aria-label="关闭"
+                style={{ width: 30, height: 30, border: "none", borderRadius: 10,
+                         background: "rgba(20,19,24,.05)", color: T.ink2, display: "flex",
+                         alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+              >
+                <X size={15} strokeWidth={2} />
+              </button>
+            </div>
+
+            {/* 「配图自动生成」：**我**发动态用「文字描述」当配图时，要不要交给生图接口真画一张。
+                关（默认）＝不画不花钱，这段描述就当这张图；开＝自动画成真图再发。 */}
+            <div
+              style={{ marginTop: 16, display: "flex", alignItems: "center",
+                       justifyContent: "space-between" }}
+            >
+              <span style={{ fontFamily: SANS, fontSize: 13.5, color: T.ink }}>配图自动生成</span>
+              <div
+                role="switch"
+                aria-checked={momentSet.autoImg}
+                aria-label="配图自动生成"
+                className="mp-act"
+                onClick={toggleAutoMyMomentImage}
+                style={{ width: 46, height: 27, borderRadius: 999,
+                         background: momentSet.autoImg ? T.pink : "rgba(20,19,24,.12)",
+                         position: "relative", transition: "background .2s", flex: "none",
+                         cursor: "pointer" }}
+              >
+                <div
+                  style={{ position: "absolute", top: 2, left: momentSet.autoImg ? 21 : 2,
+                           width: 23, height: 23, borderRadius: "50%", background: "#fff",
+                           boxShadow: "0 2px 5px rgba(20,19,24,.22)", transition: "left .2s" }}
+                />
+              </div>
+            </div>
+
+            <div style={{ marginTop: 8, fontSize: 11.5, lineHeight: 1.75, color: T.ink3,
+                          letterSpacing: ".04em" }}>
+              你发动态用「文字描述」当配图时：关着＝这段描述就当这张图；开着＝先交给生图接口画成真图再发。
+            </div>
+
+            {/* 「配图接口」：只在上面那枚「配图自动生成」开着时才露面。
+                不填＝跟随主「图文 API」；填了＝这一处自己一套（可以点设置里的图文预设带过来，
+                但只当一份快照存着，之后设置那边怎么改都跟这里不相干）。 */}
+            {momentSet.autoImg ? (
+              <>
+                <div style={{ marginTop: 14, display: "flex", alignItems: "center",
+                              justifyContent: "space-between" }}>
+                  <span style={{ fontFamily: SANS, fontSize: 13.5, color: T.ink }}>配图接口</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 11.5, color: T.ink3, letterSpacing: ".04em",
+                                   maxWidth: 148, overflow: "hidden", textOverflow: "ellipsis",
+                                   whiteSpace: "nowrap" }}>
+                      {momentSet.imgApi?.baseUrl?.trim()
+                        ? `自定义 · ${momentSet.imgApi.model || "未设模型"}`
+                        : "跟随主图文 API"}
+                    </span>
+                    <button
+                      type="button"
+                      className="mp-act"
+                      onClick={() => {
+                        if (!imgApiEdit) {
+                          setImgApiDraft(momentSet.imgApi ?? { baseUrl: "", apiKey: "", model: "" });
+                        }
+                        setImgApiEdit(!imgApiEdit);
+                      }}
+                      style={{ fontFamily: SANS, fontSize: 12, color: T.pink,
+                               background: "none", border: "none", padding: "2px",
+                               cursor: "pointer" }}
+                    >
+                      {imgApiEdit ? "收起" : "更改"}
+                    </button>
+                  </div>
+                </div>
+
+                {imgApiEdit ? (
+                  <div style={{ marginTop: 10, padding: 12, borderRadius: 12,
+                                background: "rgba(255,247,249,.72)",
+                                border: "1px solid rgba(232,106,155,.16)" }}>
+                    {imgPresets.length ? (
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 11, color: T.ink3, marginBottom: 6,
+                                      letterSpacing: ".04em" }}>
+                          设置里的图文预设
+                        </div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          {imgPresets.map((p) => (
+                            <button
+                              key={p.id}
+                              type="button"
+                              className="mp-act"
+                              onClick={() =>
+                                setImgApiDraft({
+                                  baseUrl: p.baseUrl,
+                                  apiKey: p.apiKey,
+                                  model: p.model,
+                                })
+                              }
+                              style={{ maxWidth: 150, fontFamily: SANS, fontSize: 12,
+                                       color: T.pink, background: "#fff",
+                                       border: "1px solid rgba(232,106,155,.3)",
+                                       borderRadius: 999, padding: "5px 11px",
+                                       overflow: "hidden", textOverflow: "ellipsis",
+                                       whiteSpace: "nowrap", cursor: "pointer" }}
+                            >
+                              {p.name}
+                            </button>
+                          ))}
+                        </div>
+                        <div style={{ marginTop: 6, fontSize: 10.5, lineHeight: 1.6,
+                                      color: T.ink3, letterSpacing: ".04em" }}>
+                          点一下把它的地址／密钥／模型填进来，再点「存下」。
+                        </div>
+                      </div>
+                    ) : null}
+                    {([
+                      ["baseUrl", "接口地址", "https://…/v1"],
+                      ["apiKey", "密钥", "sk-…"],
+                      ["model", "模型", "如 gpt-image-1"],
+                    ] as const).map(([key, label, ph]) => (
+                      <div key={key} style={{ marginBottom: key === "model" ? 0 : 8 }}>
+                        <div style={{ fontSize: 11, color: T.ink3, marginBottom: 4,
+                                      letterSpacing: ".04em" }}>
+                          {label}
+                        </div>
+                        <input
+                          value={imgApiDraft[key]}
+                          onChange={(e) =>
+                            setImgApiDraft((d) => ({ ...d, [key]: e.target.value }))
+                          }
+                          placeholder={ph}
+                          spellCheck={false}
+                          autoComplete="off"
+                          style={{ width: "100%", boxSizing: "border-box", fontFamily: SANS,
+                                   fontSize: 13, color: T.ink, background: "#fff",
+                                   border: "1px solid rgba(20,19,24,.12)", borderRadius: 9,
+                                   padding: "9px 11px", outline: "none" }}
+                        />
+                      </div>
+                    ))}
+                    <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 10 }}>
+                      <button
+                        type="button"
+                        className="mp-act"
+                        onClick={saveImgApi}
+                        style={{ flex: 1, fontFamily: SANS, fontSize: 13, color: "#FFFDF8",
+                                 background: "linear-gradient(180deg, #E8709C 0%, #C9346A 100%)",
+                                 border: "none", borderRadius: 10, padding: "10px 0",
+                                 cursor: "pointer" }}
+                      >
+                        存下
+                      </button>
+                      {momentSet.imgApi?.baseUrl?.trim() ? (
+                        <button
+                          type="button"
+                          className="mp-act"
+                          onClick={resetImgApi}
+                          style={{ fontFamily: SANS, fontSize: 12.5, color: T.ink3,
+                                   background: "#fff", border: "1px solid rgba(20,19,24,.12)",
+                                   borderRadius: 10, padding: "10px 12px", cursor: "pointer" }}
+                        >
+                          改回跟随主
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div style={{ marginTop: 8, fontSize: 11, lineHeight: 1.7, color: T.ink3,
+                              letterSpacing: ".04em" }}>
+                  不填就跟随主「图文 API」；想单独用一套，可以点上面的预设带过来，或自己填，
+                  只在这一处生效——存下的是一份快照，设置那边再改也影响不到这里。
+                </div>
+              </>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1081,6 +2582,24 @@ function MomentStamp({ iso }: { iso: string }) {
   );
 }
 
+/** 评论正文里把 `@名字` 挑出来染成粉——只是好认，名字本身就写在正文里（不进数据另存）。 */
+function CommentBody({ content }: { content: string }) {
+  const parts = content.split(/(@[^\s@，。！？、,.!?]+)/g);
+  return (
+    <>
+      {parts.map((p, i) =>
+        p.startsWith("@") ? (
+          <span key={i} style={{ color: T.pink }}>
+            {p}
+          </span>
+        ) : (
+          <span key={i}>{p}</span>
+        ),
+      )}
+    </>
+  );
+}
+
 function MomentItem({
   item,
   generating,
@@ -1088,11 +2607,15 @@ function MomentItem({
   onOpenImage,
   onEditPrompt,
   onTogglePin,
+  friends,
+  onToggleLike,
+  onSubmitComment,
+  onDelete,
 }: {
   item: FeedItem;
   /** 这条的配图正在画（按钮转圈／图上盖一层；不给重复点）。 */
   generating: boolean;
-  /** 条目里那两枚图标按钮（心／话）还没有真数据，点了给个提示。 */
+  /** 条目里那枚「转发」还没有真数据，点了给个提示。 */
   showToast: (msg: string) => void;
   /** 点配图 → 放大预览（保存图片在那一层里）。 */
   onOpenImage: (src: string, ref?: string) => void;
@@ -1100,8 +2623,59 @@ function MomentItem({
   onEditPrompt: (item: FeedItem) => void;
   /** 标／取消标「重要」——标了的那条永远原文留在 TA 的记忆里（见 setMomentPinned）。 */
   onTogglePin: (item: FeedItem) => void;
+  /** @ 选人用的名单（跟信息流同一条过滤口径）。 */
+  friends: { id: string; name: string }[];
+  /** 点赞／取消赞（我自己那一下）。 */
+  onToggleLike: (item: FeedItem) => void;
+  /** 发评论：`replyToId` 有值＝挂在某条评论底下（艾特出来的那一层）。 */
+  onSubmitComment: (
+    item: FeedItem,
+    content: string,
+    mentions: string[],
+    replyToId?: string,
+  ) => void;
+  /** 删「我」的这条动态（只有我发的才给这枚按钮）：由上层弹确认、落库。 */
+  onDelete: (item: FeedItem) => void;
 }) {
   const resolvedSrc = useMediaSrc(item.imageRef);
+
+  const likes = item.likes ?? [];
+  const comments = item.comments ?? [];
+  const likedByMe = likes.some((l) => l.byId === MOMENT_SELF_ID);
+  const hasSocial = likes.length > 0 || comments.length > 0;
+  /* 二级回复要挂在它回复的那条底下；万一父评论没了（被删等），当平铺处理，别让它凭空消失。 */
+  const commentIds = new Set(comments.map((c) => c.id));
+  const rootComments = comments.filter((c) => !c.replyToId || !commentIds.has(c.replyToId));
+
+  /* 评论框：开着／草稿／点了谁／@ 名单（点了谁＝挂在谁底下）。 */
+  const [composing, setComposing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [mentionIds, setMentionIds] = useState<string[]>([]);
+  const [replyTo, setReplyTo] = useState<MomentComment | null>(null);
+  const [atOpen, setAtOpen] = useState(false);
+
+  const startReply = (c: MomentComment) => {
+    setComposing(true);
+    setReplyTo(c);
+    setMentionIds(c.byId === MOMENT_SELF_ID ? [] : [c.byId]);
+    setDraft((d) => (d.includes(`@${c.byName}`) ? d : `@${c.byName} `));
+  };
+
+  const addMention = (f: { id: string; name: string }) => {
+    setMentionIds((ids) => (ids.includes(f.id) ? ids : [...ids, f.id]));
+    setDraft((d) => (d.includes(`@${f.name}`) ? d : d ? `${d}@${f.name} ` : `@${f.name} `));
+  };
+
+  const sendComment = () => {
+    const text = draft.trim();
+    if (!text) return;
+    onSubmitComment(item, text, mentionIds, replyTo?.id);
+    setDraft("");
+    setMentionIds([]);
+    setReplyTo(null);
+    setComposing(false);
+    setAtOpen(false);
+  };
 
   /* 长按配图＝重新生成（手感照通讯人那排分类卡，见 ContactsApp）：按住 500ms 触发，
      滑出 10px 当滚动取消，触发过的那一下松手浏览器会补发一发 click——用 `longFired`
@@ -1240,6 +2814,8 @@ function MomentItem({
              ⚠︎ **整片夹在卡里、不探出卡外**：卡与卡挨得近，探出去会压到上一张。
              ⚠︎ 影子挂在**外层**：`filter` 在 `clipPath` **之前**生效，
              同一层写会被剪掉（V 口那儿会缺一块影）。 ── */}
+      {/* 小书签＝「标重要」，只对 TA 的动态适用；我自己的那条不摆（2026-10-04）。 */}
+      {item.isSelf ? null : (
       <button
         type="button"
         aria-label={item.pinnedByUser ? "取消重要" : "标为重要"}
@@ -1285,6 +2861,7 @@ function MomentItem({
           />
         </span>
       </button>
+      )}
       {/* ── 左列＝**头像自己一列**（这一格只装头像这一件事）。
              ⚠︎ 2026-09-22 恩熙定的版：头像**自成左列**，名字、时间、正文、配图
              **全在它右边的下方**——不再有东西落在头像**底下**，头像也不再跟名字挤一行。
@@ -1370,8 +2947,9 @@ function MomentItem({
             /* `maxWidth`：名字要能在列宽里**省略号收尾**，
                宁可截断，也不能把右列顶宽、把卡撑破。
                ── **减去的 26px 是给右上角那枚小书签让的位**（书签宽 19 ＋ 一点点缝）：
-                  名字是右列第一行，跟书签同处卡顶，不留位的话长名字会从书签底下穿过去。 ── */
-            maxWidth: "calc(100% - 26px)",
+                  名字是右列第一行，跟书签同处卡顶，不留位的话长名字会从书签底下穿过去。
+                  ⚠︎ 我自己的那条没有书签，整列放开。 ── */
+            maxWidth: item.isSelf ? "100%" : "calc(100% - 26px)",
             /* ── **那块实心粉方块撤了**。
                    那是从参考图的「粉标签条」上**搬来的零件**：印刷品里「标签用方块、正文用宋」
                    是公用的语法，但在星绥这儿它只是**一张硬邦邦贴上去的纸**，
@@ -1405,6 +2983,8 @@ function MomentItem({
           **字号又收了一档**：`14.5`。卡里多了一层「垫在下面的
           粉纸」、顶上也染了一点粉，字再站 15.5px 就顶得慌——**纸变厚了，字就该收。**
           行距 1.85。 ── */}
+      {/* 纯图动态正文为空：这一格不摆，免得图上方多一道 6px 的空档。 */}
+      {item.content.trim() ? (
       <div
         style={{
           /* 正文在**右列**（头像右边的下方）——不再从卡左沿起，才不会落到头像底下。 */
@@ -1423,6 +3003,22 @@ function MomentItem({
       >
         {item.content}
       </div>
+      ) : null}
+
+      {/* 我发的：正文底下摊自定义标签（`#词` 小 chip，2026-10-04）。 */}
+      {item.isSelf && item.tags && item.tags.length > 0 ? (
+        <div style={{ gridColumn: 2, marginTop: 8, display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {item.tags.map((t) => (
+            <span
+              key={t}
+              style={{ padding: "2px 9px", borderRadius: 999, background: T.pinkSoft,
+                       color: T.pink, fontSize: 11, letterSpacing: ".02em" }}
+            >
+              #{t}
+            </span>
+          ))}
+        </div>
+      ) : null}
 
       {/* 配图区：imageRef 已落 → 摊图（点开可放大／保存，长按＝重新生成）；
           imagePrompt 有但无图 → 摊一个「文字框」，点一下才去画 */}
@@ -1460,8 +3056,8 @@ function MomentItem({
           <button
             type="button"
             className="mp-act no-callout"
-            aria-label="查看配图，长按重新生成"
-            {...imagePressHandlers}
+            aria-label={item.isSelf ? "查看配图" : "查看配图，长按重新生成"}
+            {...(item.isSelf ? {} : imagePressHandlers)}
             onClick={(e) => {
               /* 长按那一下松手会补一发 click，吃掉它，别把大图顺手弹出来。 */
               if (longFired.current) {
@@ -1518,6 +3114,41 @@ function MomentItem({
               </span>
             ) : null}
           </button>
+        </div>
+      ) : item.imageText ? (
+        /* ── 「文字描述当图」：我没画真图，这段描述**就当这张图**。
+             摊一张跟相纸同一副样子的白纸，里头印着这段话（跟发布前那张预览卡一个样）。
+             它**不是**一张能被点开／长按重画的图——它就是「这张图」本身，静态摆着。 ─ */
+        <div
+          style={{
+            gridColumn: 2,
+            marginTop: 16,
+            width: "calc(100% - 20px)",
+            padding: 7,
+            borderRadius: 3,
+            background: "#FFF",
+            boxShadow:
+              "0 0 0 1px rgba(20,19,24,.06), 0 1px 0 rgba(20,19,24,.045), 0 14px 28px -16px rgba(20,19,24,.38)",
+          }}
+        >
+          <div
+            style={{
+              padding: "13px 12px",
+              minHeight: 96,
+              background: "rgba(255,247,249,.92)",
+              border: "1px dashed rgba(20,19,24,.14)",
+              borderRadius: 2,
+              fontSize: 13.5,
+              lineHeight: 1.85,
+              letterSpacing: ".01em",
+              color: T.ink2,
+              fontFamily: SANS,
+              whiteSpace: "pre-line",
+              boxSizing: "border-box",
+            }}
+          >
+            {item.imageText}
+          </div>
         </div>
       ) : item.imagePrompt ? (
         /* ── 画面描述框：没图的时候不摆一枚灰扑扑的按钮，把 TA 写的那段原话
@@ -1598,8 +3229,9 @@ function MomentItem({
              这一条只干一件事：把**上面（TA 说的话）**和**下面（这一行的功能）**断开。 ── */}
       <div style={{ gridColumn: "1 / -1", marginTop: 15, height: 1, background: T.line }} />
 
-      {/* ── 互动行＝这张卡的**署名行**：三枚极简图标（赞／评／转发；暂时都是占位，
-             点了报「还在做」）。
+      {/* ── 互动行＝这张卡的**署名行**：三枚极简图标（赞／评／转发）。
+             赞／评从 2026-10-05 起接真数据：心＝我赞／取消赞（赞了实心变粉）；
+             话＝摊开评论框（平铺 ＋ 二级回复）。转发仍是占位。
              ⚠︎ 这一行**原先还有第四样**——右端那枚「重要」标签条。
              2026-09-22 恩熙把它**搬到卡的右上角、做成了小书签**（见卡顶那枚，
              点它就是标／取消标）⇒ 它在这儿**撤掉**，同一件事不再说两遍。 ── */}
@@ -1619,18 +3251,21 @@ function MomentItem({
           <button
             type="button"
             className="mp-act"
-            aria-label="点赞"
-            onClick={() => showToast("点赞还在做")}
-            style={ICON_BTN}
+            aria-label={likedByMe ? "取消赞" : "点赞"}
+            onClick={() => onToggleLike(item)}
+            style={{ ...ICON_BTN, color: likedByMe ? T.pink : T.ink3 }}
           >
-            <Heart size={16} strokeWidth={1.7} />
+            <Heart size={16} strokeWidth={1.7} fill={likedByMe ? "currentColor" : "none"} />
           </button>
           <button
             type="button"
             className="mp-act"
             aria-label="评论"
-            onClick={() => showToast("评论还在做")}
-            style={ICON_BTN}
+            onClick={() => {
+              setComposing((v) => !v);
+              setAtOpen(false);
+            }}
+            style={{ ...ICON_BTN, color: composing ? T.pink : T.ink3 }}
           >
             <MessageCircle size={16} strokeWidth={1.7} />
           </button>
@@ -1644,7 +3279,172 @@ function MomentItem({
             <Share2 size={16} strokeWidth={1.7} />
           </button>
         </div>
+
+        {/* 我发的：互动行右端＝可见范围 ＋ 一枚删除（可见范围 2026-10-04；删除 2026-10-05）。 */}
+        {item.isSelf ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10.5,
+                           letterSpacing: ".04em", color: T.ink3 }}>
+              {item.visibility === "private" ? (
+                <Lock size={11} strokeWidth={1.8} />
+              ) : item.visibility === "partial" ? (
+                <Users size={11} strokeWidth={1.8} />
+              ) : (
+                <Globe size={11} strokeWidth={1.8} />
+              )}
+              {item.visibility === "private"
+                ? "仅自己可见"
+                : item.visibility === "partial"
+                  ? `部分可见 · ${item.visibleNames?.length ?? 0} 人`
+                  : "公开"}
+            </span>
+            <button
+              type="button"
+              className="mp-act"
+              aria-label="删除动态"
+              onClick={() => onDelete(item)}
+              style={ICON_BTN}
+            >
+              <Trash2 size={15} strokeWidth={1.7} />
+            </button>
+          </div>
+        ) : null}
       </div>
+
+      {/* ── 评论框（点了话那枚才摊开）：回复提示 ＋ @ 选人 ＋ 一枚输入药丸 ＋ 发送。
+             平铺评论直接发；点了某条评论的「回复」会在输入框上方报一声「正在回复 X」，
+             发出去就挂在 X 底下（艾特出来的那一层）。 ── */}
+      {composing ? (
+        <div style={{ gridColumn: "1 / -1", marginTop: 10 }}>
+          {replyTo ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 7,
+                          fontSize: 11, color: T.ink3, letterSpacing: ".03em" }}>
+              <span>
+                正在回复 <span style={{ color: T.ink2 }}>{replyTo.byName}</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setReplyTo(null);
+                  setMentionIds([]);
+                }}
+                style={COMMENT_REPLY_BTN}
+              >
+                取消
+              </button>
+            </div>
+          ) : null}
+          {atOpen ? (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+              {friends.length === 0 ? (
+                <span style={{ fontSize: 11.5, color: T.ink3 }}>还没有能 @ 的人</span>
+              ) : (
+                friends.map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => addMention(f)}
+                    style={pickChip(mentionIds.includes(f.id))}
+                  >
+                    {f.name}
+                  </button>
+                ))
+              )}
+            </div>
+          ) : null}
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button
+              type="button"
+              aria-label="提到某人"
+              onClick={() => setAtOpen((v) => !v)}
+              style={{ ...ICON_BTN, color: atOpen ? T.pink : T.ink3 }}
+            >
+              <span style={{ fontFamily: SANS, fontSize: 15, fontWeight: 600 }}>@</span>
+            </button>
+            <input
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") sendComment();
+              }}
+              placeholder="说点什么…"
+              style={COMMENT_INPUT}
+            />
+            <button
+              type="button"
+              onClick={sendComment}
+              disabled={!draft.trim()}
+              style={COMMENT_SEND(!!draft.trim())}
+            >
+              发送
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {/* ── 赞行 ＋ 评论区（2026-10-05）：微信那种「一块浅底」摊在署名行下面——
+             赞在上、评论在下，中间一条极淡的分隔；二级回复缩进一层。
+             只有真有人赞／评了才摊这块底，空着就什么都不加。 ── */}
+      {hasSocial ? (
+        <div
+          style={{
+            gridColumn: "1 / -1",
+            marginTop: 10,
+            padding: "10px 12px",
+            borderRadius: 3,
+            background: "rgba(20,19,24,.033)",
+          }}
+        >
+          {likes.length > 0 ? (
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+              <Heart
+                size={12}
+                strokeWidth={1.8}
+                fill={T.pink}
+                color={T.pink}
+                style={{ marginTop: 3, flexShrink: 0 }}
+              />
+              <span style={{ fontSize: 12.5, lineHeight: 1.7, color: T.ink2,
+                             letterSpacing: ".01em", minWidth: 0, wordBreak: "break-word" }}>
+                {likes.map((l) => l.byName).join("，")}
+              </span>
+            </div>
+          ) : null}
+
+          {likes.length > 0 && comments.length > 0 ? (
+            <div style={{ height: 1, background: T.line, margin: "8px 0" }} />
+          ) : null}
+
+          {rootComments.map((c) => {
+            const replies = comments.filter((r) => r.replyToId === c.id);
+            return (
+              <div key={c.id} style={{ marginTop: 4 }}>
+                <div style={{ fontSize: 12.5, lineHeight: 1.75, color: T.ink2,
+                              letterSpacing: ".01em", wordBreak: "break-word" }}>
+                  <span style={{ color: T.ink, fontWeight: 500 }}>{c.byName}</span>
+                  <span style={{ color: T.ink3 }}>：</span>
+                  <CommentBody content={c.content} />
+                  <button type="button" onClick={() => startReply(c)} style={COMMENT_REPLY_BTN}>
+                    回复
+                  </button>
+                </div>
+                {replies.map((r) => (
+                  <div key={r.id} style={{ marginLeft: 14, marginTop: 3, fontSize: 12.5,
+                                           lineHeight: 1.75, color: T.ink2,
+                                           letterSpacing: ".01em", wordBreak: "break-word" }}>
+                    <span style={{ color: T.ink, fontWeight: 500 }}>{r.byName}</span>
+                    <span style={{ color: T.ink3 }}>：</span>
+                    <CommentBody content={r.content} />
+                    <button type="button" onClick={() => startReply(r)} style={COMMENT_REPLY_BTN}>
+                      回复
+                    </button>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
     </article>
   );
 }

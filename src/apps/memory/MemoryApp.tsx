@@ -39,6 +39,7 @@ import {
   clearMomentsAndSignature,
   getApiBundle,
   getConversations,
+  setMomentPinned,
 } from "@/lib/settings/chat";
 import { releaseImageAsset } from "@/lib/chat/media-asset";
 /* 收尾：把断链的图（这会儿清掉的、以及历年攒下的）一并从仓库收走。 */
@@ -46,9 +47,13 @@ import { sweepOrphanMedia } from "@/lib/chat/media-sweep";
 /* 重置记忆要连他那本账一起清（1.4.37 恩熙：「我重置记忆应该也会把这个钱包重置的哦」）。 */
 import { clearContactAccount } from "@/lib/settings/wallet";
 import { AVATAR_GRADIENT } from "@/apps/chat/shared";
+/* 「我」在动态里的落款 id（点赞／评论时认人用）。 */
+import { MOMENT_SELF_ID } from "@/types/chat";
 import type { ArchiveEntry } from "@/types/contact";
 import type { Mask } from "@/lib/settings/mask";
 import type { CharacterMemory, Conversation, MemoryItem } from "@/types/chat";
+/* 详情页版面（预览页 v5 的实装）：样式全部走 CSS Module。 */
+import css from "./MemoryDetail.module.css";
 
 /* =======================================================================
  * 记忆 App（私人刊物 · 档案编目）
@@ -62,8 +67,8 @@ import type { CharacterMemory, Conversation, MemoryItem } from "@/types/chat";
  * ===================================================================== */
 
 const M = {
-  /* 纸 */
-  bg: "#F7F3F0",
+  /* 纸（中性白／浅灰，不带暖调——恩熙 2026-10-06：手机屏上一叠色会发黄） */
+  bg: "#F5F5F7",
   paper: "#FFFFFF",
   /* 墨 */
   ink: "#1B1918",
@@ -125,6 +130,18 @@ const shortTime = (iso: string) => {
  *  `momentDate`／`localStampOf`），页面跟 TA 记的要对得上。 */
 const momentStamp = (iso: string) => localStampOf(iso);
 
+/** 行头的时间戳（预览页 v5 · base）：越久远的层只看得见日子（2026.09.14），
+ *  近的层连钟点一起（09.30 22:14）。 */
+const rowStamp = (tier: MemoryItem["tier"], it: MemoryItem) => {
+  const iso = it.fromIso || it.createdAt;
+  return tier === "core" || tier === "long"
+    ? localDayOf(iso).replace(/-/g, ".")
+    : shortTime(iso).replace(/-/g, ".");
+};
+
+/** 动态页行头的时间戳（预览页 v5 · moment）：MM.DD HH:mm。 */
+const momentRowStamp = (iso: string) => shortTime(iso).replace(/-/g, ".");
+
 /** 层元信息（分组标题＋说明）。层号＝编目分区号，越往下越模糊。 */
 const TIER_META: Record<string, { title: string; en: string; desc: string; no: string }> = {
   core: { title: "重要记忆", en: "forever", desc: "永远不会忘的事实 · 不参与压缩", no: "I" },
@@ -139,6 +156,9 @@ const OFFLINE_FILTER_KEY = "offline";
 /** 重要记忆默认竖向只露这么多条，多的折起来（下面还有短期记忆，不能让它们被挤出屏幕）。 */
 const CORE_PREVIEW = 3;
 
+/** 基础记忆页（预览页 v5 · base）每一层默认只露这么多条，其余收在「展开全部」后面。 */
+const ROW_PREVIEW = 3;
+
 /** 第五编：朋友圈动态。这一编的数据**不在记忆条目里**（前四编是聊天记录浓缩出来的），
  *  而是 TA 发在朋友圈的动态本身——单独成编列在最后，抬头就写明来源，
  *  一眼分得清「哪些是聊天里说过的、哪些是发在朋友圈的」。 */
@@ -152,6 +172,43 @@ const MOMENT_META = {
 /** 朋友圈动态默认只露最近这么多条：动态会越攒越多，全摊开在页面上太长；
  *  要全看再自己点开（跟上面「重要记忆」一个做法）。 */
 const MOMENT_PREVIEW = 3;
+
+/** 原始记录页每批先露这么多条，其余收在一条线后面（跟动态页同一个做法）。 */
+const RAW_PREVIEW = 3;
+
+/** 原始记录页顶上的板块签：浓缩可能发生在哪些地方（眼下只有基础记忆有原话）。 */
+const RAW_BLOCKS = ["base", "moment", "date", "space", "diary", "anniv", "wish", "photo", "meet", "wallet"];
+
+/** 详情页的板块（大标签）：色带的文字／序号／英文跟着当前板块走。
+ *  序号按板块顺序排（跟预览页一致）。 */
+const BOARD_META: Record<string, { nm: string; idx: string; en: string }> = {
+  all: { nm: "全部", idx: "00", en: "ALL BOARDS" },
+  base: { nm: "基础记忆", idx: "01", en: "BASIC MEMORY" },
+  moment: { nm: "动态", idx: "02", en: "MOMENTS" },
+  date: { nm: "约会", idx: "03", en: "DATES" },
+  space: { nm: "情侣空间", idx: "04", en: "COUPLE SPACE" },
+  diary: { nm: "共同日记", idx: "05", en: "SHARED DIARY" },
+  anniv: { nm: "纪念日", idx: "06", en: "ANNIVERSARY" },
+  wish: { nm: "心愿清单", idx: "07", en: "WISH LIST" },
+  photo: { nm: "照片墙", idx: "08", en: "PHOTO WALL" },
+  meet: { nm: "见面记录", idx: "09", en: "MEETINGS" },
+  wallet: { nm: "钱包", idx: "10", en: "WALLET" },
+  raw: { nm: "原始记录", idx: "—", en: "RAW RECORDS" },
+  settings: { nm: "设置", idx: "—", en: "SETTINGS" },
+};
+/** 大标签条上的板块顺序（设置与原始记录不在条上，走底部条）。 */
+const BOARDS = ["all", "base", "moment", "date", "space", "diary", "anniv", "wish", "photo", "meet", "wallet"];
+
+/** 已改走 v5 版面的板块；其余板块暂时沿用旧版面，一页一页搬过去。 */
+const V5_BOARDS = new Set(["all", "base", "moment", "raw", "settings"]);
+
+/** 动态页的来源记号（预览页 v5 · data-src）：这条是谁发在朋友圈的。 */
+const SRC_TABS: [string, string][] = [
+  ["all", "全部"],
+  ["ta", "TA 发的"],
+  ["me", "我发的"],
+  ["other", "别人发的"],
+];
 
 /** 分层刻度的上下限与步进（1.7.66）：全摆在记忆 App 设置区里拧，不用回来改代码。
  *  天数那几个都是「越小压得越勤」——左减右加，减号那侧＝更勤快。 */
@@ -668,8 +725,12 @@ export default function MemoryApp() {
   const [detail, setDetail] = useState<CharacterMemory | null>(null);
   const [busy, setBusy] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  /** 详情页当前板块（大标签）：色带与正文都跟着它切换（对应预览页 v5）。 */
+  const [board, setBoard] = useState("base");
   /* 分类筛选：「all」＝不过滤；六个分类各看各的（短期中期长期一起过滤）。 */
   const [catFilter, setCatFilter] = useState<string>("all");
+  /* 动态页的来源筛选：「all」＝不过滤；分开看 TA 发的／我发的／别人发的。 */
+  const [srcFilter, setSrcFilter] = useState<string>("all");
   /* 编辑弹层：item id＋草稿（内容、分类，以及三个标记）。
      标记也进弹层（1.7.68，恩熙：「我希望直接，就是在那个编辑框，它里面是可以标记星级、
      重要这些东西的」）——从前标重要／秘密／心结只能退回卡片底部那一排小按钮上点，
@@ -693,6 +754,12 @@ export default function MemoryApp() {
   const [coreOpen, setCoreOpen] = useState(false);
   /** 第五编朋友圈动态是否展开全部（默认只露最近 MOMENT_PREVIEW 条）。 */
   const [momentOpen, setMomentOpen] = useState(false);
+  /** 基础记忆页（v5 · base）：各层是否摊开全部（默认只露前 ROW_PREVIEW 条）。 */
+  const [openTiers, setOpenTiers] = useState<Record<string, boolean>>({});
+  /** 原始记录页（v5 · raw）：顶上那排板块签选中哪一个（眼下只有基础记忆有原话）。 */
+  const [rawBlock, setRawBlock] = useState("base");
+  /** 原始记录页：每批是否摊开全部（默认只露前 RAW_PREVIEW 条），按日子记。 */
+  const [rawOpen, setRawOpen] = useState<Record<string, boolean>>({});
   /** 补压进度提示（1.7.66）：打开记忆 App 时若在整理，页顶显示一句，不偷偷跑。 */
   const [catchup, setCatchup] = useState("");
 
@@ -789,6 +856,13 @@ export default function MemoryApp() {
     if (openId) setDetail(await getMemory(openId.characterId, openId.maskId));
   };
 
+  /** 把某条动态标／取消「重要」：标了的一直原文留在 TA 脑子里，不参与压缩。 */
+  const toggleMomentPin = async (momentId: string, pinned: boolean) => {
+    if (!momentConvId) return;
+    await setMomentPinned(momentConvId, momentId, pinned);
+    await refresh();
+  };
+
   /** 列表行：联系人（全部，创建即入列）。 */
   const rows = useMemo(() => {
     if (!archives || !memories || !convs) return [];
@@ -878,6 +952,13 @@ export default function MemoryApp() {
     return counts;
   }, [detail]);
 
+  /** 各层的总条数（基础记忆页抬头那枚大数字用；不随分类筛选变）。 */
+  const tierCounts = useMemo(() => {
+    const counts: Record<string, number> = { core: 0, short: 0, mid: 0, long: 0 };
+    for (const it of detail?.items ?? []) counts[it.tier] = (counts[it.tier] ?? 0) + 1;
+    return counts;
+  }, [detail]);
+
   /** 当前绑定的朋友圈动态（第五编）。跟注入给 TA 的是**同一个源**：直接读这条会话的
       `moments`，不另存一份——清空记忆时那边一清，这里自然就空了，不会留下对不上的影子。
       过掉没内容的（跟注入口径一致，否则页面列着一条 TA 根本没记住的东西）。 */
@@ -887,6 +968,16 @@ export default function MemoryApp() {
       (c) => c.characterId === openId.characterId && (c.maskId ?? DEFAULT_MASK_ID) === openId.maskId,
     );
     return (conv?.moments ?? []).filter((m) => m.content.trim());
+  }, [openId, convs]);
+
+  /** 动态这栏挂在哪条会话上（标记「重要」要的是会话 id，不是角色 id）。 */
+  const momentConvId = useMemo(() => {
+    if (!openId || !convs) return "";
+    return (
+      convs.find(
+        (c) => c.characterId === openId.characterId && (c.maskId ?? DEFAULT_MASK_ID) === openId.maskId,
+      )?.id ?? ""
+    );
   }, [openId, convs]);
 
   /** 第五编要摊开的几截：重要的、近期原文、最早那段印象。
@@ -910,6 +1001,18 @@ export default function MemoryApp() {
       digest,
     };
   }, [moments, detail]);
+
+  /** 原始记录页要摊的底稿：每次线上浓缩收走的那批原话（memory.ts 记在 `rawBatches`，新的在前）。
+      先只接「聊天 → 短期」这条线；线下那条以后再接。老数据没这格＝空态。 */
+  const rawBatches = useMemo(() => detail?.rawBatches ?? [], [detail]);
+
+  /** 动态页要摊开的那几行：点开才把标了重要的跟「更早的那批」一起露出来。
+      没得折的时候一律摊开——不然印象卡会被 CSS 的 `.onopen` 藏掉。 */
+  const momentCanFold = moments.length > MOMENT_PREVIEW;
+  const momentOpenNow = momentOpen || !momentCanFold;
+  const momentRows = momentOpenNow
+    ? [...momentView.pinned, ...momentView.recent]
+    : momentView.recent.slice(0, MOMENT_PREVIEW);
 
   /* 横滑筛选条的右缘渐隐：右边还有内容时显示（提示可滑），滑到最右自动消失。 */
   const catScrollRef = useRef<HTMLDivElement>(null);
@@ -1115,6 +1218,7 @@ export default function MemoryApp() {
     setDetail(null);
     setEditing(null);
     setSettingsOpen(false);
+    setBoard("base");
     setOpenId(null);
   };
 
@@ -1294,43 +1398,54 @@ export default function MemoryApp() {
         </div>
       </div>
 
-      {/* ---------------- 详情页 ---------------- */}
+      {/* ---------------- 详情页（预览页 v5 版面） ---------------- */}
       <div
         style={{
           position: "absolute",
           inset: 0,
           zIndex: 10,
-          display: "flex",
-          flexDirection: "column",
-          backgroundColor: M.bg,
-          ...GRAIN,
           transform: openId ? "none" : "translateX(100%)",
           transition: "transform .3s cubic-bezier(.22,1,.36,1)",
         }}
       >
-        <div style={{ ...headerStyle, padding: `${headerPad} 12px 14px` }}>
-          <button type="button" onClick={back} aria-label="返回" style={btnStyle}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
-              <path d="M15 18l-6-6 6-6" />
-            </svg>
-          </button>
-          <div style={{ textAlign: "center", pointerEvents: "none", minWidth: 0 }}>
-            <span style={{ fontSize: 17, fontWeight: 500, letterSpacing: ".18em", fontFamily: TITLE }}>{charName}的记忆</span>
-            <span style={{ ...enLabelStyle, display: "block", marginTop: 3 }}>layers of memory</span>
-          </div>
-          <div style={{ width: 44, textAlign: "right", pointerEvents: "none" }}>
-            <span style={{ fontFamily: MONO, fontSize: 11, color: M.ink, letterSpacing: ".04em" }}>
-              {String(detail?.items.length ?? 0).padStart(2, "0")}
+        <div className={css.scope} style={{ paddingTop: headerPad, boxSizing: "border-box" }}>
+          {/* 顶部色带：粉底打横，右端一块斜切浅格压着序号与英文，跟着当前板块走。 */}
+          <div className={css.strip}>
+            <button type="button" onClick={back} aria-label="返回" className={css.stripBack}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M15 18l-6-6 6-6" />
+              </svg>
+            </button>
+            <span className={css.stripWord}>{BOARD_META[board].nm}</span>
+            <span className={css.stripMeta} aria-hidden>
+              <span className={css.stripIdx}>{BOARD_META[board].idx}</span>
+              <span className={css.stripEn}>{BOARD_META[board].en}</span>
             </span>
-            <span style={{ ...enLabelStyle, display: "block", marginTop: 2 }}>items</span>
           </div>
-          {/* 骑缝虚线（把这页钉成册子里的一帖；四心贴纸只放页脚）。 */}
-          <span style={seamStyle} aria-hidden />
-        </div>
 
-        <div style={scrollBodyStyle}>
+          {/* 大标签条：板块级（横向可滑） */}
+          <div className={css.navWrap}>
+            <div className={css.meganav}>
+              {BOARDS.map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  className={board === k ? `${css.mega} ${css.on}` : css.mega}
+                  onClick={() => setBoard(k)}
+                >
+                  <span>{BOARD_META[k].nm}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className={css.body}>
           {detail ? (
             <>
+              {/* 过渡期：已迁到 v5 的板块见 V5_BOARDS（下方 css.page）；
+                  其余板块暂时沿用旧版面，一页一页搬过去。 */}
+              {!V5_BOARDS.has(board) ? (
+                <>
               {/* 面具切换：多绑定，或这张角色名下存在非「本我」的身份时显示——
                   否则只绑一张面具时，进来根本看不出这是谁的记忆。 */}
               {bindChips.length > 1 || bindChips.some((b) => b.maskId !== DEFAULT_MASK_ID) ? (
@@ -1877,8 +1992,508 @@ export default function MemoryApp() {
                   </div>
                 </div>
               ) : null}
+                </>
+              ) : null}
+
+              {/* ==== 基础记忆（预览页 v5 · base）====
+                  抬头大数字 → 分类记号 → 四层列表（每层默认只露 ROW_PREVIEW 条）。 */}
+              {board === "base" ? (
+                <div className={`${css.page} ${css.on}`}>
+                  <div className={css.spec}>
+                    <div className={`${css.specHero} ${css.imp}`}>
+                      <span className={css.n}>{tierCounts.core}</span>
+                      <span className={css.l}>重要</span>
+                    </div>
+                    <div className={css.specRest}>
+                      <i>短期<b>{tierCounts.short}</b></i>
+                      <i>中期<b>{tierCounts.mid}</b></i>
+                      <i>长期<b>{tierCounts.long}</b></i>
+                    </div>
+                  </div>
+
+                  {detail.items.length > 0 ? (
+                    <div className={css.tabs}>
+                      {(
+                        [
+                          ["all", "全部"],
+                          ...Object.entries(CATEGORY_LABEL),
+                          [OFFLINE_FILTER_KEY, "线下"],
+                        ] as [string, string][]
+                      ).map(([key, label]) => (
+                        <button
+                          key={key}
+                          type="button"
+                          data-cat={key}
+                          className={catFilter === key ? `${css.tab} ${css.on}` : css.tab}
+                          onClick={() => setCatFilter(key)}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  <div className={css.list}>
+                    {groups.map(({ tier, items }) => {
+                      if (items.length === 0) return null;
+                      const canFold = items.length > ROW_PREVIEW;
+                      const open = !!openTiers[tier];
+                      const shown = canFold && !open ? items.slice(0, ROW_PREVIEW) : items;
+                      return (
+                        <div key={tier} className={css.grp}>
+                          <div className={`${css.sec} ${css[tier]}`}>
+                            <span className={css.no}>{TIER_META[tier].no}</span>
+                            <span className={css.nm}>{TIER_META[tier].title}</span>
+                            <span className={css.en}>{TIER_META[tier].en.toUpperCase()}</span>
+                            <span className={css.lead} />
+                            <span className={css.ct}>{items.length}</span>
+                          </div>
+                          {shown.map((it, i) => (
+                            <article
+                              key={it.id}
+                              className={tier === "core" && i === 0 ? `${css.row} ${css.hero}` : css.row}
+                              data-cat={it.category}
+                            >
+                              <div className={css.rowHd}>
+                                <span className={css.dt}>{rowStamp(tier, it)}</span>
+                                <span className={css.nm}>{CATEGORY_LABEL[it.category]}</span>
+                                {it.important ? <span className={css.star}>★ 重要</span> : null}
+                                <span className={css.sp} />
+                                <button
+                                  type="button"
+                                  className={css.edit}
+                                  onClick={() => setEditing(editDraft(it))}
+                                >
+                                  编辑
+                                </button>
+                              </div>
+                              <p className={css.tx}>{it.content}</p>
+                              {it.secret ? <p className={css.cap}>· 秘密</p> : null}
+                              {it.grudge ? <p className={css.cap}>· 心结</p> : null}
+                              {it.offline ? <p className={css.cap}>· 线下 · 见面归总</p> : null}
+                            </article>
+                          ))}
+                          {canFold ? (
+                            <button
+                              type="button"
+                              className={css.fold}
+                              onClick={() => setOpenTiers((v) => ({ ...v, [tier]: !v[tier] }))}
+                            >
+                              <span className={css.lb}>
+                                {open ? "收起 ▴" : `展开全部 ${items.length} 条 ▾`}
+                              </span>
+                            </button>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                    {groups.every((g) => g.items.length === 0) ? (
+                      <p className={css.empty}>这一类暂时还没有记下什么。</p>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+
+              {/* ==== 动态（预览页 v5 · moment）====
+                  抬头大数字 → 来源记号 → 一条一条（首条放大）→ 印象卡与展开。 */}
+              {board === "moment" ? (
+                <div className={`${css.page} ${css.on}`} data-page="moment">
+                  <div className={css.spec}>
+                    <div className={css.specHero}>
+                      <span className={css.n}>{moments.length}</span>
+                      <span className={css.l}>动态</span>
+                    </div>
+                    <div className={css.specRest}>
+                      <i className={css.imp}>
+                        TA 发的<b>{moments.length}</b>
+                      </i>
+                      {/* 「我发的」「别人发的」两栏的数据源还没接上，先摆 0 占位，
+                          下一步单独接 getSelfMoments／别的会话里 TA 参与过的那批。 */}
+                      <i>
+                        我发的<b>0</b>
+                      </i>
+                      <i>
+                        别人发的<b>0</b>
+                      </i>
+                    </div>
+                  </div>
+
+                  <div className={css.tabs}>
+                    {SRC_TABS.map(([key, label]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        data-src={key}
+                        className={srcFilter === key ? `${css.tab} ${css.on}` : css.tab}
+                        onClick={() => setSrcFilter(key)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <p className={css.note}>
+                    TA 发在朋友圈的 · 近的原文照录，更早的只剩个大概 · 我发的 TA
+                    也记得 · 别人发的，只有 TA 参与过的才留得下
+                  </p>
+
+                  <div className={css.list}>
+                    {moments.length === 0 ? (
+                      <p className={css.empty}>TA 还没发过朋友圈动态。</p>
+                    ) : (
+                      <div
+                        className={momentOpenNow ? `${css.grp} ${css.open}` : css.grp}
+                        data-total={moments.length}
+                      >
+                        <div className={`${css.sec} ${css.moment}`}>
+                          <span className={css.no}>{MOMENT_META.no}</span>
+                          <span className={css.nm}>{MOMENT_META.title}</span>
+                          <span className={css.en}>{MOMENT_META.en.toUpperCase()}</span>
+                          <span className={css.lead} />
+                          <span className={css.ct}>{moments.length}</span>
+                        </div>
+
+                        {momentRows.map((mo, i) => {
+                          const likes = mo.likes ?? [];
+                          const comments = mo.comments ?? [];
+                          return (
+                            <article
+                              key={mo.id}
+                              data-src="ta"
+                              className={i === 0 ? `${css.row} ${css.hero}` : css.row}
+                            >
+                              <div className={css.rowHd}>
+                                <span className={`${css.src} ${css.ta}`}>TA</span>
+                                <span className={css.dt}>{momentRowStamp(mo.createdAt)}</span>
+                                {mo.pinnedByUser ? <span className={css.star}>★ 重要</span> : null}
+                                <span className={css.sp} />
+                                <button
+                                  type="button"
+                                  className={css.mark}
+                                  onClick={() => void toggleMomentPin(mo.id, !mo.pinnedByUser)}
+                                >
+                                  {mo.pinnedByUser ? "取消重要" : "标注重要"}
+                                </button>
+                              </div>
+                              <p className={css.tx}>{mo.content}</p>
+                              {mo.imagePrompt?.trim() ? (
+                                <p className={css.cap}>配图：{mo.imagePrompt.trim()}</p>
+                              ) : null}
+                              {likes.length > 0 || comments.length > 0 ? (
+                                <div className={css.int}>
+                                  {likes.length > 0 ? (
+                                    <div className={css.lk}>
+                                      <b>♡</b>{" "}
+                                      {likes
+                                        .map((l) => (l.byId === MOMENT_SELF_ID ? "我" : l.byName))
+                                        .join(" · ")}
+                                    </div>
+                                  ) : null}
+                                  {comments.map((c) => (
+                                    <p key={c.id} className={css.cm}>
+                                      <span
+                                        className={
+                                          c.byId === MOMENT_SELF_ID
+                                            ? `${css.who} ${css.me}`
+                                            : c.byId === openId?.characterId
+                                              ? `${css.who} ${css.ta}`
+                                              : css.who
+                                        }
+                                      >
+                                        {c.byId === MOMENT_SELF_ID ? "我" : c.byName}：
+                                      </span>
+                                      {c.content}
+                                    </p>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </article>
+                          );
+                        })}
+
+                        {/* 攒够该压、还没到时机的那几条：TA 只被告知了条数。 */}
+                        {momentOpenNow && momentView.unlisted > 0 ? (
+                          <p className={css.cap}>
+                            再往前的 {momentView.unlisted} 条，只把条数报给了 TA
+                          </p>
+                        ) : null}
+
+                        {/* 最早的那批已经压成一段印象（折起来时由 CSS 的 .onopen 藏住）。 */}
+                        {momentView.digest ? (
+                          <div className={`${css.digest} ${css.onopen}`}>
+                            <span className={css.dt}>最早的 {momentView.coveredCount} 条</span>
+                            <p className={css.tx}>只记得个大概：{momentView.digest}</p>
+                          </div>
+                        ) : null}
+
+                        {momentCanFold ? (
+                          <button
+                            type="button"
+                            className={css.fold}
+                            onClick={() => setMomentOpen((v) => !v)}
+                          >
+                            <span className={css.lb}>
+                              {momentOpen ? "收起 ▴" : `展开全部 ${moments.length} 条 ▾`}
+                            </span>
+                          </button>
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+
+              {/* ==== 全部（预览页 v5 · all）====
+                  一句说明 + 一张目录：点哪一行就跳去哪个板块。
+                  目前只有基础记忆／动态两栏有真数据，其余先摆占位。 */}
+              {board === "all" ? (
+                <div className={`${css.page} ${css.on}`}>
+                  <p className={css.note}>
+                    聊天攒满一批后自动浓缩成短期记忆，越久远越模糊——像真的记性一样。
+                  </p>
+
+                  <div className={css.toc}>
+                    {BOARDS.filter((k) => k !== "all").map((k) => {
+                      const count: number | null =
+                        k === "base"
+                          ? detail.items.length
+                          : k === "moment"
+                            ? moments.length
+                            : k === "date" || k === "space"
+                              ? 0
+                              : null;
+                      /* 有内容的行点亮小圆点，空板块整行压淡。 */
+                      const lit = count !== null && count > 0;
+                      return (
+                        <button
+                          key={k}
+                          type="button"
+                          className={lit ? `${css.brow} ${css.browClick}` : `${css.brow} ${css.browClick} ${css.empty}`}
+                          onClick={() => setBoard(k)}
+                        >
+                          <span className={css.bdot} />
+                          <span className={css.bn}>{BOARD_META[k].nm}</span>
+                          <span className={css.lead} />
+                          <span className={css.bc}>{count === null ? "—" : count}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
+              {/* ==== 原始记录（预览页 v5 · raw）====
+                  点底部「原始记录」进来，再点一次收回；不占大标签。
+                  摆的是浓缩之前的原话——眼下直接读当前会话的聊天消息，一天算一批。 */}
+              {board === "raw" ? (
+                <div className={`${css.page} ${css.pageRaw} ${css.on}`}>
+                  <div className={css.sec} style={{ "--c": "#7c7082" } as CSSProperties}>
+                    <span className={css.no}>RAW</span>
+                    <span className={css.nm}>原始记录</span>
+                    <span className={css.en}>RAW RECORDS</span>
+                    <span className={css.lead} />
+                    <span className={css.ct}>{rawBatches.length} 批</span>
+                  </div>
+
+                  {/* 板块：浓缩发生在哪儿。先都摆上，眼下只有基础记忆有底稿，动态以后也会有 */}
+                  <div className={css.tabs}>
+                    {RAW_BLOCKS.map((k) => (
+                      <button
+                        key={k}
+                        type="button"
+                        data-block={k}
+                        className={rawBlock === k ? `${css.tab} ${css.on}` : css.tab}
+                        onClick={() => setRawBlock(k)}
+                      >
+                        {BOARD_META[k].nm}
+                      </button>
+                    ))}
+                  </div>
+
+                  {rawBlock !== "base" ? (
+                    <p className={css.empty}>这块还没开始浓缩，底稿先空着。</p>
+                  ) : rawBatches.length === 0 ? (
+                    <p className={css.empty}>
+                      还没有原始记录——聊过的原话攒满一批、浓缩一次之后，会留在这里。
+                    </p>
+                  ) : (
+                    rawBatches.map((b) => {
+                      const open = !!rawOpen[b.id];
+                      const canFold = b.messages.length > RAW_PREVIEW;
+                      const shown =
+                        open || !canFold ? b.messages : b.messages.slice(0, RAW_PREVIEW);
+                      return (
+                        <div key={b.id}>
+                          <div className={css.subLab}>
+                            <span>聊天 → 短期</span>
+                            <span className={css.lead} />
+                            <span className={css.en}>
+                              浓缩于 {shortTime(b.condensedAtIso).replace(/-/g, ".")} · 收了{" "}
+                              {b.messages.length} 条
+                            </span>
+                          </div>
+                          <div className={css.raws}>
+                            {shown.map((m) => {
+                              const cat = m.role === "user" ? "mine" : "theirs";
+                              return (
+                                <div key={m.id} className={css.rawItem} data-cat={cat}>
+                                  <div className={css.rd}>
+                                    <span>{shortTime(m.createdAt).replace(/-/g, ".")}</span>
+                                    <span className={css.cn}>{CATEGORY_LABEL[cat]}</span>
+                                  </div>
+                                  <p className={css.rt}>{m.content}</p>
+                                </div>
+                              );
+                            })}
+                            {canFold ? (
+                              <button
+                                type="button"
+                                className={css.fold}
+                                onClick={() => setRawOpen((s) => ({ ...s, [b.id]: !s[b.id] }))}
+                              >
+                                <span className={css.lb}>
+                                  {open ? "收起 ▴" : `展开全部 ${b.messages.length} 条 ▾`}
+                                </span>
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+
+                  <p className={css.snote}>
+                    这些是被浓缩之前的原话，留在本地，不上传、也不再压。哪一批收走了哪些，都按日子记着。
+                  </p>
+                </div>
+              ) : null}
+
+              {/* ==== 设置（预览页 v5 · settings）====
+                  点底部「设置」进来，再点一次收回；不占大标签。
+                  一组总开关／条数／自动浓缩，一组分层刻度。 */}
+              {board === "settings" ? (
+                <div className={`${css.page} ${css.pageSettings} ${css.on}`}>
+                  <div className={css.sec} style={{ "--c": "#c96f92" } as CSSProperties}>
+                    <span className={css.no}>01</span>
+                    <span className={css.nm}>基础记忆</span>
+                    <span className={css.en}>BASE MEMORY</span>
+                    <span className={css.lead} />
+                    <span className={css.ct}>浓缩 · 压缩</span>
+                  </div>
+
+                  <div className={css.slist}>
+                    <div className={css.srow}>
+                      <span className={css.lb}>
+                        记忆系统<i>总开关</i>
+                      </span>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={detail.enabled}
+                        aria-label="记忆系统"
+                        className={detail.enabled ? `${css.sw} ${css.on}` : css.sw}
+                        onClick={() => void toggleEnabled()}
+                      >
+                        <span className={css.k} />
+                      </button>
+                    </div>
+                    <div className={css.srow}>
+                      <span className={css.lb}>
+                        上下文条数<i>浓缩触发线</i>
+                      </span>
+                      <div className={css.stp}>
+                        <button type="button" aria-label="减少" onClick={() => void stepContext(-10)}>
+                          −
+                        </button>
+                        <span className={css.v}>{detail.contextLimit} 条</span>
+                        <button type="button" aria-label="增加" onClick={() => void stepContext(10)}>
+                          +
+                        </button>
+                      </div>
+                    </div>
+                    <div className={css.srow}>
+                      <span className={css.lb}>
+                        自动浓缩<i>攒满自动归总</i>
+                      </span>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={detail.autoCondense}
+                        aria-label="自动浓缩"
+                        className={detail.autoCondense ? `${css.sw} ${css.on}` : css.sw}
+                        onClick={() => void toggleAutoCondense()}
+                      >
+                        <span className={css.k} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className={css.subLab}>
+                    <span>分层刻度</span>
+                    <span className={css.lead} />
+                    <span className={css.en}>越往左 压得越勤</span>
+                  </div>
+
+                  <div className={css.slist}>
+                    {SCALE_ROWS.map((row) => {
+                      const { unit } = SCALE_STEPS[row.key];
+                      const val = detail[row.key] ?? SCALE_DEFAULTS[row.key];
+                      /* 抬头「主（副）」掰开：主标题正写，副标题缩成小字跟在后面。 */
+                      const [main, sub] = row.label.replace(/）$/, "").split("（");
+                      return (
+                        <div key={row.key} className={css.srow}>
+                          <span className={css.lb}>
+                            {main}
+                            <i>{sub}</i>
+                          </span>
+                          <div className={css.stp}>
+                            <button type="button" aria-label="减少" onClick={() => void stepScale(row.key, -1)}>
+                              −
+                            </button>
+                            <span className={css.v}>
+                              {val === 0 && row.key === "shortInjectLimit" ? "关闭" : `${val} ${unit}`}
+                            </span>
+                            <button type="button" aria-label="增加" onClick={() => void stepScale(row.key, 1)}>
+                              +
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <p className={css.snote}>
+                    归总每 10 条一步（20–300）。三档遗忘按天走：短期超过「短期保鲜」并入中期、
+                    中期老于「中期熔合门槛」熔成骨架、再超过「中期保鲜」进长期；条数那两条，是防
+                    某天爆发式聊天的兜底。改完，下次打开记忆页会自动补压。
+                  </p>
+                </div>
+              ) : null}
             </>
           ) : null}
+          </div>
+
+          {/* 底部条：运转状态 + 原始记录 / 设置 入口 */}
+          <div className={css.foot}>
+            <span className={css.dot} />
+            <span className={css.sys}>
+              记忆系统 · {detail?.enabled ? "运转中 · 会自动浓缩与注入" : "已关闭 · 不进新记忆"}
+            </span>
+            <button
+              type="button"
+              className={board === "raw" ? `${css.raw} ${css.on}` : css.raw}
+              onClick={() => setBoard(board === "raw" ? "base" : "raw")}
+            >
+              原始记录
+            </button>
+            <button
+              type="button"
+              className={board === "settings" ? `${css.set} ${css.on}` : css.set}
+              onClick={() => setBoard(board === "settings" ? "base" : "settings")}
+            >
+              设置
+            </button>
+          </div>
         </div>
       </div>
 
@@ -2043,6 +2658,9 @@ const btnStyle: CSSProperties = {
   cursor: "pointer",
   flex: "none",
 };
+
+/* ===== 顶部色带（预览页 v5 · strip）=====
+   已改走 CSS Module（MemoryDetail.module.css 的 .strip 家族）。 */
 
 /* 装饰英文：全大写、小字号、大字距——只当纹样，不当信息。 */
 const enLabelStyle: CSSProperties = {

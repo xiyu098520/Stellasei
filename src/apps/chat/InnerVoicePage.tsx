@@ -10,12 +10,12 @@ import type { ChatMessage, InnerSnapshot } from "@/types/chat";
  * 点聊天里 TA 的头像进来，从底下抽上来一张深色纸：
  * 上半截是一整块封面（深紫渐变，出血），返回与「历史」嵌在封面题头那一行；
  * 竖排大标题立在封面右侧，三行简介压在封面左下；
- * 封面下方居中三个页签（私密心声／记录／私藏），当前项用一枚小粉点标记。
+ * 封面下方居中两个页签（私密心声／私藏），当前项用一枚小粉点标记。
  * 底下按栏目排：左边一条 3px 色边、中文竖签用这一格自己的色，右边英文小标＋正文。
  * 一深一浅一个重音——深紫封面＋深底 #0E0D11＋浅字 #FCF7F0，重音只有一支亮粉。
  *
- * 数据不编：除了「环境」吃 snapshot.scene（旧账回退 outfit／action）、「心声」吃
- * innerVoice、「细处」吃最近一版 memo、「日记」吃最近一篇 diary，其余空着就写「还没记下」。
+ * 数据不编：账里只剩「心情」（snapshot.mood）、「欲望」（snapshot.desire）、
+ * 「怯念」（snapshot.fear）三格，加上他自己的「心声」（innerVoice）；空着就写「还没记下」。
  * ===================================================================== */
 
 /** 这一页的色板（局部常量，不动 shared.ts 的 T／C）。 */
@@ -31,13 +31,10 @@ const IV = {
   bar: "rgba(252,247,240,.17)", // 封件上那三道涂黑条
 } as const;
 
-/** 一格一支色：竖签的字与那条 3px 色边都用它。色相往灰里收过一道，八支并排也不吵。 */
+/** 一格一支色：竖签的字与那条 3px 色边都用它。色相往灰里收过一道，四支并排也不吵。 */
 const TONE = {
-  scene: "#86A6C4",
   mood: "#E38BA6",
   inner: "#F07AA2",
-  memo: "#C9A468",
-  diary: "#A896C6",
   psyche: "#D4837A",
   fear: "#86AEC0",
 } as const;
@@ -78,9 +75,9 @@ interface VoiceEntry {
   snapshot: InnerSnapshot | undefined;
 }
 
-type TabKey = "now" | "log" | "box";
+type TabKey = "now" | "box";
 
-/** 三格页签，连封面那三行也钉在这儿——封面是跟着格走的，不另写一遍。 */
+/** 两格页签，连封面那三行也钉在这儿——封面是跟着格走的，不另写一遍。 */
 const TABS: {
   key: TabKey;
   label: string;
@@ -94,13 +91,6 @@ const TABS: {
     kicker: "Private · Side",
     title: "私密心声",
     sub: ["此刻的他，", "和他没说出口的话。"],
-  },
-  {
-    key: "log",
-    label: "记录",
-    kicker: "What He Keeps",
-    title: "记录",
-    sub: ["他替你留着的细枝末节，", "与今日落笔。"],
   },
   {
     key: "box",
@@ -176,38 +166,8 @@ export default function InnerVoicePage({
   const snap = current?.snapshot;
   /** 这一轮的心声（他心里的那句）。 */
   const voice = (current?.voice ?? "").trim();
-  /* 环境：账里写的是「环境」那一格；更早的消息里只有分开的「穿着」与「动作」，
-     并起来当同一栏显示——旧账不许凭空丢。 */
-  const env =
-    (snap?.scene ?? "").trim() ||
-    [(snap?.outfit ?? "").trim(), (snap?.action ?? "").trim()].filter(Boolean).join("；");
   const meta = TABS.find((t) => t.key === tab) ?? TABS[0];
   const pageIndex = TABS.findIndex((t) => t.key === tab) + 1;
-
-  /* 细处与日记：看的是哪一轮，就显示到那一轮为止的样子
-     （entries 新的在前，所以从这一条一直取到最老那一端，再倒回时间顺序）。 */
-  const upTo = useMemo(() => {
-    const idx = current ? entries.findIndex((e) => e.id === current.id) : -1;
-    return idx < 0 ? [] : entries.slice(idx).reverse();
-  }, [entries, current]);
-
-  /* 细处：只取最近那一版非空的清单（他每轮从头重写，不往上叠）。 */
-  const memos = useMemo(() => {
-    for (let i = upTo.length - 1; i >= 0; i -= 1) {
-      const list = (upTo[i].snapshot?.memo ?? []).map((s) => s.trim()).filter(Boolean);
-      if (list.length) return list;
-    }
-    return [];
-  }, [upTo]);
-
-  /* 日记：只取最近那一篇非空的当全文（他每轮把旧的并进新的重写）。 */
-  const diary = useMemo(() => {
-    for (let i = upTo.length - 1; i >= 0; i -= 1) {
-      const t = (upTo[i].snapshot?.diary ?? "").trim();
-      if (t) return t;
-    }
-    return "";
-  }, [upTo]);
 
   const drawer = (
     <div style={{ position: "absolute", inset: 0, zIndex: 6 }}>
@@ -536,10 +496,6 @@ export default function InnerVoicePage({
             <div key={tab} className="iv2-bands">
               {tab === "now" ? (
                 <>
-                  <Band rail="环境" tone={TONE.scene} label="Ambience">
-                    <Slot text={env} empty="这一轮还没记下他此刻的样子。" />
-                  </Band>
-
                   <Band rail="心情" tone={TONE.mood} label="Mood">
                     <Slot text={snap?.mood} empty="这一轮还没记下他的心情。" />
                   </Band>
@@ -567,62 +523,6 @@ export default function InnerVoicePage({
                         这一轮没留下心声。
                       </div>
                     )}
-                  </Band>
-                </>
-              ) : tab === "log" ? (
-                <>
-                  <Band rail="细处" tone={TONE.memo} label="Memo">
-                    {memos.length ? (
-                      <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-                        {memos.map((it, i) => (
-                          <li
-                            key={`${i}-${it}`}
-                            style={{
-                              display: "flex",
-                              gap: 11,
-                              padding: "8px 0",
-                              borderTop: i === 0 ? "none" : `1px dashed ${IV.line}`,
-                            }}
-                          >
-                            <span
-                              aria-hidden
-                              style={{ flex: "none", width: 12, height: 12, marginTop: 6, border: `1.4px solid ${IV.line2}` }}
-                            />
-                            <Tr
-                              text={it}
-                              className="iv2-sel iv2-txt"
-                              style={{ minWidth: 0, fontSize: 13.5, fontWeight: 400, lineHeight: 1.8, color: IV.ink2 }}
-                            />
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <div className="iv2-txt" style={VAGUE}>
-                        他还没给自己留过什么。
-                      </div>
-                    )}
-                  </Band>
-
-                  <Band rail="日记" tone={TONE.diary} label="Diary">
-                    <div
-                      className="iv2-sel iv2-txt"
-                      style={{
-                        fontSize: 13.5,
-                        fontWeight: 400,
-                        lineHeight: "26px",
-                        textIndent: "2em",
-                        backgroundImage: `repeating-linear-gradient(to bottom, transparent 0 25px, ${IV.line} 25px 26px)`,
-                        color: IV.ink2,
-                      }}
-                    >
-                      {diary ? (
-                        <p style={{ margin: 0 }}>
-                          <Tr text={diary} />
-                        </p>
-                      ) : (
-                        <p style={{ ...VAGUE, margin: 0 }}>他还没写下什么。</p>
-                      )}
-                    </div>
                   </Band>
                 </>
               ) : (
@@ -719,12 +619,10 @@ function Tr({
   );
 }
 
-/** 历史一条的摘要：先心声，他没写心声就退到环境，两样都没有就直说。 */
+/** 历史一条的摘要：有心声就用心声，没有就直说。 */
 function summaryOf(e: VoiceEntry): string {
   const voice = e.voice.trim();
   if (voice) return voice;
-  const env = (e.snapshot?.scene ?? "").trim() || (e.snapshot?.action ?? "").trim();
-  if (env) return env;
   return "（这一轮只留下几个数）";
 }
 

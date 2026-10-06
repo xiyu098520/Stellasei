@@ -21,9 +21,11 @@ import {
 import { appendMessage, updateCharChatSettings, updateConversation } from "@/lib/settings/chat";
 import {
   acceptFriendRequest,
+  appendFriendAcceptedNotice,
   blockFriend,
   blockedFirstReaction,
   hardDeleteFriend,
+  newFriendGreetingReaction,
   rejectFriendRequest,
   removeFriend,
   restoreFriend,
@@ -192,16 +194,22 @@ export default function ContactList({
     setRequestTo(arch);
   };
 
-  /** 发送申请＝立即成为好友；未关闭问候时，问候语成为对话的第一条消息。 */
+  /** 发送申请＝立即成为好友；未关闭问候时，问候语成为对话的第一条消息，TA 随后主动开口。 */
   const sendRequest = useCallback(
     async (arch: ArchiveEntry, greet: string, silent: boolean) => {
       await updateConversation(arch.id, maskId, {});
-      if (!silent && greet.trim()) {
-        await appendMessage(arch.id, maskId, {
-          role: "user",
-          content: greet.trim(),
-          isRead: true,
-        });
+      /* 未关闭问候：先把「TA 通过了申请」这条系统提示落进聊天页——我那句验证消息算申请附言，
+         摆在这条之前；随后 TA 才在后台主动开口（见 newFriendGreetingReaction）。
+         关闭问候则整段静默：附言、通过提示、TA 的第一句，一个都不落，等用户自己先说。 */
+      if (!silent) {
+        if (greet.trim()) {
+          await appendMessage(arch.id, maskId, {
+            role: "user",
+            content: greet.trim(),
+            isRead: true,
+          });
+        }
+        await appendFriendAcceptedNotice(arch, maskId);
       }
       setRequestTo(null);
       setAddDetail(null);
@@ -209,8 +217,13 @@ export default function ContactList({
       setAddQuery("");
       onDataChange();
       showToast("已发送申请，你们现在是好友了");
+      /* 未关闭问候＝TA 会收到新好友提示，通过后主动开口（后台生成，慢的那半段）。
+         关闭问候则静默，等用户自己发第一句。 */
+      if (!silent) {
+        void newFriendGreetingReaction(arch, maskId, maskName, greet).finally(() => onDataChange());
+      }
     },
-    [maskId, onDataChange, showToast],
+    [maskId, maskName, onDataChange, showToast],
   );
 
   const filtered = useMemo(() => {

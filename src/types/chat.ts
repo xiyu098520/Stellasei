@@ -159,6 +159,15 @@ export interface ChatMessage {
    */
   apiText?: string;
   /**
+   * 这条消息**发出去时那截易变尾巴**（签名／零钱／回执／关键词世界书／当前状态，
+   * 以及线下那句说明）——单独记一份（1.10.8）。为什么单记：红包／转账的正文
+   * 是**随账目状态变**的（见 chatApi 的 money 分支），回喂时要按当时状态重算，
+   * 不能整条照抄 apiText；重算出的正文得把这一截尾巴接回去，前缀才不会从尾巴
+   * 那儿整段断开。普通文本消息走 apiText 就够，这份是给 money 分支兜底的。
+   * 只给模型用，气泡里不显示。
+   */
+  apiTail?: string;
+  /**
    * 这张图「是什么」的说明（1.4.30）。模型不是扫码器，光看图读不出图里的字，
    * 所以发图时就把「图里装了什么」写成一句话存在这条消息上；回喂历史（含
    * 之后任意一轮）时带出去，TA 才一直记得这张图是什么，而不是只剩「（发来一张图片）」。
@@ -212,19 +221,12 @@ export interface ChatMessage {
  * 八根劲儿整套拆掉（原 `drives`／`driveReasons`／`wishDrive` 三个字段连带 DRIVE_META、
  * 解析里那套涨跌全删），账换成私密心声页真正要的那几格：穿着、心情（此刻）、
  * 欲望、怯念（私藏）、细处、日记（记录）。老消息里那几个旧字段还躺在库里，没人再读。
+ *
+ * **2026-10-06（恩熙：「环境以及备忘录，我们得先删除……我想留下的是心声、欲望、怯念」）**：
+ * 环境（scene／action／outfit）、细处（memo）、日记（diary）三栏删掉，账里只剩
+ * 心情、欲望、怯念。老消息里那几个旧字段还躺在库里，解析时照旧认得出、摘走丢掉。
  */
 export interface InnerSnapshot {
-  /** 他此刻的样子（1.9.0，账里的「环境」一格）：人在哪儿、四周什么光景、身上穿的，
-   *  末尾带一点体态或神情。**合并了旧的「穿着」与「动作」两格**——恩熙报那两格说的一直是
-   *  同一件事（穿着里混着动作），要求并成一栏「环境：地方、光景、穿搭、神态、小动作」。
-   *  **继承的一格**：地点和穿着没变时，提示词许他沿用上一个回合的说法；没写就沿用上一次
-   *  （见 parseInnerSnapshot）。 */
-  scene?: string;
-  /** 旧「动作」格（1.7.92～1.8.6）：**1.9.0 起不再写**，只留作读老消息（并进「环境」显示）。 */
-  action?: string;
-  /** 旧「穿着」格（1.7.92～1.8.6）：**1.9.0 起不再写**，只留作读老消息（并进「环境」显示）。
-   *  ——人不会一条消息换一套衣服，这一轮没写就沿用上一次（见 parseInnerSnapshot）。 */
-  outfit?: string;
   /** 他此刻的心情（1.7.92）：一句话。不继承：它讲的就是这一刻，照搬上一轮就是假话。 */
   mood?: string;
   /** 没说出口的那个念头（1.7.92）：私密心声页「私藏」页签那格「欲望」——他心口压着、
@@ -233,18 +235,6 @@ export interface InnerSnapshot {
   /** 不敢细想的那件事（1.7.92）：「私藏」页签那格「怯念」——他此刻最怕发生、最怕被她
    *  知道的那件事。同样不继承。 */
   fear?: string;
-  /** 他替她留着的细枝末节（1.7.92，1.9.0 收紧）：「记录」页签那格「细处」，**一行一条**。
-   *  只记**新冒出来的**那几条（1.9.0：上面已经记过的别再写一遍，做完的、不再要的也别再提；
-   *  一轮最多三条），攒在页面上是一条条往下加的清单（页面上另有一道逐字去重）。
-   *  要他写得出「不重复」，就得先让他看得见自己记过什么——上一轮为止的清单每轮随
-   *  `ledgerBlock` 回送（见 promptBuilder 的易变区）。 */
-  memo?: string[];
-  /** 他写给自己的一篇碎话（1.7.92，1.9.0 改为「整合一篇」）：「记录」页签那格「日记」。
-   *  1.9.0 起要求把「上一轮记下的＋这一轮新冒出来的」**并起来重写成完整的一篇**（不是往上
-   *  加一段），想法变了就推翻旧说法、重复的并掉——所以这一格存的是**那一篇的最新全文**，
-   *  页面上只显示最新那篇（老消息里存着的一段段仍读得出来，只是不再往后叠）。
-   *  这一轮没什么可记的就留空＝沿用上一次（见 parseInnerSnapshot 与 InnerVoicePage）。 */
-  diary?: string;
   /**
    * 他这一轮**最想做的事**（1.5.96，**1.7.96 这一栏撤掉**——恩熙：「我们没有最想做的事
    * 这一个栏目吧」）：原先由八根里现在最高的那一根顶出来，真做出来了那根当场松下来
@@ -285,6 +275,46 @@ export interface ImageDiag {
   translateFailed: boolean;
 }
 
+/**
+ * 动态互动里代表「我（当前面具）」的固定作者 id。
+ * 跟 `MomentLike`／`MomentComment` 里角色 id 同一个位子——一个面具一册动态，
+ * 「我」在册内就是唯一的一个人，不需要再存面具 id。
+ */
+export const MOMENT_SELF_ID = "self";
+
+/**
+ * 动态底下的一条赞（2026-10-05）。
+ * 「我」赞的、角色赞的都长这个样——角色那边把 id 换成角色 id 就行。
+ */
+export interface MomentLike {
+  /** `MOMENT_SELF_ID`（我）或角色 id。 */
+  byId: string;
+  byName: string;
+  byAvatar?: string;
+  /** ISO 时间戳。 */
+  at: string;
+}
+
+/**
+ * 动态底下的一条评论（2026-10-05）。
+ * 评论**分两层**：`replyToId` 空＝直接评这条动态（平铺）；
+ * 有值＝挂在被回复的那条评论下面（恩熙：「艾特的情况下，会在被 @ 的那条底下单独出一层」）。
+ */
+export interface MomentComment {
+  id: string;
+  /** `MOMENT_SELF_ID`（我）或角色 id。 */
+  byId: string;
+  byName: string;
+  byAvatar?: string;
+  content: string;
+  /** ISO 时间戳。 */
+  at: string;
+  /** 挂在哪条评论下（二级）；空＝直接评动态。 */
+  replyToId?: string;
+  /** 被 @ 到的人（`MOMENT_SELF_ID` 或角色 id）——只管展示与提醒，内容里照常写着 @名字。 */
+  mentions?: string[];
+}
+
 /** TA 发的一条动态（随聊天累积，资料页时间轴展示）。
  *
  * TA 用〔动态图〕标记写一段画面描述（可选），生成图片是在朋友圈页面手动触发。
@@ -310,6 +340,66 @@ export interface ChatMoment {
    * 命名跟 `MemoryItem.pinnedByUser` 对齐（同一套「用户手动标的」口径）。
    */
   pinnedByUser?: boolean;
+  /** 这条动态的赞（我／任何角色）。 */
+  likes?: MomentLike[];
+  /** 这条动态的评论（含二级回复）。 */
+  comments?: MomentComment[];
+  /**
+   * TA 这条动态给谁看（2026-10-05）。恩熙定的原则：**TA 跟我一样是活在这世界里的
+   * 真人，只是靠这个小手机联系**——我有的「分组可见」，TA 同样有。
+   * 缺省＝公开（老数据没有这格也照公开走）；可见范围决定**谁能来赞／评**。
+   */
+  visibility?: MomentVisibility;
+  /** 部分可见时才用：可见的角色 id 列表。 */
+  visibleTo?: string[];
+  /** 部分可见时才用：可见的「世界」（分类）id 列表。 */
+  visibleWorlds?: string[];
+}
+
+/** 「我」自己发的一条动态的可见范围：公开／私密／部分可见。 */
+export type MomentVisibility = "public" | "private" | "partial";
+
+/**
+ * 「我」自己发的一条动态（挂在面具下，不跟某个角色会话走）。
+ *
+ * 与 `ChatMoment`（TA 发的，落在各自的 `Conversation.moments`）分开存：
+ * 我的这一份不分角色，一个面具一册。作者恒为当前面具——
+ * 名字／头像渲染时从面具取，不在这份数据里重复存。
+ */
+export interface SelfMoment {
+  id: string;
+  /** 正文；配了图时可以留空（纯图动态）。 */
+  content: string;
+  /** ISO 时间戳。 */
+  createdAt: string;
+  /** 配图：media-store:// 引用串（可选）。 */
+  imageRef?: string;
+  /**
+   * 「文字描述当图」（可选）：没画真图，只拿一段文字当这张配图——
+   * 卡片上摊一张印着这段话的相纸；TA 收到的仍是「（配了一张图：<描述>）」，
+   * 在它眼里这就是一张图片。由动态设置里那枚「配图自动生成」决定走这条路
+   * （关＝文字当图；开＝把这段描述交给生图接口画成真图，落 imageRef）。
+   */
+  imageText?: string;
+  /**
+   * 发布那一刻让文本接口「看一眼」这张图写下的一句话——
+   * TA 读「我在朋友圈发过的」时带着它，图才不会白发（一次花费、永久记住）。
+   * 接口没配／不支持看图／识别失败时没有这格，照常发不受影响。
+   */
+  imageNote?: string;
+  /** 自定义标签（存纯词，展示时前面带 #）。 */
+  tags?: string[];
+  /** 可见范围；缺省＝公开（老数据没有这格也照公开走）。 */
+  visibility?: MomentVisibility;
+  /** 部分可见时才用：可见的角色 id 列表。 */
+  visibleTo?: string[];
+  /** 部分可见时才用：可见的「世界」（分类）id 列表。存世界而不是名单——
+      世界里的角色整批可见，且跟着名单走（角色进出世界，可见范围自动跟着变）。 */
+  visibleWorlds?: string[];
+  /** 这条动态的赞（我／任何角色）。 */
+  likes?: MomentLike[];
+  /** 这条动态的评论（含二级回复）。 */
+  comments?: MomentComment[];
 }
 
 /** 短期记忆的分类（浓缩时 AI 归类，用户可在记忆 App 里改）。 */
@@ -360,6 +450,28 @@ export interface MemoryItem {
   refinedIso?: string;
 }
 
+/**
+ * **一批「浓缩之前的原话」底稿**（记忆 App · 原始记录页用）。
+ *
+ * 每次线上浓缩成功，就把这一批被收走的聊天原话照录下来，跟产出的条目挂上钩——
+ * 页面上「哪一天收走了哪几条、浓缩出了什么」才交代得清。
+ * 存在 `CharacterMemory` 里＝跟记忆同生命周期：清空记忆时这份记录一删，底稿自然跟着没。
+ */
+export interface MemoryRawBatch {
+  id: string;
+  /** 这批原话覆盖的时间段（ISO 起止）。 */
+  fromIso: string;
+  toIso: string;
+  /** 浓缩完成的时刻（ISO）——页面上那句「浓缩于 …」。 */
+  condensedAtIso: string;
+  /** 这批被收走的原话（浓缩前照录；系统消息不在此列）。 */
+  messages: { id: string; role: ChatMessage["role"]; content: string; createdAt: string }[];
+  /** 这批浓缩产出的记忆条目 id（跟 `items` 对得上）。 */
+  itemIds: string[];
+  /** 线下见面那条线归总出来的（以后接，线上为空）。 */
+  offline?: boolean;
+}
+
 /** 角色的类人记忆（每个「角色 × 面具」一份，跟着会话走）。 */
 export interface CharacterMemory {
   /** 会话 id（角色id::面具id）。 */
@@ -395,6 +507,20 @@ export interface CharacterMemory {
    *  记 id 而不是条数：随时可能把某条标为「重要」（见 `ChatMoment.pinnedByUser`），
    *  条数会跟着错位、让个别动态两头落空；按 id 认，标／取消都不会牵动已压好的那段。 */
   momentDigestIds?: string[];
+  /**
+   * 「我」发的朋友圈的「模糊印象」：被压进这段回忆的那些旧动态合成的一段话。
+   * 与 `momentDigest` 同构，只是这条线记的是**她发的**动态——只有这个角色（这个世界）
+   * 有权看的那些；可见范围在压缩时已按角色筛过，被挡在外面的角色进不了它的印象。
+   */
+  myMomentsDigest?: string;
+  /** 已经压进 `myMomentsDigest` 的那批动态的 id（理由同 `momentDigestIds`）。 */
+  myMomentsDigestIds?: string[];
+  /**
+   * **浓缩底稿**：每次线上浓缩收走的那批聊天原话（新的在前，只留最近若干批）。
+   * 记忆 App 的「原始记录」页就摊这个——跟记忆同生命周期，清空记忆时一删跟着没。
+   * 老数据没这格＝没记过底稿，页面显示空态，不迁移。
+   */
+  rawBatches?: MemoryRawBatch[];
   /* ---------- 分层压缩刻度（1.7.66，都可在记忆 App 设置区里拧）----------
      一把好记的尺子：一周全细节、半月有经过、一月剩骨架、更早只剩印象。
      存的是「实际用值」；没设过（老数据）＝undefined，读侧一律用默认值兜底。 */
@@ -615,6 +741,13 @@ export interface Conversation {
   voiceOverride?: VoiceApiExtras;
   /** 角色设置：个别语音提示词（不存在则跟随全局；存在＝这个角色单独用这份规矩）。 */
   voicePromptOverride?: VoicePromptConfig;
+  /** 主动找我（1.10.30）：TA 没被喊也会自己来消息、自己发动态（未设＝默认开，见 settings/chat.ts 的 proactiveOnOf）。 */
+  proactiveOn?: boolean;
+  /** 主动找我的基础间隔（分钟；未设＝默认 360，见 proactiveBaseMinOf）。
+   *  这只是个标称值，TA 会按你们的情景自己浮动多久再来。 */
+  proactiveBaseMin?: number;
+  /** 深夜模式（1.10.30）：开（默认）则 23:00-08:00 不主动来消息；关掉则深夜也照发。见 proactiveQuietOf。 */
+  proactiveQuiet?: boolean;
 }
 
 /** API 设定：填好并启用后才会请求真后端。 */
