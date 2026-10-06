@@ -50,7 +50,6 @@ import {
   appendMetaUpdates,
   bubbleCapOf,
   clearConversation,
-  convId,
   deleteMessage,
   getChatPrefs,
   getOfflineScene,
@@ -66,7 +65,9 @@ import {
 import { getWorldBooks } from "@/lib/settings/worldbook";
 import type { Mask } from "@/lib/settings/mask";
 import { buildImageSubject, buildPrompt, type PromptSection } from "@/lib/chat/promptBuilder";
+import { buildMyMomentsBlock } from "@/lib/chat/my-moments";
 import {
+  buildLangRule,
   buildOfflineStylePrompt,
   buildStylePrompt,
   extractBubbleQuotes,
@@ -74,8 +75,6 @@ import {
   extractMetaMarkers,
   fetchAIReply,
   fetchAIStreamReply,
-  innerLedgerBlock,
-  lastInnerSnapshot,
   generateImage,
   guessUseCharRef,
   isRejectedBeforeWork,
@@ -91,6 +90,8 @@ import {
   translateText,
 } from "@/lib/chat/chatApi";
 import { applyRegexRules, loadRegexRules } from "@/lib/chat/regexRules";
+/* 我发的语音条（1.10.20）：真录音走浏览器语音识别转文字——封装在 stt.ts，见那里的说明。 */
+import { createSTTSession, type STTSession } from "@/lib/chat/stt";
 /* TA 那本账的「开户」（1.4.36）：第一次跟他说话（或第一次翻他手机）时，
    按人设给他开一本有来历的账——否则他手上一分钱没有，发红包／转账都无从谈起。 */
 import { openContactAccountIfEmpty } from "@/lib/chat/contactAccount";
@@ -114,7 +115,6 @@ import {
   type WalletCard,
 } from "@/lib/settings/wallet";
 import { renderPayCodeDataUrl } from "@/lib/settings/paycode";
-import { generateMomentImage } from "@/lib/chat/moment-image";
 import {
   blockFriend,
   blockedFirstReaction,
@@ -122,18 +122,21 @@ import {
   blockedNowPrompt,
   hardDeleteFriend,
   isChatRefusal,
+  isSocialTyping,
   removeFriend,
+  subscribeSocialAppend,
+  subscribeSocialTyping,
   unblockFriend,
   unblockedFirstReaction,
 } from "@/lib/chat/social";
 import {
   bumpMemoryCount,
+  buildInjection,
   buildMemoryBlock,
   deleteMemory,
   getMemory,
   maybeRunMemoryPipeline,
   maybeRunOfflineCondense,
-  trimHistory,
 } from "@/lib/chat/memory";
 import { uuid } from "@/lib/uuid";
 import {
@@ -149,6 +152,7 @@ import {
 import { sweepOrphanMedia } from "@/lib/chat/media-sweep";
 import { readQrNote } from "@/lib/chat/qr-read";
 import { APP_VERSION } from "@/lib/version";
+import { ensurePlaybackSession } from "@/lib/audio-session";
 import {
   AVATAR_GRADIENT,
   CHAT_BG_DEFAULT,
@@ -212,7 +216,6 @@ import type {
   ChatApiSettings,
   CharacterMemory,
   ChatMessage,
-  ChatMoment,
   Conversation,
   ImageApiExtras,
   ImageDiag,
@@ -608,6 +611,9 @@ export default function ChatWindow({
   /* 「发送图片」的二级面板：先问「这张图从哪来」——手机相册，还是小手机自己的相册。
      小手机相册（共同相册）还没做，先留入口，见 pickImageSource。 */
   const [showImageSource, setShowImageSource] = useState(false);
+  /* 「语音消息」的弹窗（1.10.20）：文字输入＝空气泡（不发音频），真录音＝带音频的语音条。
+     见 sendVoiceMsg 与 VoiceRecordModal。 */
+  const [showVoiceModal, setShowVoiceModal] = useState(false);
   /* 选好、还没发出去的那张图：先把图摆出来问一句「要发这张吗」，
      等「发送」这一下才真发（见 confirmPendingImage）。previewUrl 是临时地址。 */
   const [pendingImage, setPendingImage] = useState<{ file: File; previewUrl: string } | null>(null);
@@ -615,16 +621,37 @@ export default function ChatWindow({
   /* 外语聊天：发出前那一刻正在把这句翻成外语（小飞机暂时歇一下，免得连点两下发两条）。 */
   const [translatingMy, setTranslatingMy] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
+  /* 后台的社交反应（加好友问候／拉黑／解除）也在替 TA 写字：它们不归这一页的「发一条等回复」
+     流程管，过去聊天窗灯都不亮，加完好友点进来只看到半天没动静、然后「啪」地冒出第一句。
+     订阅 social.ts 的登记表，轮到这一对在写就跟着亮「正在输入」。刻意与 isTyping 分开：
+     社交反应中断不了，下面那个停止按钮只认 isTyping。 */
+  const [, setSocialTypingTick] = useState(0);
+  useEffect(() => subscribeSocialTyping(() => setSocialTypingTick((n) => n + 1)), []);
+  const socialTyping = isSocialTyping(character.id, maskId);
   /* 长按菜单 */
   const [curMsg, setCurMsg] = useState<ChatMessage | null>(null);
   const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
   const [showSheet, setShowSheet] = useState(false);
   /* 语音／转文字 */
   const [playingVoice, setPlayingVoice] = useState<string | null>(null);
-  const [showTrans, setShowTrans] = useState<string | null>(null);
+  /* 「转文字」可**多开**：点开的各自留着，互不顶掉，再点同一条才收起（1.10.6，恩熙要）。
+     从前是单个 id（点第二条就把第一条顶掉），现改成一组 id。 */
+  const [showTrans, setShowTrans] = useState<Set<string>>(() => new Set());
   /* 语音播放诊断：**只在播失败时**在气泡下露一行小字（原因 + App 版本 + iOS 版本），
      成功时绝不显。临时用来把她那边到底卡在哪一步带回来，排掉就删。 */
   const [voiceDiag, setVoiceDiag] = useState<{ id: string; text: string } | null>(null);
+  /* 1.10.21：播失败时兜底露出的原生播放器，源要用 blob:（data URL 在 iOS 上放不出，见
+     playVoiceViaElement 上方注释）。这存着当前那条兜底音频的 blob URL；换一条或卸载时回收。 */
+  const [voiceFallback, setVoiceFallback] = useState<{ id: string; url: string } | null>(null);
+  /* 兜底 blob URL 的回收：换一条或组件卸载时 revoke 旧的，别把 blob 一直挂在内存里。 */
+  useEffect(() => {
+    const url = voiceFallback?.url;
+    return () => {
+      if (url) {
+        try { URL.revokeObjectURL(url); } catch { /* ignore */ }
+      }
+    };
+  }, [voiceFallback]);
   /* 弹窗 */
   const [showViewer, setShowViewer] = useState(false);
   const [viewerCap, setViewerCap] = useState("");
@@ -1312,7 +1339,8 @@ export default function ChatWindow({
           showToast("语音 API 未配置，无法合成");
           return;
         }
-        const working: ChatMessage = { ...m, pending: true, error: false, audioUrl: undefined };
+        /* awaitGen 清掉：这是用户点了「生成」才进来的，转成真「合成中」。 */
+        const working: ChatMessage = { ...m, pending: true, error: false, audioUrl: undefined, awaitGen: false };
         /* 同上：写不进库就别去打接口了（语音是按次收费的）。 */
         try {
           await updateMessage(character.id, maskId, working);
@@ -1555,6 +1583,14 @@ export default function ChatWindow({
            没设过＝默认开、5 条。关了就是 0＝不限，提示词那句也不加，与从前逐字一致；
            流式预览与落库两趟都拿它收口，传的必须是同一个值。 */
         const bubbleCap = bubbleCapOf(conv);
+        /* 记忆模块统一出口：原文窗口（baseHistory＝trimHistory 口径，丙方案，见 memory.ts
+           的注释）＋记忆块一处算出，窗口线（延迟接棒判据）随窗口同源派生。
+           记忆关闭时不裁：没有浓缩兜底，裁掉就是真丢。 */
+        const { trimmedHistory: baseHistory, memoryBlock } = await buildInjection(
+          history,
+          memory,
+          myName,
+        );
         const built = buildPrompt({
           characterId: character.id,
           /* 他住的「世界」（档案分类）：世界书绑了世界时按它判命中
@@ -1572,11 +1608,10 @@ export default function ChatWindow({
           userSignature,
           /* TA 的零钱：他自己发红包／转账的花销从这本账出（1.4.36）。 */
           walletBalance: taWallet,
-          memoryBlock: memory ? await buildMemoryBlock(memory, myName) : "",
-          /* 他自己记下的东西（1.9.0）：细处清单＋写过的那篇日记，随本轮递回去——
-             他才知道自己记过什么，「记过的别再写」「并成一整篇」才落得下来。
-             每轮都可能变，走易变区；没有账时整块不注入（见 chatApi 的 innerLedgerBlock）。 */
-          ledgerBlock: innerLedgerBlock(history),
+          memoryBlock,
+          /* 我发的朋友圈里他有权看的那几条（1.10.27）：可见范围在这儿真的生效——
+             仅自己可见、或部分可见里没点到他，这一格就是空的。 */
+          myMomentsBlock: await buildMyMomentsBlock(character.id, character.categoryId, maskId),
           excludeDialogue: true,
           /* 会话标识：概率条目的骰子结果按它固定，同一场对话里不每轮重掷。 */
           sessionKey: `${character.id}::${maskId}`,
@@ -1631,15 +1666,15 @@ export default function ChatWindow({
           charName,
           myName,
           opts?.extraHint,
-          canImage,
-          canVoice,
+          /* 1.10.69：聊天里一律告诉 TA「能发图／能发语音」，不看接口配没配——
+             配没配是「画不画得出来」的事，不是「能不能发」的事：没配也要落一个
+             图片／语音气泡（描述摆着、点「生成」提示去配接口）。 */
+          true,
+          true,
           character.data.isAssistant === true,
           /* 气泡条数：**每聊天设定**（见 bubbleCapOf）。0＝不限，连提示词那句都不加，
              保持逐字不变；开了才告诉 TA 这一轮最多几条。 */
           bubbleCap > 0 ? bubbleCap : null,
-          /* 人设原文（1.9.9）：【心声】里那句「你的人设：……」填的就是档案这一栏，
-             让 TA 在最开头就被点名、照着人设走。空着时那一句自动只剩前半句。 */
-          character.data.persona,
           /* 语音提示词（1.9.58；1.9.60 校准定位）：角色单独配了就用角色的，没配就跟随全局
              （设置里的开关＋正文）。管的是〔语音〕里那句台词怎么写，不是发语音的机制。
              开关开着且正文非空才注入；否则传 null，稳定区逐字不变（不吃缓存重建）。 */
@@ -1658,7 +1693,7 @@ export default function ChatWindow({
         /* 外语聊天（1.9.48；1.9.50 扩到「他写下的字」）：他说话换一门语言——气泡正文、语音，
            连签名／心声／日记／环境／心情／欲望／怯念／细处都用这门语言写（这些她**点一下**看中文，
            见 transCache；不必自己附中文）。**中文标签与〔〕标记一律原样**——它们是解析的锚，
-           动了就解析不出来；思考过程与动态（朋友圈）这一版仍写中文。
+           动了就解析不出来；思考过程这一版仍写中文。
            钉在稳定段：它只在设置改动那一下才变，跟别的稳定内容一起吃前缀缓存。 */
         /* 1.9.80：不再事后发第二次翻译请求，改成让模型**一次就写两半**——
            每条消息写成「外文原文|简体中文」，解析层按竖线劈开（见 splitBilingual）。
@@ -1678,28 +1713,9 @@ export default function ChatWindow({
            译文与气泡重复时由下面的去重去掉，别在气泡下再挂一遍同样的话）。 */
         /* 1.9.86：规则里的样板句得跟着语言走——从前固定写着日语「こんにちは|你好」，
            切到英语／韩语时那句就成了错榜样，会带偏模型。给七种语言各配一对问候；
-           万一下拉里将来加了没配的语言，退回「（语言名）原文|你好」的抽象写法。 */
-        const LANG_SAMPLE: Record<string, string> = {
-          日语: "こんにちは",
-          英语: "Hello",
-          韩语: "안녕하세요",
-          法语: "Bonjour",
-          德语: "Hallo",
-          西班牙语: "Hola",
-          俄语: "Привет",
-        };
-        const langSample = trOut?.on ? LANG_SAMPLE[trOut.lang] ?? `${trOut.lang}原文` : "";
-        const langRule = trOut?.on
-          ? `\n\n【说话的语言·你的母语】你的母语就是${trOut.lang}——你**本来就是${trOut.lang}母语者**，嘴里的话一开始就是${trOut.lang}，不是先想一句中文再翻过去。**像真正的${trOut.lang}母语者那样自然地说**：用词、语气、称呼（怎么自称、怎么叫她）、口癖、该不该用敬语，全照${trOut.lang}的习惯来，**别把中文逐字替换成${trOut.lang}、写成生硬的翻译腔**。你**听得懂中文，也能用中文接她的话**；平时说${trOut.lang}，但偶尔（撒娇、着急、逗她、或某个词用中文才够味）可以自然地蹦一两句中文。**你发出的每一条消息都写成两半：${trOut.lang}原文「|」简体中文**——先写这句话的${trOut.lang}原文，紧跟一根竖线「|」，再写这句话的简体中文；一条消息一行、成对出现，例如：${langSample}|你好。竖线两边都要写全，**缺了中文她会看不懂意思**。不过**若这一条你就是整句想说中文，就直接写中文、不加竖线**（她看得懂，不必你附译文）；只有${trOut.lang}句子里夹了个中文词，才照格式写成「${trOut.lang}原文|中文」。气泡正文照这个格式；〔语音〕里的话按【发语音】那节的固定格式写（一样是「原文|中文」，用户自定义的语音规矩也改不掉）。` +
-            (trInnerOn
-              ? `回复最前面那段 <think>…</think> 里也一样：**每一行都写成「原文|简体中文」两半**——心声、环境、心情、欲望、怯念、细处、日记，一行一对。`
-              : `回复最前面那段 <think>…</think> 里的每一行（心声、环境、心情、欲望、怯念、细处、日记）**改用简体中文写**——心声页里那几栏就该是中文，别再写${trOut.lang}原文、也不要加竖线。`) +
-            `\n但**中文标签**一律保持中文、一个字都不许翻：方括号里的标记（〔签名〕〔动态〕〔语音〕〔图片〕〔红包〕〔转账〕〔引用〕），以及 <think> 里那几行的冒号前缀（「环境：」「心情：」「欲望：」「怯念：」「细处：」「日记：」「角色心声：」）——它们是机器的锚，翻了整块就解析不出来；` +
-            (trInnerOn
-              ? `标签后面的**内容**照旧写成「${trOut.lang}|中文」两半。`
-              : `〔签名〕〔动态〕这些气泡标签后面的内容照旧写成「${trOut.lang}|中文」两半，<think> 各行标签后的内容则写简体中文。`) +
-            `引用的原话是她说的中文，原样照抄、不要翻、也不要加竖线。动态（朋友圈）这一版仍写中文。`
-          : "";
+           万一下拉里将来加了没配的语言，退回「（语言名）原文|你好」的抽象写法。
+           1.10.13：整段提取到 chatApi 的 buildLangRule，线下社交反应生成也用同一份。 */
+        const langRule = buildLangRule(trOut?.on ? trOut.lang : null, trInnerOn);
         const systemStable = stylePrompt + "\n\n" + built.stable + "\n\n" + styleRules + langRule;
         /* 拉黑状态是「会变的状态」（拉／解除各换一份），所以不占稳定段——走 system 的
            第二段 tail（缓存断点之后）：稳定段照旧逐字不变、缓存不受影响，
@@ -1751,18 +1767,26 @@ export default function ChatWindow({
            重写（1.25×）——这就是「♻几乎不动、✎一直在涨」的成因。
            没带尾巴（input 与原文一致）时不写：那种消息走原有的回喂逻辑就字面一致。 */
         const curUser = [...history].reverse().find((m) => m.role === "user");
-        if (curUser && input !== curUser.content && curUser.apiText !== input) {
-          const patched = { ...curUser, apiText: input };
+        /* 这截易变尾巴单独记一份（1.10.8）：红包／转账回喂时正文要按当时状态重算
+           （见 chatApi 的 money 分支），不能再整条照抄 apiText——但重算完得把这截
+           接回去，否则前缀从尾巴那儿整段断开、每轮重写。普通文本用不着它。 */
+        const tailPart =
+          (offlineNote ? `\n\n${offlineNote}` : "") +
+          (built.volatile ? `\n\n${built.volatile}` : "");
+        if (
+          curUser &&
+          input !== curUser.content &&
+          (curUser.apiText !== input || curUser.apiTail !== (tailPart || undefined))
+        ) {
+          const patched = { ...curUser, apiText: input, apiTail: tailPart || undefined };
           void updateMessage(character.id, maskId, patched)
             .then(() => setMessages((prev) => prev.map((m) => (m.id === patched.id ? patched : m))))
             .catch(() => {
               /* 写不进去不影响本轮发送：下一轮这条对不上，最多多写一次缓存。 */
             });
         }
-        /* 历史裁剪（「丙方案」，接替每轮滑窗）：平时一条不裁，
-           攒到「浓缩门槛 ×2」才裁一次（裁到最近「浓缩门槛」条）——规则与理由
-           见 memory.ts 的 trimHistory。记忆关闭时不裁：没有浓缩兜底，裁掉就是真丢。 */
-        const baseHistory = trimHistory(history, memory);
+        /* 历史裁剪已在上面「记忆模块统一出口」处完成：baseHistory 即那里的原文窗口
+           （丙方案，规则与理由见 memory.ts 的 trimHistory）。此处只做请求整形。 */
         // 请求会把本轮 userInput 单独追加进 messages；传入的历史须不含它，
         // 否则同一条用户消息会在 messages 里重复出现（历史尾条即刚发的 user）。
         const apiHistory =
@@ -1902,7 +1926,7 @@ export default function ChatWindow({
             reply = await runFetch(undefined);
           }
         } catch (err) {
-          /* 用户按了停止：不算失败——已经说出口的话照样落库，配图／动态／记忆一律不做。 */
+          /* 用户按了停止：不算失败——已经说出口的话照样落库，配图／记忆一律不做。 */
           if (err instanceof Error && err.message === "已停止生成") {
             stopped = true;
             reply = streamTextRef.current;
@@ -1942,10 +1966,10 @@ export default function ChatWindow({
         /* 1.5.60 心声：TA 每轮最前面那段 <think>…</think> 在这儿先摘下来（摘在
            末尾标记之前：心声里的字不该被当成〔图片〕那类标记顺走），
            摘完的正文再往下走标记与拆条，一个字都不受影响。
-           1.7.92：八根拆掉后这份底只为一件东西——**穿着**（人不会一条消息换一套衣服，
-           这一轮没写就沿用上一次，见 parseInnerSnapshot／lastInnerSnapshot）。 */
-        const voice = extractInnerVoice(reply, lastInnerSnapshot(messages)?.snapshot, innerBilingual);
-        // 先剥掉末尾的〔签名〕／〔动态〕／〔图片〕／〔语音〕标记（气泡里永远看不到），再拆条连发。
+           2026-10-06：环境／细处／日记三栏删掉后，账里只剩心情、欲望、怯念，都不继承，
+           摘的时候不必再往回找上一份快照。 */
+        const voice = extractInnerVoice(reply, innerBilingual);
+        // 先剥掉末尾的〔签名〕／〔图片〕／〔语音〕标记（气泡里永远看不到），再拆条连发。
         const extracted = extractMetaMarkers(voice.clean, charName);
         /* 与上面的流式预览传同一个上限：预览转正时条数一致，不会突然合并或裂开。 */
         /* 1.5.47 TA 引用回复：拆完条再摘〔引用:原话〕——标记跟着某一条走，摘到谁头上
@@ -1957,9 +1981,8 @@ export default function ChatWindow({
            右半边进译文行。漏写竖线的那条 inlineTrans 为 undefined，交给副接口兜底。 */
         const parts = pairMode ? pairedParts.map((p) => splitBilingual(p).src) : pairedParts;
         const inlineTrans = pairMode ? pairedParts.map((p) => splitBilingual(p).zh) : [];
-        /* 半途停止只留正文；标记类内容（签名／动态／配图／语音）不处理。 */
+        /* 半途停止只留正文；标记类内容（签名／配图／语音）不处理。 */
         const signature = stopped ? undefined : extracted.signature;
-        const moments = stopped ? [] : extracted.moments;
         const images = stopped ? [] : extracted.images;
         const imageRefs = stopped ? [] : extracted.imageRefs;
         const imageRefMarks = stopped ? [] : extracted.imageRefMarks;
@@ -1988,7 +2011,7 @@ export default function ChatWindow({
         /* 外语聊天（1.9.48；1.9.80 改双主打）：他说的外语 → 中文，逐条翻好挂到译文行上。
            译文**优先用模型自己写的那半**（inlineTrans，随回复一次到齐）；只有哪一条漏写了
            竖线，才用（副）翻译接口兜底补翻那一条——接口抽风最多让那一条没译文，不再全场空白。
-           只翻**说出口的话**（气泡正文），签名／心声／思考／动态一概不碰；半途停止不翻。 */
+           只翻**说出口的话**（气泡正文），签名／心声／思考一概不碰；半途停止不翻。 */
         const trSetNow = conv?.translate;
         const wantTrans = trSetNow?.out.on === true && !stopped && parts.length > 0;
         const partTrans: (string | undefined)[] = wantTrans
@@ -2003,59 +2026,218 @@ export default function ChatWindow({
         for (let i = 0; i < partTrans.length; i++) {
           if (partTrans[i] && partTrans[i]!.trim() === parts[i].trim()) partTrans[i] = undefined;
         }
-        if (streamed && !stopped) {
+        /* 1.10.62 标记夹中间：独立成行的图/语音/钱标记切出的文字段（extracted.segments），
+           各段拆出的条数加起来与整篇一致（气泡上限没触发合并的常态）时，按标记原位
+           穿插落库；对不上就退回旧顺序（文字→图→语音→钱），位置宁后勿乱。 */
+        const segLens = extracted.segments.map(
+          (s) => extractBubbleQuotes(splitReply(s, 0, pairMode)).parts.length,
+        );
+        const interleaved =
+          !stopped &&
+          extracted.insertions.length > 0 &&
+          segLens.reduce((a, b) => a + b, 0) === parts.length;
+        type Ev = { t: "text" | "image" | "voice" | "money"; i: number };
+        const events: Ev[] = [];
+        if (interleaved) {
+          const bySeg = new Map<number, typeof extracted.insertions>();
+          for (const ins of extracted.insertions) {
+            const arr = bySeg.get(ins.afterSegment) ?? [];
+            arr.push(ins);
+            bySeg.set(ins.afterSegment, arr);
+          }
+          let cursor = 0;
+          for (let s = 0; s < segLens.length; s++) {
+            for (let k = 0; k < segLens[s]; k++) events.push({ t: "text", i: cursor++ });
+            for (const ins of bySeg.get(s) ?? []) events.push({ t: ins.kind, i: ins.idx });
+          }
+          /* 行内混写（标记跟文字同一条）剥出的没有位置记录，按旧顺序兜底在末尾。 */
+          const known = new Set(extracted.insertions.map((x) => `${x.kind}:${x.idx}`));
+          images.forEach((_, i) => {
+            if (!known.has(`image:${i}`)) events.push({ t: "image", i });
+          });
+          voices.forEach((_, i) => {
+            if (!known.has(`voice:${i}`)) events.push({ t: "voice", i });
+          });
+          moneys.forEach((_, i) => {
+            if (!known.has(`money:${i}`)) events.push({ t: "money", i });
+          });
+        } else {
+          for (let i = 0; i < parts.length; i++) events.push({ t: "text", i });
+          images.forEach((_, i) => events.push({ t: "image", i }));
+          voices.forEach((_, i) => events.push({ t: "voice", i }));
+          moneys.forEach((_, i) => events.push({ t: "money", i }));
+        }
+        /* 外语聊天（1.9.48；1.9.80 改双主打）：语音跟气泡正文同一门语言，照样挂一行中文译文。
+           台词本身也是「原文|中文」：**TTS 只念左半边原文**，右半边进译文行；
+           漏写竖线的那条才用（副）接口兜底补翻。 */
+        const voicePairs = pairMode ? voices.map((v) => splitBilingual(v)) : [];
+        const voiceTrans =
+          trSetNow?.out.on === true && !stopped
+            ? await Promise.all(
+                voices.map(
+                  async (v, i) =>
+                    voicePairs[i]?.zh ??
+                    (await translateWithRetry(translateApi, readVoiceContent(v).display, "中文")),
+                ),
+              )
+            : [];
+        /* 图/语音占位与钱的落库收口（1.10.62）：穿插模式在事件位置调用，末尾兜底同款。 */
+        const imagePlaceholders: ChatMessage[] = [];
+        const voicePlaceholders: ChatMessage[] = [];
+        const sysNotice = (text: string): ChatMessage => ({
+          id: uuid(),
+          role: "system",
+          type: "system",
+          content: text,
+          createdAt: new Date().toISOString(),
+          isRead: true,
+        });
+        /* 图片占位：TA 要发就**永远落一条图片气泡**——配没配接口是「画不画得出来」的事，
+           不是「能不能发」的事。能画且开了自动生图：立刻排队去画；其余情况（没配／关了自动）
+           落「描述＋生成按钮」，点「生成」才画，没配就提示去配接口。绝不无声吞掉。 */
+        const imageEventMsg = (i: number): ChatMessage => {
+          const imageReady = !!(effImageApi && imageExtras && canImage);
+          const autoNow = imageReady && prefs.autoGenerateImage;
+          const desc = images[i];
+          const placeholder: ChatMessage = {
+            id: uuid(),
+            role: "assistant",
+            type: "image",
+            content: desc,
+            /* 记下 TA 声明的锁脸开关：生成与重试都按它决定带不带参考图。
+               `refMark` 另存它**到底写没写**——诊断面板要说得出「是它写的」还是「我们猜的」。 */
+            useCharRef: imageRefs[i] ?? guessUseCharRef(desc, charName),
+            refMark: imageRefMarks[i],
+            /* pending 一直 true：awaitGen 那一支（描述＋生成按钮）也挂在 pending 下。 */
+            pending: true,
+            awaitGen: autoNow ? undefined : true,
+            createdAt: new Date().toISOString(),
+            isRead: true,
+          };
+          imagePlaceholders.push(placeholder);
+          return placeholder;
+        };
+        /* 语音占位：TA 要发就**永远落一条语音气泡**（播放键／波形／时长都在，文字照常）。
+           能合成且开了自动合成：立刻排队去合；其余情况点「生成」才合，没配就提示去配接口。 */
+        const voiceEventMsg = (vi: number): ChatMessage => {
+          const voiceReady = !!(effVoiceApi && effVoiceExtras && canVoice);
+          const autoNow = voiceReady && prefs.autoGenerateVoice;
+          /* 落库**原样存**（JSON 也照存）——合成那一步要的 tts_text 就在里头，不能丢。
+             只把「给人看的那份」取出来估时长（见 readVoiceContent）。 */
+          const text = voicePairs[vi]?.src || voices[vi];
+          const shown = readVoiceContent(text).display;
+          const placeholder: ChatMessage = {
+            id: uuid(),
+            role: "assistant",
+            type: "voice",
+            content: text,
+            pending: autoNow || undefined,
+            awaitGen: autoNow ? undefined : true,
+            duration: Math.max(1, Math.round(shown.length / 3.5)),
+            ...(voiceTrans[vi] ? { translated: voiceTrans[vi] } : {}),
+            createdAt: new Date().toISOString(),
+            isRead: true,
+          };
+          voicePlaceholders.push(placeholder);
+          return placeholder;
+        };
+        /* TA 自己发的红包／转账（1.4.36）：他手上那本账是真的，掏钱也得是真的。
+           够，就落一条真的红包／转账气泡；不够／超限／扣账失败，就落一句系统提示——
+           **绝不落假气泡**：气泡里写着 520、他账上一分没少，恩熙翻他手机一对就穿帮，
+           比没发还糟。一轮多笔逐笔串行：后一笔看的是前一笔扣完之后的余额。 */
+        const moneyEventMsg = async (m: (typeof moneys)[number]): Promise<ChatMessage> => {
+          const label = m.type === "redpacket" ? "红包" : "转账";
+          /* 红包封顶跟「我发红包」那一页是**同一个数**（RED_PACKET_MAX_CENTS）。
+             判在「够不够」之前：他兜里钱本来就不够时，该先报「红包最多 1000」这句
+             真正的原因。超了就不落气泡、只落一句系统提示（金额不改小偷偷发）。 */
+          if (m.type === "redpacket" && m.cents > RED_PACKET_MAX_CENTS) {
+            return sysNotice(
+              `TA 想给你发红包，可红包最多 ${(RED_PACKET_MAX_CENTS / 100).toFixed(2)}，这笔没有发出来`,
+            );
+          }
+          /* 余额现读（不拿开局那份）：一轮里连着发两笔时，第二笔得按扣完的账判。 */
+          const left = await getBalance(character.id, "contact");
+          if (left < m.cents) {
+            return sysNotice(`TA 想给你发${label}，可他零钱不够，这笔钱没有发出来`);
+          }
+          try {
+            await adjustBalance(character.id, "contact", -m.cents, `发${label}给${myName}`, m.note);
+          } catch {
+            /* 钱没扣成，这条气泡就不能落：落了就是他凭空变出来的钱。 */
+            return sysNotice(`TA 想给你发${label}，钱没划出来，这笔没有发成`);
+          }
+          return {
+            id: uuid(),
+            role: "assistant",
+            type: m.type,
+            content: m.note,
+            /* 气泡里显示的是**元**（跟 doSendMoney 一个口径）。 */
+            amount: Number((m.cents / 100).toFixed(2)),
+            createdAt: new Date().toISOString(),
+            isRead: true,
+          };
+        };
+        if (streamed && !stopped && parts.length > 0) {
           /* 等节拍器把攒下的气泡放完再落库：预览一撤、真消息整批冒出来，反而跳得更狠。
              停止时不等待——用户要的是立刻停手。 */
           const backlog = streamSettledRef.current - streamShownRef.current;
           if (backlog > 0) await delay(backlog * STREAM_REVEAL_INTERVAL_MS + 120);
-        }
-        if (streamed && parts.length > 0) {
-          /* 流式已经逐条长在屏幕上了：一次性落库并撤掉预览——同一帧内完成，
-             且真气泡与预览气泡同款，视觉上没有任何跳变，只是「转正」。 */
-          const fresh: ChatMessage[] = parts.map((text, i) => ({
-            id: uuid(),
-            role: "assistant",
-            type: "text",
-            content: text,
-            /* 沿用该条气泡上屏时就显示的时刻：转正前后时间一模一样，不会突然跳出来。 */
-            createdAt: streamStampsRef.current[i] ?? new Date().toISOString(),
-            isRead: true,
-            ...(quotes[i] ? { quote: `${myName}：${quotes[i]}` } : {}),
-            ...(partTrans[i] ? { translated: partTrans[i] } : {}),
-            /* 心声与内心快照都只在第一条上挂（1.5.60／1.5.65），理由同思考：一轮只有一个。
-               1.5.98 起挂的是 settleWish 收过口的那份（1.7.92 起只有「这件事做成没有」这一格）。 */
-            ...(i === 0 && voice.innerVoice ? { innerVoice: voice.innerVoice } : {}),
-            ...(i === 0 && snapshotNow ? { innerSnapshot: snapshotNow } : {}),
-          }));
-          /* 思考挂在本轮第一条 TA 气泡上（1.4.9）：一轮回复拆成几条气泡，思考只有一个。 */
-          if (reasoningFinal && fresh.length > 0) fresh[0].reasoningText = reasoningFinal;
-          for (const msg of fresh) await persistFromChar(msg);
-          setMessages((prev) => [...prev, ...fresh]);
-          clearStreamPreview();
         } else {
           clearStreamPreview();
-          // 「正在输入」保持到文字＋图片＋语音全部发完才消失：
-          // 语音／图片生成耗时数秒，提前关掉会让画面陷入「什么都没有」的死空气。
-          for (let i = 0; i < parts.length; i++) {
-            if (i > 0) await delay(STREAM_REVEAL_INTERVAL_MS);
-            const msg: ChatMessage = {
+        }
+        /* 1.10.62：按事件序列落库（文字条＋图/语音/钱按标记原位穿插）。
+           流式＝一整批构建完一次性转正（同帧完成，视觉无跳变）；
+           非流式＝逐条带节奏冒出来。 */
+        const freshAll: ChatMessage[] = [];
+        let firstTextAt = -1;
+        for (const ev of events) {
+          let msg: ChatMessage;
+          if (ev.t === "text") {
+            const i = ev.i;
+            if (firstTextAt < 0) firstTextAt = freshAll.length;
+            msg = {
               id: uuid(),
               role: "assistant",
               type: "text",
               content: parts[i],
-              createdAt: new Date().toISOString(),
+              /* 沿用该条气泡上屏时就显示的时刻（流式）：转正前后时间一模一样。 */
+              createdAt: streamed
+                ? (streamStampsRef.current[i] ?? new Date().toISOString())
+                : new Date().toISOString(),
               isRead: true,
               ...(quotes[i] ? { quote: `${myName}：${quotes[i]}` } : {}),
               ...(partTrans[i] ? { translated: partTrans[i] } : {}),
-              /* 心声与思考都只在第一条上挂（1.5.60／1.4.9），理由同流式那条分支。
-                 1.5.98 起快照挂的是 settleWish 收过口的那份（1.7.92 起只有「这件事做成没有」这一格）。 */
-              ...(i === 0 && voice.innerVoice ? { innerVoice: voice.innerVoice } : {}),
-              ...(i === 0 && snapshotNow ? { innerSnapshot: snapshotNow } : {}),
-              /* 思考只在第一条上挂（1.4.9），理由同流式那条分支。 */
-              ...(i === 0 && reasoningFinal ? { reasoningText: reasoningFinal } : {}),
             };
-            await persistFromChar(msg);
-            pushLocal(msg);
+          } else if (ev.t === "image") {
+            msg = imageEventMsg(ev.i);
+          } else if (ev.t === "voice") {
+            msg = voiceEventMsg(ev.i);
+          } else {
+            msg = await moneyEventMsg(moneys[ev.i]);
+          }
+          freshAll.push(msg);
+        }
+        /* 心声／内心快照／思考只挂本轮第一条**文字**气泡（1.5.60／1.5.65／1.4.9）——
+           穿插后第一条 TA 消息可能是图片占位，挂那儿不像话，认第一条文字。 */
+        if (firstTextAt >= 0) {
+          if (voice.innerVoice) freshAll[firstTextAt].innerVoice = voice.innerVoice;
+          if (snapshotNow) freshAll[firstTextAt].innerSnapshot = snapshotNow;
+          if (reasoningFinal) freshAll[firstTextAt].reasoningText = reasoningFinal;
+        }
+        if (streamed && parts.length > 0) {
+          for (const msg of freshAll) await persistFromChar(msg);
+          setMessages((prev) => [...prev, ...freshAll]);
+          clearStreamPreview();
+        } else if (freshAll.length > 0) {
+          // 「正在输入」保持到文字＋图片＋语音全部发完才消失：
+          // 语音／图片生成耗时数秒，提前关掉会让画面陷入「什么都没有」的死空气。
+          for (let k = 0; k < freshAll.length; k++) {
+            /* 文字条之间按老节奏隔开；图/语音/钱占位不打拍（同旧版各循环不隔）。 */
+            if (k > 0 && events[k - 1].t === "text" && events[k].t === "text") {
+              await delay(STREAM_REVEAL_INTERVAL_MS);
+            }
+            await persistFromChar(freshAll[k]);
+            pushLocal(freshAll[k]);
           }
         }
         /* 心声页双语（1.9.80）：这一轮模型把 <think> 各行也写成了「原文|中文」，右半边
@@ -2070,214 +2252,16 @@ export default function ChatWindow({
               /* 写不进去不影响这一轮聊天：下一次点心声页再走 translateCached 补翻。 */
             });
         }
-        /* TA 附带的签名更新／新动态落库（资料页展示）。接住这一趟新落的动态：
-           配图要按它们的内部 id 回写，而 id 只有 appendMetaUpdates 知道。 */
-        let freshMoments: ChatMoment[] = [];
-        if (signature || moments.length > 0) {
-          freshMoments = await appendMetaUpdates(character.id, maskId, {
-            signature: signature ?? undefined,
-            moments,
-          });
-          /* 落库了就立刻让上层重读。整轮只在一头一尾刷（见下面自动生图之后的
-             onDataChange）时：动态是写进库了，可 ChatApp 手上那份 conversations 还是
-             旧的，这段时间切进朋友圈**连这条动态都没有**——「正在生成配图」当然无从显示，
-             看着就像生成停住了。刷这一下，动态立刻上墙，配图那格该转圈就转圈。 */
+        /* TA 附带的签名更新落库（资料页展示）。 */
+        if (signature) {
+          await appendMetaUpdates(character.id, maskId, { signature });
+          /* 落库了就立刻让上层重读：ChatApp 手上那份 conversations 还是旧的，
+             这段时间切进资料页看不到新签名。刷这一下即可。 */
           onDataChange();
-          setConv((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  ...(signature ? { signature } : {}),
-                  ...(moments.length > 0
-                    ? {
-                        moments: [
-                          ...(prev.moments ?? []),
-                          ...moments.map((m) => ({
-                            id: uuid(),
-                            content: m.content,
-                            createdAt: new Date().toISOString(),
-                            ...(m.imagePrompt ? { imagePrompt: m.imagePrompt } : {}),
-                          })),
-                        ],
-                      }
-                    : {}),
-                }
-              : prev,
-          );
+          setConv((prev) => (prev ? { ...prev, signature } : prev));
         }
-        /* TA 发了标记但对应 API 没启用：给出系统提示，绝不无声吞掉（「发了却看不到」）。 */
-        if (images.length > 0 && !canImage) {
-          const notice: ChatMessage = {
-            id: uuid(),
-            role: "system",
-            type: "system",
-            content: "TA 想给你发图片，但图文 API 未启用，图片没有发出来",
-            createdAt: new Date().toISOString(),
-            isRead: true,
-          };
-          await appendMessage(character.id, maskId, notice);
-          pushLocal(notice);
-        }
-        if (voices.length > 0 && !canVoice) {
-          const notice: ChatMessage = {
-            id: uuid(),
-            role: "system",
-            type: "system",
-            content: "TA 想给你发语音，但语音 API 未启用，语音没有发出来",
-            createdAt: new Date().toISOString(),
-            isRead: true,
-          };
-          await appendMessage(character.id, maskId, notice);
-          pushLocal(notice);
-        }
-        /* TA 要发的图片：先弹占位框（带画面描述），生成完成后原位填入真图（失败可点击重试）。
-           **条数不设上限**——恩熙 2026-09-22 定：TA 心情好可以一次发两张，
-           发几张由它按人设自己判断；提示词侧（chatApi 的 buildStylePrompt）同步放开了
-           数量限制，所以这里按标记逐条建占位，写了几条就画几张（顺序执行，
-           一条失败不拖累后面的）。 */
-        const imagePlaceholders: ChatMessage[] = [];
-        if (images.length > 0 && effImageApi && imageExtras && canImage) {
-          for (let i = 0; i < images.length; i++) {
-            const desc = images[i];
-            /* 「自动生成」关着（设置 → API 设定 → 图文）：这一轮不碰生图接口、不花钱，
-               占位框只留一颗「生成」等你点（见 renderBody）。开着就照常自动生成。 */
-            const waitForMe = !prefs.autoGenerateImage;
-            const placeholder: ChatMessage = {
-              id: uuid(),
-              role: "assistant",
-              type: "image",
-              content: desc,
-              /* 记下 TA 声明的锁脸开关：生成与重试都按它决定带不带参考图。
-                 `refMark` 另存它**到底写没写**——诊断面板要说得出「是它写的」还是「我们猜的」。 */
-              useCharRef: imageRefs[i] ?? guessUseCharRef(desc, charName),
-              refMark: imageRefMarks[i],
-              pending: true,
-              awaitGen: waitForMe || undefined,
-              createdAt: new Date().toISOString(),
-              isRead: true,
-            };
-            await persistFromChar(placeholder);
-            pushLocal(placeholder);
-            imagePlaceholders.push(placeholder);
-          }
-        }
-        /* TA 要发的语音：先弹占位气泡，合成完成后填充（失败可点击重试）。
-           条数**不设上限**（同上面图片那条）：它想连着发三条就发三条。 */
-        const voicePlaceholders: ChatMessage[] = [];
-        if (voices.length > 0 && effVoiceApi && effVoiceExtras && canVoice) {
-          /* 外语聊天（1.9.48；1.9.80 改双主打）：语音跟气泡正文同一门语言，照样挂一行中文译文。
-             台词本身也是「原文|中文」：**TTS 只念左半边原文**，右半边进译文行；
-             漏写竖线的那条才用（副）接口兜底补翻。 */
-          const voicePairs = pairMode ? voices.map((v) => splitBilingual(v)) : [];
-          const voiceTrans =
-            trSetNow?.out.on === true && !stopped
-              ? await Promise.all(
-                  voices.map(
-                    async (v, i) =>
-                      voicePairs[i]?.zh ??
-                      (await translateWithRetry(translateApi, readVoiceContent(v).display, "中文")),
-                  ),
-                )
-              : [];
-          for (let vi = 0; vi < voices.length; vi++) {
-            /* 落库**原样存**（JSON 也照存）——合成那一步要的 tts_text 就在里头，不能丢。
-               只把「给人看的那份」取出来估时长（见 readVoiceContent）。 */
-            const text = voicePairs[vi]?.src || voices[vi];
-            const shown = readVoiceContent(text).display;
-            const placeholder: ChatMessage = {
-              id: uuid(),
-              role: "assistant",
-              type: "voice",
-              content: text,
-              pending: true,
-              duration: Math.max(1, Math.round(shown.length / 3.5)),
-              ...(voiceTrans[vi] ? { translated: voiceTrans[vi] } : {}),
-              createdAt: new Date().toISOString(),
-              isRead: true,
-            };
-            await persistFromChar(placeholder);
-            pushLocal(placeholder);
-            voicePlaceholders.push(placeholder);
-          }
-        }
-        /* TA 自己发的红包／转账（1.4.36）：他手上那本账是真的，掏钱也得是真的。
-           够，就落一条真的红包／转账气泡（金额与留言都在气泡上，我点开能收下）；
-           不够，就落一条系统提示——**绝不落假气泡**：气泡里写着 520、他账上一分没少，
-           恩熙翻他手机一对就穿帮，比没发还糟。一轮可能写了好几笔，逐笔串行：
-           后一笔看的是前一笔扣完之后的余额。 */
-        if (moneys.length > 0) {
-          for (const m of moneys) {
-            const label = m.type === "redpacket" ? "红包" : "转账";
-            /* 红包封顶跟「我发红包」那一页是**同一个数**（RED_PACKET_MAX_CENTS）。
-               上游那套解析只认一条「20 万」的通用上限、不分红包还是转账，所以这一侧
-               原先能冒出四位数的大红包——上限得在这儿按类型补判。
-               判在「够不够」之前：他兜里钱本来就不够时，该先报「红包最多 1000」这句
-               真正的原因。超了就**不落气泡、只落一句系统提示**，跟「零钱不够」同款
-               ——绝不把金额改小了偷偷发出去（气泡里的数得跟他嘴里说的一致）。 */
-            if (m.type === "redpacket" && m.cents > RED_PACKET_MAX_CENTS) {
-              const notice: ChatMessage = {
-                id: uuid(),
-                role: "system",
-                type: "system",
-                content: `TA 想给你发红包，可红包最多 ${(RED_PACKET_MAX_CENTS / 100).toFixed(2)}，这笔没有发出来`,
-                createdAt: new Date().toISOString(),
-                isRead: true,
-              };
-              await persistFromChar(notice);
-              pushLocal(notice);
-              continue;
-            }
-            /* 余额现读（不拿开局那份）：一轮里连着发两笔时，第二笔得按扣完的账判。 */
-            const left = await getBalance(character.id, "contact");
-            if (left < m.cents) {
-              const notice: ChatMessage = {
-                id: uuid(),
-                role: "system",
-                type: "system",
-                content: `TA 想给你发${label}，可他零钱不够，这笔钱没有发出来`,
-                createdAt: new Date().toISOString(),
-                isRead: true,
-              };
-              await persistFromChar(notice);
-              pushLocal(notice);
-              continue;
-            }
-            try {
-              await adjustBalance(
-                character.id,
-                "contact",
-                -m.cents,
-                `发${label}给${myName}`,
-                m.note,
-              );
-            } catch {
-              /* 钱没扣成，这条气泡就不能落：落了就是他凭空变出来的钱。 */
-              const notice: ChatMessage = {
-                id: uuid(),
-                role: "system",
-                type: "system",
-                content: `TA 想给你发${label}，钱没划出来，这笔没有发成`,
-                createdAt: new Date().toISOString(),
-                isRead: true,
-              };
-              await persistFromChar(notice);
-              pushLocal(notice);
-              continue;
-            }
-            const msg: ChatMessage = {
-              id: uuid(),
-              role: "assistant",
-              type: m.type,
-              content: m.note,
-              /* 气泡里显示的是**元**（跟 doSendMoney 一个口径）。 */
-              amount: Number((m.cents / 100).toFixed(2)),
-              createdAt: new Date().toISOString(),
-              isRead: true,
-            };
-            await persistFromChar(msg);
-            pushLocal(msg);
-          }
-        }
+        /* 1.10.62：图/语音/钱的占位与落库已并入上面的事件序列（imageEventMsg 等），
+           这里不再有「先文字、后图语音钱」的固定四段。 */
         /* 我发出去、还悬着等他表态的钱，按**类型**各找各的最近一笔：〔收下〕＝收转账、
            〔领取〕＝领红包（1.5.14 拆开——原先两种标记在系统眼里是同一个信号，
            多笔悬着时谁排最后就落到谁头上，出现过「他嘴上说收转账、标记落到红包上」的错位）。
@@ -2357,26 +2341,12 @@ export default function ChatWindow({
           }
         }
         for (const p of voicePlaceholders) {
+          /* 等用户自己点生成的那条：跳过，别替用户花这笔钱。 */
+          if (p.awaitGen) continue;
           try {
             await regenerateMedia(p);
           } catch {
             /* 内部已经给过提示 */
-          }
-        }
-        /* 动态配图：「自动生图」开着时，TA 刚发的那几条带画面描述的动态顺手画掉，
-           用户进朋友圈看到的已经是图、没有按钮；关着就一个接口都不碰，留着描述等
-           用户在朋友圈页面点「生成配图」（点了先摊描述卡，见 MomentsPage）。
-           画失败不弹系统提示：那条动态还挂着「生成配图」按钮，在动态页能再点一次，
-           跟聊天里那张图的失败处理一样不吵。 */
-        if (prefs.autoGenerateImage && canImage && freshMoments.length > 0) {
-          for (const m of freshMoments) {
-            if (!m.imagePrompt) continue;
-            try {
-              await generateMomentImage(convId(character.id, maskId), m.id, m.imagePrompt);
-              window.dispatchEvent(new CustomEvent("moments-updated"));
-            } catch {
-              /* 留着按钮，在朋友圈页面自己重试 */
-            }
           }
         }
         /* 类人记忆：本轮 user＋assistant 消息计数（连续发送可能一次补好几条用户消息）；
@@ -2529,6 +2499,47 @@ export default function ChatWindow({
     conv,
     translateApi,
   ]);
+
+  /* ---------- 发一条语音（1.10.20） ---------- */
+  /* 两种来路落同一种气泡（type:"voice"）：
+     · 文字输入 → 只有 content 里的字、**没有 audioUrl** ＝空气泡（点了不出声；他那边拿到这段文字）；
+     · 真录音   → audioUrl 存音频 data URL（我自己能回听），content 存转写出来的字（他那边拿到这段文字）。
+     回喂格式沿用历史里那种「〔语音〕…」，这轮与往后各轮逐字一致（前缀缓存不断，见 chatApi 的 voice 分支）。 */
+  const sendVoiceMsg = useCallback(
+    (text: string, audio?: { dataUrl: string; seconds: number }) => {
+      const spoken = text.trim();
+      if (!spoken && !audio) return;
+      /* 空气泡没有真实时长，按字数估一个（参考项目口径：max(2, ceil(len/4))）。 */
+      const durSec = audio ? Math.max(1, audio.seconds) : Math.max(2, Math.ceil(spoken.length / 4));
+      const msg: ChatMessage = {
+        id: uuid(),
+        role: "user",
+        type: "voice",
+        content: spoken || "语音消息",
+        duration: durSec,
+        createdAt: new Date().toISOString(),
+        isRead: true,
+        ...(audio ? { audioUrl: audio.dataUrl } : {}),
+      };
+      const holdReply = conv?.manualReply === true;
+      setShowVoiceModal(false);
+      void (async () => {
+        try {
+          await appendMessage(character.id, maskId, msg);
+        } catch {
+          showToast("发送失败，请重试");
+          return;
+        }
+        pushLocal(msg);
+        onDataChange();
+        if (holdReply) return;
+        await requestReply(spoken ? `〔语音〕${spoken}` : "（发来一条语音）", {
+          historyBase: [...messages, msg],
+        });
+      })().catch(() => showToast("发送失败，请重试"));
+    },
+    [character.id, conv, maskId, messages, onDataChange, pushLocal, requestReply, showToast],
+  );
 
   /* ---------- 待回复队列：末尾连着的一串用户消息（连续发送攒下的） ---------- */
   const pendingMsgs = useMemo(() => {
@@ -3321,7 +3332,8 @@ export default function ChatWindow({
         return;
       }
       if (name === "语音消息") {
-        send({ type: "voice", content: "语音消息", duration: 8 });
+        /* 1.10.20：不再写死一条占位语音，改为开弹窗——文字输入（空气泡）或真录音（带音频）。 */
+        setShowVoiceModal(true);
         return;
       }
       if (name === "红包" || name === "转账") {
@@ -3562,6 +3574,8 @@ export default function ChatWindow({
         currentSignature: conv?.signature,
         userSignature,
         memoryBlock: memory ? await buildMemoryBlock(memory, myName) : "",
+        /* 我发的朋友圈里他有权看的那几条（1.10.27）：线下见面他也知道这些。 */
+        myMomentsBlock: await buildMyMomentsBlock(character.id, character.categoryId, maskId),
         excludeDialogue: true,
         sessionKey: `${character.id}::${maskId}`,
         timeAware: prefs.timeAware,
@@ -3751,6 +3765,11 @@ export default function ChatWindow({
     scrollBottom();
     onDataChange();
   }, [character.id, maskId, scrollBottom, onDataChange]);
+
+  /* 后台社交反应（加好友问候／拉黑／解除）落库那一铃：它们绕开这一页直接写库，
+     挂着的聊天窗不自己回去拉，就会停进「TA 明明说话了、屏幕上却是空的」。
+     订阅一声就重拉一次，TA 那句问候当场上屏。 */
+  useEffect(() => subscribeSocialAppend(() => void refreshConv()), [refreshConv]);
 
   /* 拉黑／解除要像正常开关：点了立刻生效（状态＋系统提示先落库、先刷屏），
      TA 的第一反应走一次文本 API、在后台慢慢写，落库完再刷一屏把话冒出来——开关不等它。 */
@@ -4156,8 +4175,12 @@ export default function ChatWindow({
             </div>
           );
         }
-        /* 旧版语音（音频本体没存下来）：点一下重新合成。 */
-        if (!m.audioUrl) {
+        /* 旧版语音（音频本体没存下来）：点一下重新合成。
+           1.10.20：只对 TA 那侧——我自己发的语音本来就允许**没有音频**（空气泡，
+           文字模式发的那种），那不是「失效」，照下面那样渲染一个安静的气泡。
+           1.10.69：awaitGen（等用户点生成的那条）不走这一支——它要照常长成语音气泡
+           （播放键／波形／时长都在），点一下才去合成。 */
+        if (!m.audioUrl && m.role !== "user" && !m.awaitGen) {
           return (
             <div
               onClick={() => void regenerateMedia(m)}
@@ -4194,7 +4217,12 @@ export default function ChatWindow({
            也不做会话声明／手势解锁（1.10.3／1.10.4 那两套已被证伪，整块撤掉）。
            来因与修法见文件下方「语音播放」那段大注释、施工日志第 33 条。 */
         const togglePlay = () => {
-          if (!m.audioUrl) return;
+          /* 没音频：TA 那条（等生成／没配接口）点一下＝去合成——配了接口就这时候才合，
+             没配就弹「先去配 API」（regenerateMedia 里现成）。我自己的空气泡照旧啥也不做。 */
+          if (!m.audioUrl) {
+            if (m.role !== "user") void regenerateMedia(m);
+            return;
+          }
           const audioUrl = m.audioUrl;
           /* 点同一条＝停。 */
           if (playingVoice === m.id && isVoiceElPlaying()) {
@@ -4205,8 +4233,11 @@ export default function ChatWindow({
           setPlayingVoice(m.id);
           setVoiceDiag(null);
           const end = () => setPlayingVoice(null);
-          const diag = (why: string) =>
+          const diag = (why: string) => {
             setVoiceDiag({ id: m.id, text: `${why} · v${APP_VERSION} · iOS ${iosVersion()}` });
+            const url = dataUrlToBlobUrl(audioUrl);
+            if (url) setVoiceFallback({ id: m.id, url });
+          };
           void playVoiceViaElement(audioUrl, end, diag);
         };
         return (
@@ -4285,18 +4316,18 @@ export default function ChatWindow({
                 {voiceDiag.text}
               </div>
             ) : null}
-            {/* 1.10.2 保底：程序播放失败（诊断灰字出来了）就露一个原生 <audio controls>
-                ——跟设置页那条唯一能出声的播放器同一种存在方式（挂在页面 + controls）。
-                恩熙只要点它自带的播放键，iOS 自己就能放。 */}
-            {voiceDiag && voiceDiag.id === m.id && m.audioUrl ? (
+            {/* 1.10.2 保底：程序播放失败（诊断灰字出来了）就露一个原生 <audio controls>。
+                1.10.21：源改喂 **blob:**（data URL 在 iOS 上放不出声，连它自己也不响——
+                恩熙实测；故这里跟主播放路径一样走 URL.createObjectURL）。 */}
+            {voiceFallback && voiceDiag && voiceDiag.id === m.id && voiceFallback.id === m.id ? (
               <audio
-                src={m.audioUrl}
+                src={voiceFallback.url}
                 controls
                 preload="auto"
                 style={{ marginTop: 6, width: "100%", height: 32 }}
               />
             ) : null}
-            {showTrans === m.id ? (
+            {showTrans.has(m.id) ? (
               <div
                 style={{
                   marginTop: 8,
@@ -4309,16 +4340,20 @@ export default function ChatWindow({
                   borderLeft: "2px solid rgba(232,106,155,.55)",
                 }}
               >
-                {m.audioUrl ? (
+                {m.audioUrl || m.role === "user" || m.awaitGen ? (
                   <>
                     {/* 1.9.56：「转文字」给的是**原文**——他说出口的那句话（外语聊天里就是外语），
                         中文译文这时先让开（气泡下方那行暂时不露），收起原文又恢复。
                         1.9.55 曾把这里改成默认给中文，方向反了，恩熙 2026-10-03 纠正回原文。
                         1.9.82：方括号语气标签（[轻笑] 这类给合成引擎的记号）不给人看，
-                        只留他真说出口的字（见 stripVoiceTags）。 */}
-                    <div style={{ fontSize: 10, letterSpacing: ".14em", color: T.ink3, marginBottom: 3 }}>
-                      原文
-                    </div>
+                        只留他真说出口的字（见 stripVoiceTags）。
+                        1.10.20：「原文」这行只给 TA 的语音挂；我自己的语音条（含空气泡）
+                        本来就是「我说的字」，直接给转写内容，不必再标一句原文。 */}
+                    {m.role !== "user" ? (
+                      <div style={{ fontSize: 10, letterSpacing: ".14em", color: T.ink3, marginBottom: 3 }}>
+                        原文
+                      </div>
+                    ) : null}
                     <div>{stripVoiceTags(readVoiceContent(m.content).display)}</div>
                   </>
                 ) : (
@@ -5311,8 +5346,9 @@ export default function ChatWindow({
 
     const isMe = m.role === "user";
     const body = renderBody(m);
-    /* 时间／已读只在组尾露一次；组内其余行不挂，免得一串消息底下缀一排一样的时间。 */
-    const meta = !lastOfGroup ? null : (
+    /* 时间每条气泡都挂自己那条的（恩熙 1.10.34：不许「消失」）；
+       「已读」是整串的状态，仍只在这一串的最后一条报一次。 */
+    const meta = (
       <div
         style={{
           marginTop: 3,
@@ -5327,7 +5363,7 @@ export default function ChatWindow({
         }}
       >
         <span>{msgTime(m.createdAt)}</span>
-        {m.isRead && isMe ? (
+        {m.isRead && isMe && lastOfGroup ? (
           <span style={{ color: T.pink, letterSpacing: ".14em" }}>已读</span>
         ) : null}
       </div>
@@ -5338,27 +5374,31 @@ export default function ChatWindow({
        走 alignSelf＋maxWidth（同引用块那招）：它自己按文字长短收，绝不把上头的气泡撑宽。 */
     const trSet = conv?.translate;
     /* 1.9.56：语音点开「转文字」时，原文（他说出口的那句）顶上来，中文译文行先让开；
-       收起原文，中文译文行自动恢复。所以这里多挂一个 `showTrans !== m.id`。 */
+       收起原文，中文译文行自动恢复。所以这里多挂一个 `!showTrans.has(m.id)`。
+       1.10.6 起「转文字」可多开，这一条开着就这一条让开，跟别的条互不影响。 */
     const showTransLine =
       (m.role === "user" ? trSet?.in.show === true : trSet?.out.show === true) &&
       !!m.translated &&
-      showTrans !== m.id;
+      !showTrans.has(m.id);
+    /* 1.10.7（恩熙）：译文行原来只有一根很淡的竖线、没有底色，换个壁纸就糊没了——
+       改成跟**引用块同一套**纸底＋竖线（半透明奶白底 + 3px 竖线），任何壁纸下都压得住。
+       字号／衬线仍按译文自己的来（它是译文，不跟引文混同）。 */
     const transLine = showTransLine ? (
       <div
         style={{
           alignSelf: isMe ? "flex-end" : "flex-start",
           maxWidth: "100%",
           marginTop: 5,
-          paddingLeft: isMe ? 0 : 9,
-          paddingRight: isMe ? 9 : 0,
-          textAlign: isMe ? "right" : "left",
-          borderLeft: isMe ? "none" : "2px solid rgba(20,19,24,.14)",
-          borderRight: isMe ? "2px solid rgba(232,106,155,.55)" : "none",
+          padding: "6px 13px",
+          borderRadius: 16,
+          background: "rgba(255,253,248,.44)",
+          borderLeft: isMe ? "none" : "3px solid rgba(20,19,24,.44)",
+          borderRight: isMe ? "3px solid rgba(232,106,155,.74)" : "none",
           fontFamily: SERIF,
           fontSize: 11,
           lineHeight: 1.65,
           letterSpacing: ".02em",
-          color: T.ink3,
+          color: isMe ? "rgba(160,52,98,.85)" : "rgba(20,19,24,.62)",
           wordBreak: "break-word",
           whiteSpace: "pre-wrap",
         }}
@@ -5974,7 +6014,7 @@ export default function ChatWindow({
         {loaded
           ? shownMessages.map((m, i) => (
               /* 按天分段：一天的开头压一段居中日期粉墨带（今天／昨天／X月X日）。
-                 时间的去处只有一处：小字只在组尾，日期交给这条带子。
+                 时间的去处：每条气泡下带自己的小字，日期交给这条带子。
                  分页后按**上屏这一份**判（shownMessages），否则最上头那条不补日期。 */
               <Fragment key={m.id}>
                 {i === 0 || !sameDay(shownMessages[i - 1].createdAt, m.createdAt) ? (
@@ -6051,8 +6091,8 @@ export default function ChatWindow({
                   </div>
                   {blockedNowActive ? failMarkEl : null}
                 </div>
-                {/* 发送时间只在组尾露一次：和真气泡的 meta 同款（含 marginTop 3），转正时纹丝不动。 */}
-                {lastOfGroup && streamStamps[i] ? (
+                {/* 发送时间每条都露：和真气泡的 meta 同款（含 marginTop 3），转正时纹丝不动。 */}
+                {streamStamps[i] ? (
                   <div
                     style={{
                       marginTop: 3,
@@ -6074,8 +6114,10 @@ export default function ChatWindow({
            不能拿 `streamBubbles.length === 0` 当条件：返回再进来时模型多半已经吐了字、
            预览气泡早就在长了，这行就被那条规则藏了（页面切走再回来就看不见「正在输入」）。
            流式气泡说的是「已经说出口的话」，不代表「说完了」——两件事，可以同时在。
-           所以气泡归气泡、这行归这行，翻回来一眼就能看见 TA 还在写。 */}
-        {isTyping ? (
+           所以气泡归气泡、这行归这行，翻回来一眼就能看见 TA 还在写。
+           `|| socialTyping` 是后台那几种社交反应（加好友问候／拉黑／解除）：它们也在这对
+           「角色 × 面具」上替 TA 写字，同样该亮这行，不能只认用户发起的 isTyping。 */}
+        {isTyping || socialTyping ? (
           <div
             style={{
               display: "flex",
@@ -6798,11 +6840,18 @@ export default function ChatWindow({
                 <SheetDivider />
                 <SheetBtn
                   icon={<FileText size={19} strokeWidth={1.5} />}
-                  label={showTrans === curMsg.id ? "收起原文" : "转文字"}
+                  label={showTrans.has(curMsg.id) ? "收起原文" : "转文字"}
                   color={T.pink}
                   onClick={() => {
-                    /* 1.9.56：可开可关。开着再点＝收起，中文译文行随之恢复。 */
-                    setShowTrans(showTrans === curMsg.id ? null : curMsg.id);
+                    /* 1.9.56：可开可关；1.10.6：可**多开**——点开的各自留着，再点同一条才收起，
+                       中文译文行随「这一条开着」让开／恢复（见 showTrans.has）。
+                       改 id 一律重建一个新 Set，不就地改老引用（React 不认同一个引用）。 */
+                    setShowTrans((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(curMsg.id)) next.delete(curMsg.id);
+                      else next.add(curMsg.id);
+                      return next;
+                    });
                     setShowSheet(false);
                   }}
                 />
@@ -6822,7 +6871,8 @@ export default function ChatWindow({
                 />
               </>
             ) : null}
-            {curMsg.type === "image" || curMsg.type === "voice" ? (
+            {curMsg.type === "image" ||
+            (curMsg.type === "voice" && curMsg.role === "assistant") ? (
               <>
                 <SheetDivider />
                 <SheetBtn
@@ -7319,6 +7369,14 @@ export default function ChatWindow({
             </button>
           </div>
         </ModalShell>
+      ) : null}
+
+      {/* 语音消息（1.10.20）：加号面板的「语音消息」进来。文字模式＝空气泡，录音模式＝带音频的语音条。 */}
+      {showVoiceModal ? (
+        <VoiceRecordModal
+          onClose={() => setShowVoiceModal(false)}
+          onSend={(text, audio) => sendVoiceMsg(text, audio)}
+        />
       ) : null}
 
       {/* 聊天设置页 */}
@@ -8047,14 +8105,46 @@ function ImageBubble({
    与参考项目 message-bubble.tsx 的 playSrc 一字不差（见上方大注释、施工日志第 33 条）。 */
 let voiceEl: HTMLAudioElement | null = null;
 
+/* 1.10.21：这条播放若用了 blob: 源，就把它记在这，收尾时统一 revoke 掉，别漏内存。
+   与 voiceEl 同生共死：stopVoiceEl() 与自然收尾都会清它。 */
+let voiceBlobUrl: string | null = null;
+
 /** 丢掉正在响的语音元素：暂停 → 清源 → load 复位，**整个不再复用**（1.10.5）。
-    参考项目 playSrc 的 finalize 就是这三下，只是它把元素丢进闭包、我们顺手清掉引用。 */
+    参考项目 playSrc 的 finalize 就是这三下，只是它把元素丢进闭包、我们顺手清掉引用。
+    1.10.21：顺带把这条用的 blob: 源 revoke 掉。 */
 function stopVoiceEl(): void {
   const el = voiceEl;
   voiceEl = null;
-  if (!el) return;
-  try { el.onended = null; el.onerror = null; } catch { /* ignore */ }
-  try { el.pause(); el.removeAttribute("src"); el.load(); } catch { /* 已经没了 */ }
+  if (el) {
+    try { el.onended = null; el.onerror = null; } catch { /* ignore */ }
+    try { el.pause(); el.removeAttribute("src"); el.load(); } catch { /* 已经没了 */ }
+  }
+  if (voiceBlobUrl) {
+    try { URL.revokeObjectURL(voiceBlobUrl); } catch { /* ignore */ }
+    voiceBlobUrl = null;
+  }
+}
+
+/** data URL → blob: URL，**同步**转（1.10.21）。
+    iOS 上媒体元素直接喂大体积 data URL（聊天语音 15～31s、约 300KB+）会「假播放」：
+   play() 被接受、paused=false、时长也解出来了，可 currentTime 恒 0、一点声没有；
+   同一台机上把源换成 blob: 就正常——参考项目设置页的语音试听走的正是
+   URL.createObjectURL(blob)（components/settings/voice-settings.tsx）。
+   **必须同步**：不能 `await fetch(dataUrl)` 之类异步转，跨 await 就离开了点击手势，
+   play() 会被自动播放策略拦掉，又变回假播放——这正是 1.10.2 那次「源转 blob 仍假播放」
+   的真因（那时用的是异步转）。非 base64 的 data URL 转不了，返回 null，调用方退回原串。 */
+function dataUrlToBlobUrl(dataUrl: string): string | null {
+  const m = /^data:([^;,]*)(;base64)?,([\s\S]*)$/.exec(dataUrl);
+  if (!m || !m[2]) return null; /* 不是 base64 data URL（比如直接是 blob:/http:），不用转 */
+  try {
+    const bin = atob(m[3]);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
+    const blob = new Blob([bytes], { type: m[1] || "audio/mpeg" });
+    return URL.createObjectURL(blob);
+  } catch {
+    return null; /* 解码失败就退回原串，交给元素自己碰运气 */
+  }
 }
 
 /** 语音此刻在响吗——不看界面上的标记，那玩意会卡住骗人。 */
@@ -8106,6 +8196,17 @@ function iosVersion(): string {
    本版按施工日志第 33 条原样恢复 playSrc，故整块删除，一行不留。
    ───────────────────────────────────────────────────────────────────── */
 
+/* ── 1.10.22：把本页的音频会话声明成「媒体播放」 ─────────────────────────────
+   iOS 18 主屏 PWA（standalone）里，网页/媒体音频会被系统整体掐掉，而页面自己完全看不出
+   来：元素 paused=false、时长也解出来、事件也照走，就是 currentTime 恒 0、一点声没有。
+   WebKit 官方对这类症状给的解药就一条——`navigator.audioSession.type = "playback"`
+   （Bug 251532 / 237322），它管的是**整个页面**的音频会话。
+   为什么现在才加回来：1.10.3 曾试过同一行，但当时和「共用元素／挂 DOM／手势解锁」捆在一起，
+   变量分不清、实测无效就整块撤了（1.10.5）。本轮已分离变量——设置页那条最朴素的
+   <audio controls> 与聊天原生兜底条**双双不响**，说明跟播放代码、音频数据都无关，就是这个
+   页面没跟系统声明会话类型。故这次**单独、干净**地只加这一行。
+   实现放在 src/lib/audio-session.ts，与设置页试听共用同一份（同一文档、页级生效）。 */
+
 /* ── 播放唯一的一条路（1.10.1 起播放路径里不许出现 AudioContext；1.10.5 起只此一版）── */
 
 /** 播一条语音（dataUrl）——**唯一的一条路**（1.10.1 起，播放路径里不许再出现
@@ -8116,17 +8217,33 @@ function iosVersion(): string {
     **不共用、不保活、不设 audioSession、不挂 DOM、不设循环。** 这就是施工日志第 33 条
     记的那套——2026-09-16 用它改完恩熙实测能放；1.10.2～1.10.4 把「共用/挂页面/blob/
     audioSession/手势解锁」加回来的那段弯路，本版全部撤销。
-    另留一条**只读探针**：起播 1.5 秒后若元素自称在播（paused=false）却 currentTime 仍
-    钉在 0，就是「假播放」，报给诊断灰字并把元素丢掉（**不再硬复位重试**——那条弯路已
-    证伪）。返回 null（兼容旧签名）。恩熙 2026-10-04：「现在播放不了了／旧也放不了」，
-    必须先让这类失败看得见。 */
+    1.10.9：**撤掉 1.10.5 起那条 1.5 秒探针**。它虽名为「只读」，实则到点就 finalize()
+    →`load()`，会 ① 掐死 iOS 上「起播慢」的正常播放（音频 rout 起振常 >1.5s）——这正是
+    「有时能响、有时不能」的来由；② 顺手打断这条 pending 的 play()，抛出的 AbortError
+    又把真正的错因盖掉（catch 里原本没有 settled 守卫，见下）。参考项目 playSrc 压根没有
+    探针，故本版对齐它：**只留 onerror 报真错**。返回 null（兼容旧签名）。
+
+    1.10.10：实测仍「播不出、且什么都不显示」——`play()` 既不 reject、`onerror` 也不触发，
+    就是元素自称在播却不出声。静态分析到此为止，改挂一条**纯只读诊断**（见下）：记下元素
+    收到的事件序列与起播 1.6 秒后的真实状态（rs/ns/paused/t/dur/err/evt/sess），报给点开
+    气泡的人看。**只看不碰**，不像 1.10.5 那条探针会 load() 掐死播放。
+    1.10.21：恩熙确认**连露出来的原生 <audio controls>（同样喂 data URL）也不出声**——
+    这把症结从「我们的播放代码」推到**音频数据本身**：大体积 data URL 喂媒体元素在 iOS 上
+    会「假播放」（设置页那条能响的试听，恰恰是**很短**的 data URL）。故改喂 **blob: URL**
+    （同步转，见 dataUrlToBlobUrl），抄参考项目设置页试听的 URL.createObjectURL(blob) 那条路。 */
 function playVoiceViaElement(
   dataUrl: string,
   onEnded: () => void,
   onDiag?: (why: string) => void,
 ): Promise<string | null> {
   stopVoiceEl(); /* 上一条先丢掉 */
-  const el = new Audio(dataUrl); /* 就地新建；src 直接喂 data URL，不转 blob */
+  ensurePlaybackSession(); /* 1.10.22：在手势里同步声明本页音频会话＝媒体播放，再起播 */
+  /* 1.10.21：**在这一刻同步**把 data URL 转成 blob: URL 再喂给元素（见 dataUrlToBlobUrl
+     的说明）。转不了（非 base64）就退回原串。blob: 源记到 voiceBlobUrl，收尾统一 revoke。 */
+  const blobUrl = dataUrlToBlobUrl(dataUrl);
+  voiceBlobUrl = blobUrl;
+  const src = blobUrl ?? dataUrl;
+  const el = new Audio(src); /* 就地新建；1.10.21 起优先喂 blob:，退不回才用 data URL */
   el.setAttribute("playsinline", "");
   el.preload = "auto";
   voiceEl = el;
@@ -8137,6 +8254,10 @@ function playVoiceViaElement(
     if (voiceEl === el) voiceEl = null;
     try { el.onended = null; el.onerror = null; } catch { /* ignore */ }
     try { el.pause(); el.removeAttribute("src"); el.load(); } catch { /* 已经没了 */ }
+    if (blobUrl) {
+      if (voiceBlobUrl === blobUrl) voiceBlobUrl = null;
+      try { URL.revokeObjectURL(blobUrl); } catch { /* ignore */ }
+    }
     onEnded();
   };
   el.onended = finalize;
@@ -8148,23 +8269,39 @@ function playVoiceViaElement(
     if (onDiag) onDiag(why);
     finalize();
   };
-  /* 只读探针：起播 1.5 秒后若元素自称在播（paused=false）却进度仍钉在 0，就是「假播放」，
-     报给诊断灰字并把元素丢掉。**不重试**——硬复位重来那条弯路已被证伪。 */
+  /* 1.10.10 只读诊断（**只看、不碰**）：把元素这一辈子收到的关键事件按序记下来，起播 1.6 秒
+     后连同实时状态报给诊断灰字。1.10.5 那条「探针」正是因为到点就 load()，把 iOS 上起播
+     稍慢的正常播放掐死，才成了「有时能响、有时不能」——所以这条绝不 pause/load/finalize，
+     只负责让失败看得见。 */
+  const trail: string[] = [];
+  const mark = (n: string) => { if (trail.length < 14) trail.push(n); };
+  el.addEventListener("loadstart", () => mark("lst"));
+  el.addEventListener("loadedmetadata", () => mark("meta"));
+  el.addEventListener("canplay", () => mark("can"));
+  el.addEventListener("playing", () => mark("playing"));
+  el.addEventListener("waiting", () => mark("wait"));
+  el.addEventListener("stalled", () => mark("stall"));
+  el.addEventListener("suspend", () => mark("susp"));
+  el.addEventListener("pause", () => mark("pause"));
   window.setTimeout(() => {
-    if (settled) return;
-    if (el.ended) return;
-    if (el.readyState < 2) return; /* 元数据还没解出来，再等等 */
-    if (el.currentTime >= 0.05) return; /* 进度动了＝真在放 */
-    console.warn("[语音] 媒体元素没出声", "媒体元素假播放", {
-      srcLen: dataUrl.length, rs: el.readyState, ns: el.networkState,
-      dur: el.duration, paused: el.paused, t: Number(el.currentTime.toFixed(3)),
-    });
-    if (onDiag) onDiag(`媒体元素假播放（t 恒 0，paused=${el.paused}）`);
-    finalize();
-  }, 1500);
+    if (settled || !onDiag) return;
+    if (!el.paused && el.currentTime > 0.1) return; /* 明显在放，不打扰 */
+    const e = el.error;
+    const nav = navigator as unknown as { standalone?: boolean; audioSession?: { type?: string } };
+    const env = `${nav.standalone ? "standalone" : "tab"}/sess=${nav.audioSession?.type ?? "?"}`;
+    onDiag(
+      `元素 rs=${el.readyState} ns=${el.networkState} paused=${el.paused}`
+      + ` t=${el.currentTime.toFixed(2)} dur=${Number.isFinite(el.duration) ? el.duration.toFixed(1) : "-"}`
+      + ` err=${e ? e.code : "-"} evt=${trail.join(">") || "无"} ${env}`,
+    );
+  }, 1600);
   /* play() 不 await（参考项目也不 await）：被拒时 catch 里记一行，别让它变成未处理的
      rejection。手势里同步调 play，才最有机会真的出声。 */
   el.play().catch((err) => {
+    /* 只报「这条元素仍是此刻在响的那条」的错（1.10.9）。用户点同一气泡停止播放、或立刻
+       点了下一条语音时，stopVoiceEl() 会 load() 打断这条 pending 的 play()，抛一个
+       AbortError——那不是故障，是被我们自己掐掉的，既别报给用户，也别覆盖真正的错因。 */
+    if (settled || voiceEl !== el) return;
     const e = err as { name?: string; message?: string } | null;
     console.warn("[语音] play 被拒", e?.name, e?.message);
     if (onDiag) onDiag(`媒体元素 play 被拒（${e?.name ?? "?"}）`);
@@ -8288,6 +8425,462 @@ const modalConfirmBtnStyle: CSSProperties = {
   fontFamily: SANS,
   cursor: "pointer",
 };
+
+/* ---------- 语音消息弹窗（1.10.20，1.10.23 解耦录音/转写） ---------- */
+/* 加号面板「语音消息」进来的那一页。右上角一枚「Aa ⇄ 麦克风」在两路输入间切换：
+   · 文字模式：打什么就是什么，发出去是**空气泡**（无音频、点不出声；他那边拿到这段文字）；
+   · 录音模式：开麦录下我的声音 → 发一条能回听的语音条。
+     有浏览器语音识别就顺手转文字（他那边拿到文字）；
+     没有（iPhone「加到主屏的 PWA」拿不到 SpeechRecognition，WebKit Bug 225298）就**纯录音**，
+     发纯音频语音条、他那边收到「（发来一条语音）」。
+   蓝本＝参考项目 rich-input-modals.tsx 的 VoiceRecordModal（同为纯浏览器、不碰服务商）。 */
+
+/** 安卓浏览器对 Web Speech API 支持参差，直接锁成文字输入（与参考项目一致）。 */
+function isAndroidBrowser(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return /Android/i.test(navigator.userAgent);
+}
+
+function VoiceRecordModal({
+  onSend,
+  onClose,
+}: {
+  onSend: (text: string, audio?: { dataUrl: string; seconds: number }) => void;
+  onClose: () => void;
+}) {
+  const androidOnly = useMemo(() => isAndroidBrowser(), []);
+  const [mode, setMode] = useState<"voice" | "text">(androidOnly ? "text" : "voice");
+  const [state, setState] = useState<"idle" | "recording" | "processing" | "done">("idle");
+  const [interim, setInterim] = useState("");
+  const [finalText, setFinalText] = useState("");
+  const [manualText, setManualText] = useState("");
+  const [audio, setAudio] = useState<{ dataUrl: string; seconds: number } | null>(null);
+  const [hint, setHint] = useState("");
+  /* 1.10.23：这台设备拿不拿得到浏览器语音识别。false＝拿不到（iPhone 主屏 PWA 就是），
+     那就纯录音、发音频条，不转文字。 */
+  const [noStt, setNoStt] = useState(false);
+  const sttRef = useRef<STTSession | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
+  const gotFinalRef = useRef(false);
+  const startedAtRef = useRef(0);
+
+  /* 1.10.24：环境诊断——「麦克风为什么不可用」一眼看清，显示在这页底部（灰字）。
+     起因：iPhone 上麦克风 API 与语音识别都只在**安全上下文**（https／localhost）里给，
+     用 http 局域网地址打开时两个一起消失，光看「不支持」分不清是没走 https 还是手机不支持。 */
+  const envDiag = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    const win = window as unknown as {
+      SpeechRecognition?: unknown;
+      webkitSpeechRecognition?: unknown;
+    };
+    const nav = navigator as unknown as {
+      standalone?: boolean;
+      mediaDevices?: { getUserMedia?: unknown };
+    };
+    const standalone =
+      nav.standalone === true ||
+      (typeof window.matchMedia === "function" &&
+        window.matchMedia("(display-mode: standalone)").matches);
+    const hasMic = typeof nav.mediaDevices?.getUserMedia === "function";
+    const hasSr =
+      typeof win.SpeechRecognition === "function" ||
+      typeof win.webkitSpeechRecognition === "function";
+    return [
+      `安全=${window.isSecureContext ? "是" : "否"}`,
+      `协议=${location.protocol.replace(":", "")}`,
+      `麦克风=${hasMic ? "有" : "无"}`,
+      `识别=${hasSr ? "有" : "无"}`,
+      `主屏=${standalone ? "是" : "否"}`,
+    ].join(" · ");
+  }, []);
+
+  const stopRecorder = useCallback(() => {
+    const r = recorderRef.current;
+    if (r && r.state !== "inactive") r.stop();
+  }, []);
+
+  /* 退回文字模式：识别不可用／麦克风拿不到／没听到声音都走这儿（保底发得出去）。 */
+  const fallbackToText = useCallback(
+    (msg: string) => {
+      sttRef.current?.abort();
+      sttRef.current = null;
+      stopRecorder();
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+      setState("idle");
+      setHint(msg);
+      setMode("text");
+    },
+    [stopRecorder],
+  );
+
+  const startRecording = useCallback(async () => {
+    if (androidOnly) {
+      setMode("text");
+      return;
+    }
+    setState("idle");
+    setInterim("正在听…");
+    setFinalText("");
+    setAudio(null);
+    setHint("");
+    chunksRef.current = [];
+    gotFinalRef.current = false;
+
+    const stt = createSTTSession(
+      {
+        onInterim: (t) => setInterim(t),
+        onFinal: (t) => {
+          gotFinalRef.current = true;
+          setFinalText(t);
+          setState("done");
+          stopRecorder();
+        },
+        onError: (e) => fallbackToText(e),
+        onEnd: () => {
+          if (!gotFinalRef.current) {
+            stopRecorder();
+            setState("idle");
+          }
+        },
+        onNoSpeech: () => fallbackToText("没听到声音，改用文字输入吧"),
+      },
+      "zh-CN",
+    );
+
+    /* 1.10.23：录音与转写**解耦**——
+       苹果「加到主屏的 PWA」里，浏览器把语音识别接口整个拿掉了（WebKit Bug 225298：
+       SpeechRecognition「not available in … web apps added to Home Screen」）。
+       老写法一探到不支持就退回文字，等于在 iPhone 主屏上永远发不出语音。
+       现在：识别能就用（顺手转文字），不能就**纯录音**——照样按麦克风、录下我的声音、
+       发一条能回听的语音条；跟参考项目聊天语音那条路同一个用法（都不碰服务商）。 */
+    const sttOk = stt.isSupported;
+    setNoStt(!sttOk);
+
+    /* 1.10.24：先分辨「是不是没走安全上下文」——
+       麦克风 API 只在 https／localhost 里给。iPhone 上用 http 局域网地址打开时，
+       navigator.mediaDevices 整个是 undefined，不是权限被拒、也不是手机不支持。
+       分开报，提示才对得上号（以前一律说「无法访问麦克风」，把方向带偏了）。 */
+    if (typeof window !== "undefined" && !window.isSecureContext) {
+      fallbackToText("要用 https 打开才能用麦克风（现在不是安全环境），改用文字输入吧");
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      fallbackToText("这台设备的浏览器不给麦克风，改用文字输入吧");
+      return;
+    }
+    let stream: MediaStream | null = null;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      fallbackToText("麦克风没开或权限被拒绝，改用文字输入吧");
+      return;
+    }
+    streamRef.current = stream;
+
+    /* 1.10.23：编码按「设备真说支持哪个」挑——
+       安卓/桌面走 opus(webm)，**iOS 只有 audio/mp4（AAC）**，老写法只给 webm，
+       在 iPhone 上 new MediaRecorder 直接抛错（这也是之前「不支持录音」的来源之一）。 */
+    let recorder: MediaRecorder;
+    let recorderMime = "";
+    try {
+      const mime = [
+        "audio/webm;codecs=opus",
+        "audio/webm",
+        "audio/mp4",
+        "audio/mp4;codecs=mp4a.40.2",
+      ].find((t) => MediaRecorder.isTypeSupported(t));
+      recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      recorderMime = recorder.mimeType || mime || "";
+    } catch {
+      stream.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+      fallbackToText("这台设备不支持录音，改用文字输入吧");
+      return;
+    }
+    recorderRef.current = recorder;
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) chunksRef.current.push(e.data);
+    };
+    recorder.onstop = () => {
+      stream?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+      const seconds = Math.max(1, Math.round((Date.now() - startedAtRef.current) / 1000));
+      if (chunksRef.current.length === 0) {
+        setState("idle");
+        return;
+      }
+      const blob = new Blob(chunksRef.current, { type: recorderMime || "audio/webm" });
+      const reader = new FileReader();
+      reader.onload = () => {
+        setAudio({ dataUrl: reader.result as string, seconds });
+        setState("done");
+      };
+      reader.readAsDataURL(blob);
+    };
+    startedAtRef.current = Date.now();
+    recorder.start();
+    setState("recording");
+    if (sttOk) {
+      sttRef.current = stt;
+      setInterim("正在听…");
+      stt.start();
+    } else {
+      /* 没识别：只录音。录完（点停止）由 onstop 落 done，能直接发音频条。 */
+      sttRef.current = null;
+      setInterim("正在录音…说完点一下停止");
+    }
+  }, [androidOnly, fallbackToText, stopRecorder]);
+
+  const stopRecording = () => {
+    sttRef.current?.stop();
+    stopRecorder();
+    setState("processing");
+    setInterim("");
+  };
+
+  /* 关掉这一页：麦克风、录音、识别一并收干净，别留着偷偷录。 */
+  useEffect(
+    () => () => {
+      sttRef.current?.abort();
+      stopRecorder();
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+    },
+    [stopRecorder],
+  );
+
+  const switchMode = () => {
+    if (androidOnly) return;
+    if (mode === "voice") {
+      sttRef.current?.abort();
+      sttRef.current = null;
+      stopRecorder();
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+      setState("idle");
+      setInterim("");
+      setMode("text");
+    } else {
+      setMode("voice");
+      setHint("");
+    }
+  };
+
+  /* 1.10.23：录音模式不再「必须有转写才能发」——
+     有识别就发「音频＋文字」，没识别（iPhone 主屏 PWA）就发纯音频语音条。 */
+  const canSend =
+    mode === "text"
+      ? !!manualText.trim()
+      : state === "done" && (!!finalText.trim() || !!audio);
+
+  const submit = () => {
+    if (!canSend) return;
+    if (mode === "text") onSend(manualText.trim());
+    else onSend(finalText.trim(), audio ?? undefined);
+  };
+
+  return (
+    <ModalShell onClose={onClose}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          minHeight: 28,
+        }}
+      >
+        <span style={{ width: 28 }} />
+        <div style={modalTitleStyle}>语音消息</div>
+        {androidOnly ? (
+          <span style={{ width: 28 }} />
+        ) : (
+          <button
+            type="button"
+            onClick={switchMode}
+            title={mode === "voice" ? "改用文字输入" : "改用语音输入"}
+            style={{
+              width: 28,
+              height: 28,
+              border: "none",
+              borderRadius: 9,
+              background: "rgba(20,19,24,.05)",
+              color: T.ink2,
+              fontFamily: SERIF,
+              fontSize: 13,
+              letterSpacing: ".04em",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            {mode === "voice" ? "Aa" : <Mic size={15} strokeWidth={1.6} />}
+          </button>
+        )}
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 10,
+          minHeight: 148,
+          padding: "16px 0 6px",
+        }}
+      >
+        {mode === "text" ? (
+          <textarea
+            value={manualText}
+            onChange={(e) => setManualText(e.target.value)}
+            rows={3}
+            placeholder="输入语音条内容…"
+            style={{
+              width: "100%",
+              border: `1px solid ${T.line}`,
+              borderRadius: 11,
+              padding: "11px 13px",
+              fontSize: 14,
+              fontFamily: SANS,
+              color: T.ink,
+              outline: "none",
+              background: T.bg,
+              letterSpacing: ".03em",
+              resize: "none",
+              lineHeight: 1.6,
+            }}
+          />
+        ) : state === "idle" ? (
+          <button
+            type="button"
+            onClick={() => void startRecording()}
+            style={{
+              width: 64,
+              height: 64,
+              borderRadius: "50%",
+              border: "none",
+              background: "linear-gradient(135deg,#F49BBE,#E86A9B)",
+              color: "#FFF",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+            }}
+          >
+            <Mic size={26} strokeWidth={1.8} />
+          </button>
+        ) : state === "recording" ? (
+          <button
+            type="button"
+            onClick={stopRecording}
+            style={{
+              width: 64,
+              height: 64,
+              borderRadius: "50%",
+              border: "none",
+              background: T.danger,
+              color: "#FFF",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+            }}
+          >
+            <SquareStop size={22} strokeWidth={2} />
+          </button>
+        ) : state === "processing" ? (
+          <div
+            style={{
+              width: 64,
+              height: 64,
+              borderRadius: "50%",
+              background: "rgba(20,19,24,.05)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: T.ink3,
+            }}
+          >
+            <Mic size={24} strokeWidth={1.6} />
+          </div>
+        ) : finalText.trim() ? (
+          <div
+            style={{
+              width: "100%",
+              fontSize: 14,
+              color: T.ink,
+              lineHeight: 1.7,
+              wordBreak: "break-word",
+            }}
+          >
+            {finalText}
+          </div>
+        ) : (
+          /* 1.10.23：纯录音（拿不到识别）——给一句「已录好」的回执，不当空白。 */
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+            <Mic size={22} strokeWidth={1.6} color={T.pink} />
+            <span style={{ fontSize: 13, color: T.ink2, letterSpacing: ".04em" }}>
+              已录制 {audio?.seconds ?? 0}″，点「发送」发出去
+            </span>
+          </div>
+        )}
+
+        {mode === "voice" && (state === "recording" || state === "processing") ? (
+          <span
+            style={{
+              fontSize: 12.5,
+              color: T.ink3,
+              letterSpacing: ".03em",
+              textAlign: "center",
+            }}
+          >
+            {state === "processing" ? (noStt ? "处理中…" : "识别中…") : interim || "点一下停止"}
+          </span>
+        ) : null}
+        {mode === "text" && hint ? (
+          <span style={{ fontSize: 11.5, color: T.ink3, letterSpacing: ".03em", textAlign: "center" }}>
+            {hint}
+          </span>
+        ) : null}
+      </div>
+
+      {envDiag ? (
+        <div
+          style={{
+            fontSize: 10,
+            color: T.ink3,
+            letterSpacing: ".02em",
+            textAlign: "center",
+            lineHeight: 1.6,
+          }}
+        >
+          {envDiag}
+        </div>
+      ) : null}
+
+      <div style={{ display: "flex", gap: 10 }}>
+        <button type="button" onClick={onClose} style={modalCancelBtnStyle}>
+          取消
+        </button>
+        <button
+          type="button"
+          onClick={submit}
+          disabled={!canSend}
+          style={{
+            ...modalConfirmBtnStyle,
+            opacity: canSend ? 1 : 0.5,
+            cursor: canSend ? "pointer" : "default",
+          }}
+        >
+          发送
+        </button>
+      </div>
+    </ModalShell>
+  );
+}
 
 /* 1.4.88 转账详情那张票里的按钮：方角（跟票一个脾气，不跟外面圆角弹窗走）。
    灰的那枚＝「退还／好」——次要动作与收尾，落在纸上不抢；粉的那枚＝「收下」，

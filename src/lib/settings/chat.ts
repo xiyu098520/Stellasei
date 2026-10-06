@@ -24,11 +24,14 @@ import {
   type ApiSettingsBundle,
   type ChatApiSettings,
   type ChatMessage,
-  type ChatMoment,
   type Conversation,
   type ImageApiExtras,
+  type MomentComment,
+  type MomentLike,
+  type MomentVisibility,
   type OfflineEntry,
   type OfflineScene,
+  type SelfMoment,
   type VoiceApiExtras,
 } from "@/types/chat";
 
@@ -88,6 +91,9 @@ export type ConversationPatch = Partial<
     | "apiOverrides"
     | "voiceOverride"
     | "voicePromptOverride"
+    | "proactiveOn"
+    | "proactiveBaseMin"
+    | "proactiveQuiet"
   >
 >;
 
@@ -129,6 +135,38 @@ export function clampBubbleMax(value: number | undefined): number {
 export function bubbleCapOf(conv: Conversation | null | undefined): number {
   if (!conv || conv.bubbleLimit === false) return 0;
   return clampBubbleMax(conv.bubbleMax);
+}
+
+/* --------------------------- 主动找我（每聊天） --------------------------- */
+
+/** 主动找我的基础间隔默认值（分钟）：6 小时——跟老引擎 4~8 小时的平均一个量级。 */
+export const DEFAULT_PROACTIVE_BASE_MIN = 360;
+/** 基础间隔可设范围（分钟）：15 分钟到 24 小时。 */
+export const PROACTIVE_BASE_FLOOR = 15;
+export const PROACTIVE_BASE_CEIL = 24 * 60;
+
+/** 基础间隔：取整并夹进 15–1440，脏数据（NaN／小数／越界）一律拉回合法值。 */
+export function clampProactiveBaseMin(value: number | undefined): number {
+  const n =
+    typeof value === "number" && Number.isFinite(value)
+      ? Math.round(value)
+      : DEFAULT_PROACTIVE_BASE_MIN;
+  return Math.min(PROACTIVE_BASE_CEIL, Math.max(PROACTIVE_BASE_FLOOR, n));
+}
+
+/** 这个角色要不要主动找我（来消息、发动态）：单聊天没单独设过＝跟随全局默认。 */
+export function proactiveOnOf(conv: Conversation | null | undefined): boolean {
+  return conv?.proactiveOn ?? chatPrefsSnapshot().proactiveOn;
+}
+
+/** 这场对话的主动基础间隔（分钟）：单聊天没单独设过＝跟随全局默认。 */
+export function proactiveBaseMinOf(conv: Conversation | null | undefined): number {
+  return clampProactiveBaseMin(conv?.proactiveBaseMin ?? chatPrefsSnapshot().proactiveBaseMin);
+}
+
+/** 这场对话深夜要不要安静：单聊天没单独设过＝跟随全局默认。 */
+export function proactiveQuietOf(conv: Conversation | null | undefined): boolean {
+  return conv?.proactiveQuiet ?? chatPrefsSnapshot().proactiveQuiet;
 }
 
 /* ----------------------------- 线下场合（每聊天） ----------------------------- */
@@ -411,6 +449,9 @@ async function appendMessageNow(
        「心声档案」页的历史列也会跟着空掉。 */
     ...(message.innerSnapshot !== undefined ? { innerSnapshot: message.innerSnapshot } : {}),
     ...(message.apiText !== undefined ? { apiText: message.apiText } : {}),
+    /* 1.10.8：与 apiText 同源的「发出去时那截易变尾巴」，红包含它回喂时才接得回尾巴。
+       同上，逐字段白名单，漏了它一刷新就丢。 */
+    ...(message.apiTail !== undefined ? { apiTail: message.apiTail } : {}),
     ...(message.mediaNote !== undefined ? { mediaNote: message.mediaNote } : {}),
     /* 1.9.51：外语聊天挂在这条气泡（他说的话／语音）上的中文译文。同上面几行的道理，
        这里是逐字段白名单，漏了它，译文只活在内存里——退出聊天再进来（从库里重读）
@@ -636,31 +677,19 @@ export async function ensureAssistant(): Promise<void> {
 }
 
 /**
- * 记录 TA 在回复末尾附带的元信息（〔签名〕／〔动态〕／〔动态图〕标记解析结果）。
- * 签名整条覆盖；动态追加进既有列表；每条动态可附带一条 imagePrompt（TA 写的画面描述）。
- * 会话不存在则先建立。
- *
- * 返回**这一趟新落库的那些动态**（带内部 id）。生成配图这件事本身不在这里跑——
- * 手动那一趟在朋友圈页面点；「自动生图」开着时由调用方拿着
- * 这些 id 去跑（见 `generateMomentImage`）。id 只有这里知道，所以必须交出去。
+ * 记录 TA 在回复末尾附带的元信息（〔签名〕标记解析结果）。
+ * 签名整条覆盖。会话不存在则先建立。
  */
 export async function appendMetaUpdates(
   characterId: string,
   maskId: string,
-  meta: { signature?: string; moments?: Array<{ content: string; imagePrompt?: string }> },
-): Promise<ChatMoment[]> {
-  const hasSig = typeof meta.signature === "string" && meta.signature.trim();
-  const newMoments = (meta.moments ?? []).filter((m) => m.content.trim());
-  if (!hasSig && newMoments.length === 0) return [];
+  meta: { signature?: string },
+): Promise<void> {
+  const sig = typeof meta.signature === "string" ? meta.signature.trim() : "";
+  if (!sig) return;
   const list = await getConversations();
   const idx = findIdx(list, characterId, maskId);
   const now = new Date().toISOString();
-  const created: ChatMoment[] = newMoments.map((m) => ({
-    id: uuid(),
-    content: m.content.trim(),
-    createdAt: now,
-    ...(m.imagePrompt?.trim() ? { imagePrompt: m.imagePrompt.trim() } : {}),
-  }));
   if (idx < 0) {
     const fresh: Conversation = {
       id: convId(characterId, maskId),
@@ -669,19 +698,14 @@ export async function appendMetaUpdates(
       messages: [],
       createdAt: now,
       updatedAt: now,
-      ...(hasSig ? { signature: meta.signature!.trim() } : {}),
-      ...(created.length > 0 ? { moments: created } : {}),
+      signature: sig,
     };
     await kvSet(CONVERSATIONS_KEY, [...list, fresh]);
-    return created;
+    return;
   }
-  if (hasSig) list[idx].signature = meta.signature!.trim();
-  if (created.length > 0) {
-    list[idx].moments = [...(list[idx].moments ?? []), ...created];
-  }
+  list[idx].signature = sig;
   list[idx].updatedAt = now;
   await kvSet(CONVERSATIONS_KEY, list);
-  return created;
 }
 
 /**
@@ -746,6 +770,50 @@ export async function setMomentPinned(
     list[idx].moments![mIdx].pinnedByUser = true;
   } else {
     delete list[idx].moments![mIdx].pinnedByUser;
+  }
+  list[idx].updatedAt = new Date().toISOString();
+  await kvSet(CONVERSATIONS_KEY, list);
+}
+
+/**
+ * 整份覆盖某条 TA 动态的赞（2026-10-05）。
+ * 赞是「一份名单」不是「一条流水」——我赞／取消赞、角色赞／取消赞都改这份名单，
+ * 所以写入一律是整份覆盖；空名单就把这格删掉（回到老数据的样子）。
+ */
+export async function setMomentLikes(
+  conversationId: string,
+  momentId: string,
+  likes: MomentLike[],
+): Promise<void> {
+  const list = await getConversations();
+  const idx = list.findIndex((c) => c.id === conversationId);
+  if (idx < 0) return;
+  const mIdx = (list[idx].moments ?? []).findIndex((m) => m.id === momentId);
+  if (mIdx < 0) return;
+  if (likes.length > 0) {
+    list[idx].moments![mIdx].likes = likes;
+  } else {
+    delete list[idx].moments![mIdx].likes;
+  }
+  list[idx].updatedAt = new Date().toISOString();
+  await kvSet(CONVERSATIONS_KEY, list);
+}
+
+/** 整份覆盖某条 TA 动态的评论（含二级回复），空名单删格。 */
+export async function setMomentComments(
+  conversationId: string,
+  momentId: string,
+  comments: MomentComment[],
+): Promise<void> {
+  const list = await getConversations();
+  const idx = list.findIndex((c) => c.id === conversationId);
+  if (idx < 0) return;
+  const mIdx = (list[idx].moments ?? []).findIndex((m) => m.id === momentId);
+  if (mIdx < 0) return;
+  if (comments.length > 0) {
+    list[idx].moments![mIdx].comments = comments;
+  } else {
+    delete list[idx].moments![mIdx].comments;
   }
   list[idx].updatedAt = new Date().toISOString();
   await kvSet(CONVERSATIONS_KEY, list);
@@ -981,6 +1049,17 @@ const VOICE_PROMPT_TEXT_MIGRATED_V2_KEY = "chat-prefs-voice-default-v2";
 /** 对话行为偏好（全局一份，不分角色与面具；每聊天设定在 Conversation 上）。 */
 export interface ChatPrefs {
   /**
+   * 主动找我（全局默认）：TA 会不会自己来找你（**来消息**）。这是**全局默认**，
+   * 单个聊天没单独设过时就按它走；单聊天设过的以单聊天为准。
+   * 默认开——「角色有自己的生活」是星绥的底色。
+   * 注意：**只管私聊主动消息**。
+   */
+  proactiveOn: boolean;
+  /** 主动找我的基础间隔（分钟）全局默认，单聊天没设过时按它走。 */
+  proactiveBaseMin: number;
+  /** 深夜静默全局默认：开着＝深夜不打扰，单聊天没设过时按它走。**只管私聊**。 */
+  proactiveQuiet: boolean;
+  /**
    * 时间感知：打开后把「此刻的真实时间」注入本轮提示词，TA 在「现在几点」
    * 这件事上就不会乱编（在此之前 TA 只能从聊天内容猜，同一晚前后能说反）。
    * 关掉＝完全不注入，行为与从前一致。
@@ -993,6 +1072,29 @@ export interface ChatPrefs {
    * 注意这是**全局习惯**，不跟预设方案走：切换图文方案不会改它。
    */
   autoGenerateImage: boolean;
+  /**
+   * 自动合成：TA 要发语音时（回复里写了〔语音〕标记）是否立刻去合成。
+   * 开着（默认）＝收到标记就合；关掉＝先把语音气泡摆在那儿（播放键、波形、时长都在，
+   * 翻开还能看文字），点一下才合——合成按次计费，想自己决定要不要这条就把这个关掉。
+   * 注意这是**全局习惯**，不跟预设方案走：切换语音方案不会改它。
+   */
+  autoGenerateVoice: boolean;
+  /**
+   * 配图自动生成（1.10.38）：**我**发动态时用「文字描述」当配图，要不要把这段描述
+   * 交给生图接口真画一张。关着（默认）＝不画、不花钱，这段描述**就当这张图**发给 TA
+   * （TA 认为它是一张图片）；开着＝自动画成真图再发，TA 看到的是真图。
+   * ⚠︎ 只管**我发的**动态，跟上面那枚 `autoGenerateImage`（管 TA 自己动态配图）是两回事。
+   * 全局习惯，不跟预设方案走。
+   */
+  autoGenerateMyMomentImage: boolean;
+  /**
+   * 「配图自动生成」用的生图接口（1.10.38）：只在上面那枚开关开着时才有意义。
+   * **不填／baseUrl 空** ＝ 跟随主「图文 API」；填了 ＝ 用这一套（地址／密钥／模型），
+   * 生图参数（尺寸／画风／提示词）仍沿用主图文 API 那一份 extras。
+   * ⚠️ 这份**只活在动态设置这一处**，跟设置里那批图文预设**互不往来**——恩熙拍板：
+   * 别让一个功能在两处都要维护，越做越多时顾不过来。
+   */
+  myMomentImageApi?: { baseUrl: string; apiKey: string; model: string };
   /**
    * 显示思维链（1.4.9）：思考型模型（DeepSeek-R1 等）单独吐的思考过程要不要在
    * 气泡上方露「思考过程」入口。开着（默认）＝有思考的消息可以点开看；关＝入口
@@ -1042,8 +1144,13 @@ const LEGACY_VOICE_PROMPT_TEXT_V1 =
   "说话时带上当下的口吻，让声音有情绪：在这句台词最前面加一个英文半角方括号标签，例如 [whispers]（气声低语）、[laughs]（笑）、[sighs]（叹气）、[excited]（兴奋）、[sad]（低落）、[angry]（生气）、[sarcastic]（揶揄）、[softly]（轻声）、[nervous]（紧张）、[curious]（好奇）。一句话最多一个标签；平常闲聊不必每句都加，只在情绪明显、或想让声音换个语气时才加，挑最贴当下情境的那一个。标签不会显示给对方看，只影响声音听起来的样子。";
 
 export const DEFAULT_CHAT_PREFS: ChatPrefs = {
+  proactiveOn: true,
+  proactiveBaseMin: DEFAULT_PROACTIVE_BASE_MIN,
+  proactiveQuiet: true,
   timeAware: true,
   autoGenerateImage: true,
+  autoGenerateVoice: true,
+  autoGenerateMyMomentImage: false,
   showReasoning: true,
   smoothMode: false,
   /* 1.9.87：默认开、并带上默认语音规矩（见上）。目标就是「默认语音就该有基本语气」，
@@ -1052,11 +1159,28 @@ export const DEFAULT_CHAT_PREFS: ChatPrefs = {
   voicePromptText: DEFAULT_VOICE_PROMPT_TEXT,
 };
 
+/* 全局偏好的内存快照：主动引擎的判定是同步的（proactive*Of），读不了异步存档，
+   于是 getChatPrefs／saveChatPrefs 顺手在这里留一份最新的，供同步回落使用。 */
+let prefsSnapshot: ChatPrefs | null = null;
+
+/** 同步取全局偏好最新快照；还没读过存档时给出厂默认（不会误关任何东西）。 */
+export function chatPrefsSnapshot(): ChatPrefs {
+  return prefsSnapshot ?? DEFAULT_CHAT_PREFS;
+}
+
 /** 把存档补全成一份合法偏好（缺漏栏位补预设值，方便日后加开关）。 */
 function normalizePrefs(saved: Partial<ChatPrefs>): ChatPrefs {
   return {
+    proactiveOn: saved.proactiveOn ?? DEFAULT_CHAT_PREFS.proactiveOn,
+    proactiveBaseMin: clampProactiveBaseMin(saved.proactiveBaseMin),
+    proactiveQuiet: saved.proactiveQuiet ?? DEFAULT_CHAT_PREFS.proactiveQuiet,
     timeAware: saved.timeAware ?? DEFAULT_CHAT_PREFS.timeAware,
     autoGenerateImage: saved.autoGenerateImage ?? DEFAULT_CHAT_PREFS.autoGenerateImage,
+    autoGenerateVoice: saved.autoGenerateVoice ?? DEFAULT_CHAT_PREFS.autoGenerateVoice,
+    autoGenerateMyMomentImage:
+      saved.autoGenerateMyMomentImage ?? DEFAULT_CHAT_PREFS.autoGenerateMyMomentImage,
+    /* 可选：不填＝跟随主图文 API。原样透传，别去补默认（补了就成「自定义」了）。 */
+    myMomentImageApi: saved.myMomentImageApi,
     showReasoning: saved.showReasoning ?? DEFAULT_CHAT_PREFS.showReasoning,
     smoothMode: saved.smoothMode ?? DEFAULT_CHAT_PREFS.smoothMode,
     voicePromptOn: saved.voicePromptOn ?? DEFAULT_CHAT_PREFS.voicePromptOn,
@@ -1089,6 +1213,7 @@ export async function getChatPrefs(): Promise<ChatPrefs> {
     }
     await kvSet(VOICE_PROMPT_TEXT_MIGRATED_V2_KEY, true);
   }
+  prefsSnapshot = prefs;
   return prefs;
 }
 
@@ -1096,6 +1221,7 @@ export async function getChatPrefs(): Promise<ChatPrefs> {
 export async function saveChatPrefs(patch: Partial<ChatPrefs>): Promise<ChatPrefs> {
   const next = normalizePrefs({ ...(await getChatPrefs()), ...patch });
   await kvSet(CHAT_PREFS_KEY, next);
+  prefsSnapshot = next;
   /* 喊一声：挂在别处的界面（根层按 smoothMode 给 <html> 挂类）跟着重读，
      不必刷新页面（1.9.6）。 */
   if (typeof window !== "undefined") {
@@ -1118,4 +1244,128 @@ export async function getMomentsCover(): Promise<string> {
 /** 写封面引用串（传空串＝还原成默认渐变）。 */
 export async function saveMomentsCover(ref: string): Promise<void> {
   await kvSet(MOMENTS_COVER_KEY, ref);
+}
+
+/* ── 「我」自己发的动态（2026-10-04）。
+   存一份 `Record<面具id, SelfMoment[]>`：动态页只看当前面具那一册。
+   跟 TA 的动态（落在各自的 `Conversation.moments`）**分开存**——我的这些不分角色。 ── */
+const SELF_MOMENTS_KEY = "moments-self";
+
+/** 读某个面具下「我」发过的全部动态（落库顺序：旧→新，渲染时再统一排）。 */
+export async function getSelfMoments(maskId: string): Promise<SelfMoment[]> {
+  const all = (await kvGet<Record<string, SelfMoment[]>>(SELF_MOMENTS_KEY)) ?? {};
+  return all[maskId] ?? [];
+}
+
+/** 「我」发一条动态：追加进该面具那一册，返回落库后的那条（带 id 与时间）。 */
+export async function addSelfMoment(
+  maskId: string,
+  draft: {
+    content: string;
+    imageRef?: string;
+    imageText?: string;
+    tags?: string[];
+    visibility?: MomentVisibility;
+    visibleTo?: string[];
+    visibleWorlds?: string[];
+  },
+): Promise<SelfMoment> {
+  const content = draft.content.trim();
+  const imageRef = draft.imageRef?.trim();
+  /* 「文字描述当图」：图没落成真图、但有这段描述时才算数（有真图就不存文字，免得打架）。 */
+  const imageText = imageRef ? undefined : draft.imageText?.trim();
+  const tags = (draft.tags ?? []).map((t) => t.trim().replace(/^#+/, "")).filter(Boolean);
+  const visibility = draft.visibility ?? "public";
+  const item: SelfMoment = {
+    id: uuid(),
+    content,
+    createdAt: new Date().toISOString(),
+    ...(imageRef ? { imageRef } : {}),
+    ...(imageText ? { imageText } : {}),
+    ...(tags.length > 0 ? { tags } : {}),
+    visibility,
+    ...(visibility === "partial" && draft.visibleTo?.length
+      ? { visibleTo: draft.visibleTo }
+      : {}),
+    ...(visibility === "partial" && draft.visibleWorlds?.length
+      ? { visibleWorlds: draft.visibleWorlds }
+      : {}),
+  };
+  const all = (await kvGet<Record<string, SelfMoment[]>>(SELF_MOMENTS_KEY)) ?? {};
+  all[maskId] = [...(all[maskId] ?? []), item];
+  await kvSet(SELF_MOMENTS_KEY, all);
+  return item;
+}
+
+/**
+ * 回写「看图写的一句话」（发布带图动态后异步调用）。
+ * 只补 imageNote，不碰别的；找不到那一条就什么也不做（图已删等）。
+ */
+export async function setSelfMomentImageNote(
+  maskId: string,
+  momentId: string,
+  imageNote: string,
+): Promise<void> {
+  const text = imageNote.trim();
+  if (!text) return;
+  const all = (await kvGet<Record<string, SelfMoment[]>>(SELF_MOMENTS_KEY)) ?? {};
+  const list = all[maskId];
+  if (!list) return;
+  const idx = list.findIndex((m) => m.id === momentId);
+  if (idx < 0) return;
+  list[idx].imageNote = text;
+  await kvSet(SELF_MOMENTS_KEY, all);
+}
+
+/**
+ * 整份覆盖「我」某条动态的赞（2026-10-05）。空名单删格。
+ * 赞写在这儿而不是各自去记：我赞／取消赞都改这份名单（角色赞将来走同一格）。
+ */
+export async function setSelfMomentLikes(
+  maskId: string,
+  momentId: string,
+  likes: MomentLike[],
+): Promise<void> {
+  const all = (await kvGet<Record<string, SelfMoment[]>>(SELF_MOMENTS_KEY)) ?? {};
+  const list = all[maskId];
+  if (!list) return;
+  const idx = list.findIndex((m) => m.id === momentId);
+  if (idx < 0) return;
+  if (likes.length > 0) {
+    list[idx].likes = likes;
+  } else {
+    delete list[idx].likes;
+  }
+  await kvSet(SELF_MOMENTS_KEY, all);
+}
+
+/** 整份覆盖「我」某条动态的评论（含二级回复），空名单删格。 */
+export async function setSelfMomentComments(
+  maskId: string,
+  momentId: string,
+  comments: MomentComment[],
+): Promise<void> {
+  const all = (await kvGet<Record<string, SelfMoment[]>>(SELF_MOMENTS_KEY)) ?? {};
+  const list = all[maskId];
+  if (!list) return;
+  const idx = list.findIndex((m) => m.id === momentId);
+  if (idx < 0) return;
+  if (comments.length > 0) {
+    list[idx].comments = comments;
+  } else {
+    delete list[idx].comments;
+  }
+  await kvSet(SELF_MOMENTS_KEY, all);
+}
+
+/** 删掉「我」的某条动态（2026-10-05）：整条从该面具那一册滤掉。
+    它的赞／评本来就挂在这一条上，跟着一起走。找不到那一条就什么也不做。 */
+export async function removeSelfMoment(maskId: string, momentId: string): Promise<void> {
+  const all = (await kvGet<Record<string, SelfMoment[]>>(SELF_MOMENTS_KEY)) ?? {};
+  const list = all[maskId];
+  if (!list) return;
+  const next = list.filter((m) => m.id !== momentId);
+  if (next.length === list.length) return;
+  all[maskId] = next;
+  await kvSet(SELF_MOMENTS_KEY, all);
 }

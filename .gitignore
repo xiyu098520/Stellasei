@@ -48,3 +48,6 @@ next-env.d.ts
 
 # 手改前留的备份，不进仓库（真历史在 git 里）
 *.bak
+
+# Local Netlify folder
+.netlify

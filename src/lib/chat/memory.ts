@@ -31,7 +31,9 @@
 import { kvGet, kvSet } from "@/lib/db/idb";
 import { uuid } from "@/lib/uuid";
 import { fetchAIReply, fetchAIStreamReply, readVoiceContent } from "@/lib/chat/chatApi";
-import { getApiBundle, getConversations } from "@/lib/settings/chat";
+import { getApiBundle, getConversations, getSelfMoments } from "@/lib/settings/chat";
+import { getArchives } from "@/lib/settings/contact";
+import { filterVisibleMyMoments, MY_MOMENTS_MAX } from "@/lib/chat/my-moments";
 import { DEFAULT_MASK_ID } from "@/lib/settings/mask";
 import type {
   ChatApiSettings,
@@ -40,6 +42,8 @@ import type {
   ChatMoment,
   MemoryCategory,
   MemoryItem,
+  MemoryRawBatch,
+  SelfMoment,
 } from "@/types/chat";
 
 const MEMORY_KEY = "character-memories-v2";
@@ -54,6 +58,10 @@ export const MOMENT_INJECT_MAX = 40;
 const MOMENT_KEEP = 12;
 /** 没被压过的动态攒到这么多条才动手（少于这个数还不够格「模糊」，压了反而假）。 */
 const MOMENT_COMPRESS_AT = 20;
+
+/** 「我」发的那条动态线同理：注入只列最近 MY_MOMENTS_MAX 条原文（对齐 my-moments），
+ *  更旧的压成一段模糊印象。她发的本就不如 TA 的多，攒到这些条就动手。 */
+const MY_MOMENT_COMPRESS_AT = 12;
 
 /** 分层压缩刻度（1.7.66，恩熙 2026-09-29 定：一周全细节、半月有经过、一月剩骨架、更早只剩印象）。
  *  1.7.66 之前短→中按「某分类满 20 条」、中→长按「中期满 10 条」走**条数**，
@@ -105,6 +113,10 @@ const MEMORY_TASK_TIMEOUT_MS = 600_000;
  *  输出上限被切。切成小批逐趟压，每趟几十条、几十秒就回；哪一趟失败就整趟作废、
  *  下次重来，绝不会把半截结果写进记忆。 */
 const COMPRESS_BATCH = 40;
+
+/** 浓缩底稿最多留多少批（记忆 App · 原始记录页）。一批＝一次浓缩收走的那批原话；
+ *  留最近这些批就够回看，太早的原话攒着只是白占本地存储。 */
+const RAW_BATCH_KEEP = 12;
 
 /** 分类中文名（提示词与 UI 共用）。 */
 export const CATEGORY_LABEL: Record<MemoryCategory, string> = {
@@ -822,11 +834,27 @@ async function runCondense(
   if (!batch.ok) return { ran: false, error: batch.error };
 
   const toIso = source[source.length - 1].createdAt;
+  /* 底稿照录：这批被收走的原话 + 产出的条目 id，挂到记忆上（原始记录页要摊的就是这个）。
+     只留最近 RAW_BATCH_KEEP 批，新的在前。 */
+  const rawBatch: MemoryRawBatch = {
+    id: uuid(),
+    fromIso: source[0].createdAt,
+    toIso,
+    condensedAtIso: new Date().toISOString(),
+    messages: source.map((m) => ({
+      id: m.id,
+      role: m.role,
+      content: m.content,
+      createdAt: m.createdAt,
+    })),
+    itemIds: batch.newItems.map((it) => it.id),
+  };
   let next: CharacterMemory = {
     ...memoryIn,
     items: [...batch.newItems, ...batch.items],
     summarizedToIso: toIso,
     newCount: 0,
+    rawBatches: [rawBatch, ...(memoryIn.rawBatches ?? [])].slice(0, RAW_BATCH_KEEP),
   };
 
   // 级联压缩（失败不影响浓缩结果）。
@@ -834,6 +862,9 @@ async function runCondense(
   /* 朋友圈动态也压一压：旧的那批合成一段模糊印象。
      内部自己吞错——压缩是锦上添花，不能带崩这轮浓缩。 */
   next = await compressMoments(next, conv.moments ?? [], charName, api);
+  /* 「我」发的朋友圈也压一压：老动态合成一段模糊印象，跟 TA 的那条线同节奏。
+     内部自己吞错——同样不能带崩这轮浓缩。 */
+  next = await compressMyMoments(next, charName, myName, api);
   await saveMemory(next);
   return { ran: true };
 }
@@ -1355,8 +1386,17 @@ export function trimHistory(
  * （旧版按「与当前话题的相关度」重排＋每层只取 8 条：旧的记忆凭空消失，
  *  而且顺序每轮都变——既丢记忆，又把前缀缓存整段作废。）
  * 无记忆返回空串。
+ *
+ * 延迟接棒（windowStartIso）：短期层里覆盖时间晚于「当前窗口最早一条」的条目先压住不发。
+ * 这些条目的那批原文还在窗口里带着，不必重复；等窗口往前挪一栏、原文撤下，它们自然顶上来。
+ * 只压短期层；核心层不压（永远不会忘的事实一直在），中长期层本就早已离开窗口。
+ * 不传 windowStartIso＝不压（等价旧行为）。
  */
-export async function buildMemoryBlock(memory: CharacterMemory, myName: string): Promise<string> {
+export async function buildMemoryBlock(
+  memory: CharacterMemory,
+  myName: string,
+  windowStartIso?: string,
+): Promise<string> {
   if (!memory.enabled) return "";
   const sections: string[] = [];
 
@@ -1380,14 +1420,20 @@ export async function buildMemoryBlock(memory: CharacterMemory, myName: string):
       .slice()
       /* 事情发生的时间新→旧（按条目覆盖时间段的末尾排）。顺序固定＝缓存稳定。 */
       .sort((a, b) => b.toIso.localeCompare(a.toIso));
+    /* 延迟接棒：短期层里覆盖时间晚于窗口起点的先压住（那批原文还在窗口里，不重复注入）。
+       窗口每往前挪一栏，线跟着挪，被压的自动一条条顶上来。核心/中长期层不受影响。 */
+    const visible =
+      t.tier === "short" && windowStartIso
+        ? all.filter((it) => it.toIso < windowStartIso)
+        : all;
     /* 短期注入上限（1.7.66，默认关闭）：开了就只发最近的 N 条。
        治的是「短期全量注入太胖」——按一天 200 条算，短期稳定在 280 条左右（约 1.1 万字），
        这是本次改动最大的一笔开销。压下去的那部分当面看不见，真被问起由溶池捞回。
        （没做语义检索，这里按「最近的」取：短期本身按天保鲜，最近的就是最该在眼前的。） */
     const limited =
       t.tier === "short" && memory.shortInjectLimit && memory.shortInjectLimit > 0
-        ? all.slice(0, memory.shortInjectLimit)
-        : all;
+        ? visible.slice(0, memory.shortInjectLimit)
+        : visible;
     const list = limited
       .map((it) => {
         const status = it.fulfilledIso
@@ -1407,6 +1453,16 @@ export async function buildMemoryBlock(memory: CharacterMemory, myName: string):
     if (list.length > 0) {
       sections.push(`■ ${t.label}\n${list.join("\n")}`);
     }
+  }
+
+  /* 「我」发的朋友圈：近的几条在易变区原文照录（buildMyMomentsBlock），更旧的压成一段
+     模糊印象，放在这里（稳定区）——跨轮逐字不变、吃缓存，「老动态」从此不会被彻底忘掉。
+     摆在自己动态节之前，好让下面那句「最后一节是你自己发的」仍然成立。 */
+  const myMomentsNote = memory.myMomentsDigest?.trim();
+  if (myMomentsNote) {
+    sections.push(
+      `■ 你记得的、${myName}以前发在朋友圈的（只剩模糊印象）\n${myMomentsNote}`,
+    );
   }
 
   /* 朋友圈（动态）：要**分得清「哪些是聊天里说的、哪些是朋友圈发的」**——所以动态不混进上面四层
@@ -1441,6 +1497,30 @@ export async function buildMemoryBlock(memory: CharacterMemory, myName: string):
 同一件事，如果近期层和更早层说法不一致，一律以近期层为准——那才是最新状态。${momentNote}
 
 ${sections.join("\n\n")}`;
+}
+
+/**
+ * 记忆模块的统一出口：给定原始历史与角色记忆，一处算出
+ * 「喂给模型的原文窗口（trimmedHistory）」＋「记忆块（memoryBlock）」。
+ *
+ * 为什么必须同一处出：**窗口线（延迟接棒的判据）就是从这个窗口的头条派生的**——
+ * 分开算，迟早有一处忘了传线，短期记忆就会和原文重复注入。合在一处，二者天然同源。
+ *
+ * 聊天（ChatWindow）与社交反应（social）都从这儿取；会话那头只负责把返回的原文再按
+ * 「本轮那条 user 怎么摘」做请求整形，不再自己碰记忆。线下那条线暂时仍另走一套。
+ *
+ * trimmedHistory 就是 trimHistory 的口径（丙方案，见其注释）；memoryBlock 空串＝不注入记忆。
+ */
+export async function buildInjection(
+  history: ChatMessage[],
+  memory: CharacterMemory | null,
+  myName: string,
+): Promise<{ trimmedHistory: ChatMessage[]; memoryBlock: string }> {
+  const trimmedHistory = trimHistory(history, memory);
+  const memoryBlock = memory
+    ? await buildMemoryBlock(memory, myName, trimmedHistory[0]?.createdAt)
+    : "";
+  return { trimmedHistory, memoryBlock };
 }
 
 /** 动态落库时的时间戳 → 记忆块里那枚小日期（MM/DD，按本地日子算）。 */
@@ -1555,6 +1635,107 @@ async function compressMoments(
     };
   } catch (err) {
     console.warn("[Memory] 动态印象压缩失败，下轮再试：", err);
+    return memory;
+  }
+}
+
+/** 角色所在的世界（分类）id——判「部分可见」里勾了世界的那批用。找不到回 undefined。 */
+async function categoryIdOf(characterId: string): Promise<string | undefined> {
+  const archives = await getArchives().catch(() => []);
+  return archives.find((a) => a.id === characterId)?.categoryId;
+}
+
+/** 已经压进「我发的动态」印象的那些 id（跟 momentCovered 同款：没配套就当一条没压过）。 */
+function myMomentCovered(memory: CharacterMemory): Set<string> {
+  if (!memory.myMomentsDigest?.trim()) return new Set();
+  return new Set(memory.myMomentsDigestIds ?? []);
+}
+
+/** 一条「我发的」动态拼成素材行：`- [MM/DD] 文字 #标签`（带图时捎上图里那句话）。 */
+function myMomentLine(m: SelfMoment): string {
+  const text = m.content.replace(/\s+/g, " ").trim();
+  const note = (m.imageNote ?? "").replace(/\s+/g, " ").trim();
+  const textImage = (m.imageText ?? "").replace(/\s+/g, " ").trim();
+  const photo = note
+    ? `（配图：${note}）`
+    : textImage
+      ? `（配了一张图：${textImage}）`
+      : m.imageRef
+        ? "（配了一张照片）"
+        : "";
+  const body = [text, photo].filter(Boolean).join(" ");
+  const tags = (m.tags ?? []).map((t) => `#${t}`).join(" ");
+  return `- [${localStampOf(m.createdAt)}] ${body}${tags ? ` ${tags}` : ""}`;
+}
+
+/** 「我发的动态」印象的合成提示词（跟 momentDigestPrompt 同构，换成 TA 看她的角度）。 */
+function myMomentDigestPrompt(
+  charName: string,
+  myName: string,
+  existing: string,
+  lines: string[],
+): string {
+  return `以下是${myName}以前发在朋友圈的旧动态（「[月/日] 内容」）：
+${lines.join("\n")}
+
+${existing ? `【比这批更新的印象（已经有了）】\n${existing}\n\n` : ""}请把上面这批和已有的印象合成一段回忆，写成${charName}自己心里回想的样子。
+
+【要求】
+- 第一人称「我」，一到三句，像人回忆很久以前的事：只记得个大概，具体的字句早就模糊了
+- 只留「那阵子${myName}在做什么、心情怎么样、惦记什么」，不要复述每条动态的内容，不要写日期
+- 不分条、不加标题、不加任何前后缀，直接输出那段回忆本身`;
+}
+
+/**
+ * 「我」发的朋友圈的「压缩」：把这个角色有权看的旧动态合成一段模糊印象。
+ * 镜像 compressMoments：最近的 MY_MOMENTS_MAX 条原文照录（在易变区，见 buildMyMomentsBlock），
+ * 更旧的攒够 MY_MOMENT_COMPRESS_AT 条就交给 AI 合成一段。印象存进角色记忆（跟着「角色 × 面具」走）
+ * ——可见范围在压缩时就按角色筛过，被挡在外面的角色一个字都进不了它的印象里（信息差照旧生效）。
+ * 失败原样返回：压缩是锦上添花，不许带崩这轮浓缩。
+ */
+async function compressMyMoments(
+  memory: CharacterMemory,
+  charName: string,
+  myName: string,
+  api: ChatApiSettings,
+): Promise<CharacterMemory> {
+  const items = await getSelfMoments(memory.maskId).catch(() => []);
+  if (items.length === 0) return memory;
+  const categoryId = await categoryIdOf(memory.characterId);
+  /* 这个人有权看的全部（新→旧）→ 倒成旧→新，好按「留最近、压更早」切。 */
+  const visible = filterVisibleMyMoments(items, memory.characterId, categoryId).reverse();
+  const covered = myMomentCovered(memory);
+  /* 纯图动态正文为空，但它也得进压缩（靠 imageRef／imageText 认它是一条动态）。 */
+  const pool = visible.filter(
+    (m) => (m.content.trim() || m.imageRef || m.imageText) && !covered.has(m.id),
+  );
+  if (pool.length <= MY_MOMENT_COMPRESS_AT) return memory;
+  const batch = pool.slice(0, pool.length - MY_MOMENTS_MAX);
+  if (batch.length === 0) return memory;
+  try {
+    const reply = await fetchMemoryTask(
+      api,
+      `你是${charName}本人，正在回想以前看${myName}发在朋友圈的动态。只输出那段回忆本身。`,
+      myMomentDigestPrompt(
+        charName,
+        myName,
+        memory.myMomentsDigest?.trim() ?? "",
+        batch.map(myMomentLine),
+      ),
+      {
+        maxTokens: 600, // 只要一到三句，额度够用就行
+        temperature: 0.6, // 回忆是散着的，允许一点发散
+      },
+    );
+    const text = reply.trim().slice(0, 400); // 万一模型长篇大论，截住，别让它越滚越大
+    if (!text) return memory;
+    return {
+      ...memory,
+      myMomentsDigest: text,
+      myMomentsDigestIds: [...(memory.myMomentsDigestIds ?? []), ...batch.map((m) => m.id)],
+    };
+  } catch (err) {
+    console.warn("[Memory] 我发的动态印象压缩失败，下轮再试：", err);
     return memory;
   }
 }

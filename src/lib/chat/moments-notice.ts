@@ -10,20 +10,20 @@
  *   不塞进 `ChatMoment`：会话列表是「每次读整份」，别给那条热路径加负担。
  * - `moments-seen-at` —— 上一次看动态页的时刻。**只有比它新的动态才算「新通知」**，
  *   不然每次进来都会把老动态又报一遍（清空之后也会自己长回来）。
- * - 通知的 `id` 是**定死**的（`动态uid::kind`），所以同一条怎么推都只留一条。
+ * - 通知的 `id` 是 `动态uid::kind::谁`（谁＝动手的那个人），所以**同一个人对同一条**怎么推
+ *   都只留一条；换个人来赞／评，各算一条。
  *
- * 现在接上的真渠道只有一种：「TA 发了新动态」。
- * 赞／评论／NPC 回复那几种等互动真做那轮，直接往这儿 `pushMomentNotices` 就行，
- * 形（kind）已经按三种分好了。
+ * 现在接上的真渠道：「角色赞了我的动态／评论了我的动态」——`moment-social.ts` 到点了推一条。
+ * 形（kind）按两种分好。**角色自己发新帖不算我的通知。**
  */
 
 import { kvGet, kvSet } from "@/lib/db/idb";
 
-/** 通知的三种形。 */
-export type MomentNoticeKind = "like" | "comment" | "post";
+/** 通知的两种形。 */
+export type MomentNoticeKind = "like" | "comment";
 
 export interface MomentNotice {
-  /** 定死的（`动态uid::kind`）——同一条推两遍也只留一条。 */
+  /** `动态uid::kind::谁`——同一个人对同一条推两遍也只留一条。 */
   id: string;
   kind: MomentNoticeKind;
   /** 谁：名字＋头像（都从动态作者那儿来）。 */

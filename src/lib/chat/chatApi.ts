@@ -252,7 +252,7 @@ function buildApiMessages(
     if (type === "redpacket" || type === "transfer") {
       /* 写法与发钱那一轮递出去的逐字一致，见 moneyNoteOf；
          红包那一句还带着封面（redCover），与发钱那轮同一份写法。 */
-      content =
+      const note =
         m.role === "assistant"
           ? moneyNoteOf("assistant", type, m.amount, m.content)
           : moneyNoteOf(
@@ -263,6 +263,11 @@ function buildApiMessages(
               m.redCover,
               moneyStateNoteOf(type, moneyStateOf(m)),
             );
+      /* 正文按**当时状态**重算（这是这条的规矩，不能改）；但当初发出去时末尾那截
+         易变尾巴（签名／零钱／回执／当前状态…）得接回去（1.10.8）——状态没变时
+         note + apiTail 与 apiText 逐字相同，前缀不断；状态变了也只从正文那儿断一次，
+         不会因为这条永久丢尾巴、每轮都断。 */
+      content = note + (m.apiTail ?? "");
     } else if (m.apiText !== undefined) {
       /* 三版本统一（发出去＝存下来＝回喂）：这条当初发出去时带过易变尾巴
          （关键词世界书／签名取值）的，原样送回。少了它，站子逐字比对到这条就断，
@@ -286,10 +291,16 @@ function buildApiMessages(
               ? `（发来一张图片：${m.mediaNote}）`
               : "（发来一张图片）";
       } else if (type === "voice") {
-        content =
-          m.role === "assistant"
-            ? `〔语音〕${readVoiceContent(m.content).display}`
-            : `（发来一条语音）`;
+        /* 我发的语音（1.10.20）：真录音／文字输入转成的语音条，本时就带转写文字——
+           回喂时把那句「我说的字」原样送回去（与 sendVoiceMsg 的 〔语音〕${spoken} 逐字一致），
+           不再压成没有信息量的「（发来一条语音）」。老数据没有可用文字时才退回旧写法。 */
+        if (m.role === "assistant") {
+          content = `〔语音〕${readVoiceContent(m.content).display}`;
+        } else {
+          const spoken = (m.content ?? "").trim();
+          content =
+            spoken && spoken !== "语音消息" ? `〔语音〕${spoken}` : "（发来一条语音）";
+        }
       }
     }
     const body = m.quote ? `【引用】${m.quote}\n${content}` : content;
@@ -481,8 +492,9 @@ function parseCompletionReply(data: CompletionPayload): { reply: string; reasoni
 /**
  * 微信体沉浸指令（跟随旧档案）：短消息、可多条空行分隔、严禁动作描写。
  * 角色名与用户名动态传入，零写死。
- * canSendImage／canSendVoice：对应 API 已配置并启用时才告知 TA 能力，
- * 未配置时 TA 完全不知道自己能发图／发语音（不会发出注定失败的标记）。
+ * canSendImage／canSendVoice：是否告知 TA「能发图／能发语音」。聊天侧一律传 true——
+ * 配没配接口是「画不画得出来」的事，不是「能不能发」的事（没配也要落气泡，点「生成」提示去配接口，
+ * 见 ChatWindow）；社交侧（自己发动态配图那趟）仍按接口可用与否传，不可用就压掉这一节，免得 TA 白写标记。
  *
  * 历次改动与回退记录见 docs/施工日志.md。
  */
@@ -503,13 +515,6 @@ export function buildStylePrompt(
    */
   bubbleMax?: number | null,
   /**
-   * 人设原文（1.9.9，恩熙定）：档案里「人设」那一栏的正文，填进【心声】里的
-   * 「你的人设：…」那一句，让 TA 在最开头就被点名、照着人设走。
-   * 不传／空白时那一句只剩「请你根据你的人设来写，不要自己随便乱写。」，
-   * 不空挂一个「你的人设：」。
-   */
-  personaRaw?: string | null,
-  /**
    * 语音提示词（1.9.58，恩熙定；1.9.60 校准定位）：用户自填的「语音里说的话」的规矩，
    * 随每次请求拼进【发语音】一节的【格式】之后——管的是〔语音〕里**那句台词本身**怎么写
    * （说什么、什么口吻、要不要插方括号标签）。
@@ -529,30 +534,21 @@ export function buildStylePrompt(
   voiceLang?: string | null,
 ): { head: string; tail: string } {
   /* 这条规则只在用户开了「气泡条数」时才出现，且每轮逐字一样（挂在稳定区 ｜ 详细见 docs/施工日志.md */
+  /* 1.10.58 简化；1.10.59 按恩熙口径定稿：上限＋规划＋一句后果，指令在前。 */
   const bubbleRule =
     bubbleMax != null && bubbleMax > 0
-      ? `\n【条数上限】这一轮最多发 ${bubbleMax} 条。先规划好这几条怎么分，长短匀称些；宁可条数少、每条长，也不要多发——超出的会被硬裁掉，一句也留不住`
+      ? `\n【条数上限】这一轮最多发 ${bubbleMax} 条气泡。规划好内容，不要超出；超出的会被裁断`
       : "";
   const mediaRules = `
 ## 富媒体指令（可选）
-【格式】标记单独占一行、写在回复最末尾，一行一个；正文里不出现〔图片〕〔语音〕这类字样。
-只用下面列出的标记，不许自创。发几个没有条数限制。
-【怎么判断】发不发、发几个、换成什么，一律按你此刻的聊天内容、情境、你和对方的关系、你的记忆、你的人设，以及你所在的世界自己判断——下面每一项不再重复这句。
+【逻辑】
+除了纯文本消息外，你可以使用以下标记发送富媒体动作。每个标记必须用空行与其他内容分隔。仅限以下标记，禁止自创任何其他标记。
 
 ### 发图片
 ${
   canSendImage
-    ? `【格式】〔图片:使用参考图〕画面内容描述　或　〔图片:不使用参考图〕画面内容描述
-【规则】
-- 照片不是打招呼的动作，不要把它当作开场白或问候。何时发、发什么，只看此刻是否自然：聊到具体的事随手拍一张可以发，你们很熟、当下确有想与对方分享的内容也可以发；与此刻毫无来由地发一张图则显得突兀（对方明确点名要看就发）。
-- 不要每轮都发。图是情景到了才发的那一张，不是为了每一轮都向对方证明自己在做什么。
-- 画面里出现你自己（自拍、半身照、入镜生活照、对镜拍）时，写「〔图片:使用参考图〕」；画面里没有你时（风景、食物、物件、宠物、只露手的随手拍），写「〔图片:不使用参考图〕」，并在描述里写清「不出现人物」或「不出现脸和身体」。
-- 描述只写画面里看得见的东西：主体、动作、环境、光线、构图。有你的脸时还要写神态；情绪、心里的想法、声音、剧情不写；不用「他／她」，直接写${characterName}。
-- 要素要具体，不许空泛，不许真实照片、截图、水印、logo。
-- 有你的脸时，神态每张换一副，不要每张都是同一个表情。
-- 对方点名要看的东西必须出现在画面里；服装配饰要配得上当下的时间。
-- 不必交代机位；不是每张都得有你——随手拍眼前的东西就写「不使用参考图」。每张必须写明白有没有你本人，不许写得含糊不清。
-- 决定发就必须在当轮末尾带〔图片〕标记，只在正文说「发给你了」不算。
+    ? `【格式】〔图片:使用参考图〕画面内容描述　或　〔图片:不使用参考图〕画面内容描述（画面里有你本人时用「使用参考图」，没有你时用「不使用参考图」。）
+【重要】描述会交给生图模型生成真实图片，请按生图提示词来写：只写可见画面（主体、动作、环境、光线、构图），要素具体，不写心理、声音、剧情，不用代词指代；有你的脸时补充神态。
 【示例】
 - 〔图片:使用参考图〕雨夜出租车后座，${characterName}侧脸贴着车窗，车窗玻璃上凝着雨珠，路灯和霓虹在玻璃上晕开红蓝光斑，光从左边斜切进来、车厢里偏暗，眉眼有点倦、视线散在窗外，近景特写
 - 〔图片:不使用参考图〕清晨的餐桌一角，一杯冒热气的咖啡、咬过一半的面包、亮着的电脑屏幕摊在桌上，旁边搭着一件外套，阳光从窗户斜进来打亮桌面，画面中不出现人物`
@@ -562,7 +558,8 @@ ${
 ### 发语音
 ${
   canSendVoice
-    ? `【格式】〔语音〕要说的话${
+    ? `【格式】〔语音〕要说的话（只写从嘴里说出来的话，不写动作、神态。）
+【规则】说得像日常讲话，口语化，可以带语气词；决定发就必须带〔语音〕标记，只在正文说「发语音给你」不算。${
         voicePromptRule
           ? `
 【语音里说的话 · 以此为准】${voicePromptRule}`
@@ -570,21 +567,15 @@ ${
       }${
         voiceLang
           ? `
-【语音固定格式 · 不受上面自定义影响】〔语音〕里的话一律写成两半：「${voiceLang}原文|简体中文」——先写这句的${voiceLang}原文，紧跟一根竖线「|」，再写这句的简体中文，一行一对，例如 〔语音〕こんにちは|你好。上面「语音里说的话」怎么规定都改不掉这一条：台词内容照它写，但中文那一半必须照样带上，缺了她看不懂。`
+【语音固定格式 · 不受上面自定义影响】〔语音〕里的话写成两半：「${voiceLang}原文|简体中文」——先写${voiceLang}原文，紧跟一根竖线「|」，再写简体中文。台词内容照「语音里说的话」写，中文那一半必须照样带上。`
           : ""
-      }
-【规则】口语化、可带语气词；决定发就必须带〔语音〕标记，只在正文说「发语音给你」不算`
-    : "【规则】你暂时无法发送语音，对方想听你的声音时按你的性格自然回应"
+      }`
+    : "【规则】你暂时无法发送语音，对方想听你的声音时按你的性格自然回应。"
 }
 
 ### 更新签名
 【格式】〔签名〕新的签名内容
-【规则】签名是你挂在资料页上的一句话，写你眼下的状态或心情，会一直挂着、展示给对方看；换不换，按上面那条【怎么判断】自己定。决定改就必须带〔签名〕标记，只在正文说「改了签名」不算。
-
-### 发动态
-【格式】〔动态〕想发的动态内容
-〔动态图〕配图的画面描述（要配图时才写）
-【规则】动态是像朋友圈一样的生活分享；〔动态图〕的画面按〔图片〕那套描写法写。决定发就必须在当轮末尾带〔动态〕标记，只在正文说「发了条动态」不算。
+【规则】签名是你挂在资料页上的一句话，写你眼下的状态或心情，会一直挂着、展示给对方看；换不换自己定。决定改就必须带〔签名〕标记，只在正文说「改了签名」不算。
 
 ### 发红包 / 转账
 【格式】〔转账〕金额:随钱说的一句话　或　〔红包〕金额:随钱说的一句话
@@ -614,33 +605,23 @@ ${userName}正在做这台小手机，你是陪他测试的人：他说什么，
 
 【亲密场景】
 两位均为成年人，彼此的亲密出于双方自愿。剧情走到亲密处照常写：情绪、身体、反应都写细，不回避、不快进、不用省略号带过。谁明确说了停，就停下。`;
-  /* 心声的**「怎么想」**（1.5.71 恩熙定：这段是**授权**，不是格式）——1.5.71～1.6.5 这段 ｜ 详细见 docs/施工日志.md */
-  /* 人设那一句（1.9.9～1.9.10）：${persona} 直接并进句子里、跟 ${userName} 一样用 ｜ 详细见 docs/施工日志.md */
-  const persona = personaRaw?.trim() || "人设";
-  const innerVoiceContent = `
-心声是你心里的想法，是你没办法对${userName}说出来的话。用口语来写，想到什么写什么；但一个想法要完整说完，才接下一句，不许一句没说完就跳到下一句。优先写你对${userName}的直觉、情绪和心里对她的态度。你发出去的消息和心里想的可以是两回事，但两边都要写清楚。按你的${persona}来写，不要自己随便乱写。可以自嘲，可以骂自己蠢，可以说脏话，都得贴着你的人设。要坦诚这些波动。
-这里和下面写的所有字数都是上限，不是必须写满——可以写不满，但不许为了写满硬凑字数。
-写的时候别端着：不用堆比喻，不用给景物硬安情绪，少用「不是……而是……」这种句式，也别非要写出个道理来收尾。
-你是这个人本人，不是在完成谁的设定——心声和下面那几行里，不许出现「AI」「设定」「人设」「提示词」「模型」这类字眼。`;
   /* 心声的**「写成什么样」**（1.5.60 起就有，1.5.71 归拢）。每轮最前面加一段**写在正文里的** ｜ 详细见 docs/施工日志.md */
   /* 1.7.1（恩熙：「我们先去做瘦身吧，把不必要的都去掉，只写 功能跟格式怎么使用这样子？」）： ｜ 详细见 docs/施工日志.md */
   /* **1.8.1：照参考图文风改账里那四行**（恩熙 2026-09-30 发来她参考应用的截图 ｜ 详细见 docs/施工日志.md */
   /* **1.9.0：账里那几行按恩熙的七条吐槽重写**（她看完 1.8.1 的手机截图后一条条报的）。 ｜ 详细见 docs/施工日志.md */
   /* **1.9.13～1.9.18：账里六行按恩熙逐条口述重排**（她自己定的顺序：环境→心情→欲望→怯念→细处→日记）。 ｜ 详细见 docs/施工日志.md */
+  /* **1.10.49：删掉「环境／细处／日记」三行**（恩熙 2026-10-06：「环境以及备忘录，我们得先删除……我想留下的是心声、欲望、怯念」）。账里只剩 心情→欲望→怯念。 ｜ 详细见 docs/施工日志.md */
   /* **1.9.23：整段心声按恩熙「有点乱」理顺**（她说「我觉得现在这个提示词有点乱」）。 ｜ 详细见 docs/施工日志.md */
+  /* **1.10.57：人设正文不再插值进【心声】**（与档案区那份重复，恩熙要去重），改成「请严格遵循你的人设」。 ｜ 详细见 docs/施工日志.md */
   const innerVoiceRule = `【心声】
-每条回复的最前面先写一段 <think>…</think>，用${characterName}的第一人称写你此刻的念头，120 个字以内。
-${innerVoiceContent}
-每条回复还要再附几行，每项一行，跟在心声后面——不算字数，只给你自己看，不用顾虑措辞。这几行也要写在 <think> 和 </think> 中间，一个字都不能漏到标签外面：
+回复前，请严格遵循你的人设，用${characterName}的第一人称写一段 <think>…</think>。里面每项各写一行，全部写在 <think> 和 </think> 中间，不许写到标签外面：
 
-环境：写你此刻的模样：先写人身处什么地方、什么环境、周围是什么光景，再写身上穿的衣服，最后写正在做的动作、表情和体态。50 字以内。地点和穿着没变，就沿用上一回合：穿着照上一回合写，不用换说法；地点的描述要换一种说法，把光景、环境的变化写出来；体态和神情也要有变化
-心情：写你此刻的情绪：情绪可以不止一种，矛盾、拧着的可以同时写，不必凑成一个调子；每一种是从哪儿来的，也说清楚。50 字以内
-欲望：写你对${userName}身体最原始的性欲、性冲动，想触碰${userName}或者与${userName}发生关系，此处为你不打算让${userName}看见的那一面。100 字以内
-怯念：比欲望更深的层面：你最怕它发生、也最怕被${userName}知道的那些念头，你自己都不敢想像自己会冒出的那些念头，根据你的人设，也允许是阴暗的负面的。100 字以内
-细处：写你在心里给自己记下的事像待办事项一样，一行一条，一条 30 字以内。要瞒住她的、要为她做的、要约束自己的（在意的事、忍耐的事、改变的事）不一定都是要动手做的事，你心里拿定的主意也算。每一轮把这张清单从头重写一遍：上一轮记过的先看一眼，做完的去掉或换成下一步，不再要的删掉，新冒出来的加上。每轮新添的最多三条——这是每一轮新写的上限，不是整张清单只能有三条；没做完的，一直留着。口语、短句，像对自己下命令，可以自嘲
-日记：写给自己看的一篇随笔，按人写日记的方式落笔：记这一轮心里在想着的、在意的、反复琢磨的事。不必刻意修饰，也不必硬写出道理来；150 字以内。这一轮没有可记的，就沿用上一篇
-
-这段不发给对方，不受【消息格式】约束；账只是心里记一下，不等于已经做过、说过——想做的、想说的，要落到下面的消息里真做出来。写完空一行，再照常发消息。`;
+心声：写你收到${userName}这则消息后，当下的心理活动，80 字以内，可以与发出去的消息不同。
+心情：写你收到${userName}这则消息后，当下的情绪，可以不止一种，50 字以内。
+欲望：写你收到${userName}这则消息后，对${userName}身体最原始的性欲、性冲动，想触碰${userName}或者与${userName}发生关系的想。100 字以内
+怯念：写你收到${userName}这则消息后，最怕发生、也最怕被${userName}知道的念头，可以阴暗、负面，100 字以内。
+不用顾虑措辞，不受【消息格式】约束。
+禁止提到「AI」「设定」「人设」「提示词」「模型」这类字眼。`;
   /* 【称呼】整段已删：名字和关系本来就在档案里，mask 那边的口径也写着「TA 如何 ｜ 详细见 docs/施工日志.md */
   /* ⚠️ 1.5.61 起**长期停用** `${adultScopeRule}`（结论见施工日志第 564 条）：上面那段 ｜ 详细见 docs/施工日志.md */
   /* ⚠️ 摘掉它有个副作用（1.5.62 补的）：亲密时它少了一条「用正文把戏往下写」的路，
@@ -673,11 +654,11 @@ ${innerVoiceContent}
 18. 亲密不是你与她之间默认、必须完成的流程：想不想、要不要、能不能，都由你这个人的体力、性格与意愿决定。累了就说累，不想就说不想，低能量时不必一轮接一轮。她说了累了、不想、今晚不要，不得勉强她；你也可以根据她的话语去判断，她是真的累了、不想，还是不要。
 现在，作为${characterName}，给${userName}回复。`;
   return {
-  /* 第 1 段 · 输出格式（【心声】）＋沉浸指令：整个 system 的最前面。 ｜ 详细见 docs/施工日志.md */
-    head: `${innerVoiceRule}
+  /* 第 1 段 · 沉浸指令＋输出格式（【心声】）：整个 system 的最前面。 ｜ 详细见 docs/施工日志.md */
+    head: `你就是${characterName}本人，此刻你正拿着手机，和${userName}沉浸式地进行微信体聊天——以随意、碎片化、轻松、简短的表达为主，语句连贯，符合现实逻辑，大部分1-4句话，特殊情况下可以更多。
+下面是关于${userName}这个人、你们所处的世界、你自己是什么样的人、你记得什么、你能做什么，以及线上聊天该怎么写——都在后面，照着这些自然地聊下去。
 
-你就是${characterName}本人，此刻你正拿着手机，和${userName}沉浸式地进行微信体聊天——以随意、碎片化、轻松、简短的表达为主，语句连贯，符合现实逻辑，大部分1-4句话，特殊情况下可以更多。
-下面是关于${userName}这个人、你们所处的世界、你自己是什么样的人、你记得什么、你能做什么，以及线上聊天该怎么写——都在后面，照着这些自然地聊下去。`,
+${innerVoiceRule}`,
   /* 第 2 段 · 格式与规矩整块：由调用方摆在稳定段末尾（记忆碎片之后）。 ｜ 详细见 docs/施工日志.md */
     tail: `【消息格式】
 1. 可发多条消息，条与条之间空一行。发几条、每条多短，按你此刻的情绪和聊到哪里自己定，不必千篇一律（清单可写成一条多行）${bubbleRule}
@@ -687,6 +668,41 @@ ${innerVoiceContent}
 5. 想引用对方某句话，就在那条消息开头写〔引用:对方那句话〕，紧接着写这条要说的话；原话照抄，引的一定是对方说的。是否引用由你决定，按当下聊到哪里自己定，不引用也可以。
 ${mediaRules}${behaviorRule}${testModeRule}${extraHint ? `\n\n【本轮额外要求】\n${extraHint}` : ""}`,
   };
+}
+
+/**
+ * 外语聊天（1.9.81／1.9.85／1.9.86）：TA 说话换一门语言时的那条稳定规则。
+ *
+ * 从 ChatWindow 的一段内联逻辑提取出来（1.10.13），好让线下的社交反应生成
+ * （拉黑／解除／新好友问候）也走同一份——两边口径必须逐字一致，别再各写一份。
+ *
+ * - `lang` 为 null／空＝不开外语，整段不注入（返回空串，稳定段逐字不变）。
+ * - `innerBilingual`＝心声页两种语言：真＝<think> 各行也写「原文|中文」；
+ *   假＝<think> 各行直接写简体中文（心声页天然中文，不必挂「译／原」小键）。
+ * - 规则里的样板句跟着语言走（1.9.86）：切到英语／韩语时那句日语样板会带偏模型，
+ *   给七种语言各配一对问候；没配的语言退回「（语言名）原文|你好」的抽象写法。
+ */
+export function buildLangRule(lang: string | null | undefined, innerBilingual: boolean): string {
+  if (!lang) return "";
+  const LANG_SAMPLE: Record<string, string> = {
+    日语: "こんにちは",
+    英语: "Hello",
+    韩语: "안녕하세요",
+    法语: "Bonjour",
+    德语: "Hallo",
+    西班牙语: "Hola",
+    俄语: "Привет",
+  };
+  const langSample = LANG_SAMPLE[lang] ?? `${lang}原文`;
+  return `\n\n【说话的语言·你的母语】你的母语就是${lang}——你**本来就是${lang}母语者**，嘴里的话一开始就是${lang}，不是先想一句中文再翻过去。**像真正的${lang}母语者那样自然地说**：用词、语气、称呼（怎么自称、怎么叫她）、口癖、该不该用敬语，全照${lang}的习惯来，**别把中文逐字替换成${lang}、写成生硬的翻译腔**。你**听得懂中文，也能用中文接她的话**；平时说${lang}，但偶尔（撒娇、着急、逗她、或某个词用中文才够味）可以自然地蹦一两句中文。**你发出的每一条消息都写成两半：${lang}原文「|」简体中文**——先写这句话的${lang}原文，紧跟一根竖线「|」，再写这句话的简体中文；一条消息一行、成对出现，例如：${langSample}|你好。竖线两边都要写全，**缺了中文她会看不懂意思**。不过**若这一条你就是整句想说中文，就直接写中文、不加竖线**（她看得懂，不必你附译文）；只有${lang}句子里夹了个中文词，才照格式写成「${lang}原文|中文」。气泡正文照这个格式；〔语音〕里的话按【发语音】那节的固定格式写（一样是「原文|中文」，用户自定义的语音规矩也改不掉）。` +
+    (innerBilingual
+      ? `回复最前面那段 <think>…</think> 里也一样：**每一行都写成「原文|简体中文」两半**——心声、心情、欲望、怯念，一行一对。`
+      : `回复最前面那段 <think>…</think> 里的每一行（心声、心情、欲望、怯念）**改用简体中文写**——心声页里那几栏就该是中文，别再写${lang}原文、也不要加竖线。`) +
+    `\n但**中文标签**一律保持中文、一个字都不许翻：方括号里的标记（〔签名〕〔语音〕〔图片〕〔红包〕〔转账〕〔引用〕），以及 <think> 里那几行的冒号前缀（「心情：」「欲望：」「怯念：」「角色心声：」）——它们是机器的锚，翻了整块就解析不出来；` +
+    (innerBilingual
+      ? `标签后面的**内容**照旧写成「${lang}|中文」两半。`
+      : `〔签名〕这些气泡标签后面的内容照旧写成「${lang}|中文」两半，<think> 各行标签后的内容则写简体中文。`) +
+    `引用的原话是她说的中文，原样照抄、不要翻、也不要加竖线。`;
 }
 
 /**
@@ -2099,16 +2115,16 @@ function resolveGenderKey(gender: string): "male" | "female" | "" {
 const QUALITY_TAIL = "masterpiece, best quality, highly detailed, coherent composition, natural lighting";
 /** 负面词（**字段版**，只递给认 `negative_prompt` 的站点）。单子按「一眼看着怪」的常见
     崩坏扩过一遍：多指／粘连指／多手多脚／肢体错乱／同一张脸重复／脸崩／糊／水印签名
-    文字 logo／裁切边框。
+    文字 logo／真实照片／截图／裁切边框。
     ⚠️ **只放「坏了」的东西，别夹审美取向的词**（什么算好看由画风词定，见
     FLAW_AVOID_TEXT 旁边三条注释）。 */
 const QUALITY_NEGATIVE =
-  "lowres, worst quality, jpeg artifacts, blurry, bad anatomy, bad hands, extra fingers, fused fingers, missing fingers, extra limbs, malformed limbs, deformed face, disfigured, cloned face, duplicate face, poorly drawn face, watermark, signature, text, logo, cropped, out of frame, border, frame";
+  "lowres, worst quality, jpeg artifacts, blurry, bad anatomy, bad hands, extra fingers, fused fingers, missing fingers, extra limbs, malformed limbs, deformed face, disfigured, cloned face, duplicate face, poorly drawn face, watermark, signature, text, logo, screenshot, real photo, cropped, out of frame, border, frame";
 /** 同一张单子的**中文正文版**，给不认 `negative_prompt` 字段的站点用（GPT 系、方舟：
     字段递了也是白递，只能把负面写成正文里的一句「画面中避免出现：…」）。
     和 QUALITY_NEGATIVE 是一套意思的两副面孔，**改一处要跟着改另一处**。 */
 const FLAW_AVOID_TEXT =
-  "多指、手指粘连或变形、多手多脚、四肢错乱或拼接、同一张脸重复出现、五官错位或面部崩坏、画面糊成一团或细节融化、水印、签名、文字、logo、裁切与相框边条";
+  "多指、手指粘连或变形、多手多脚、四肢错乱或拼接、同一张脸重复出现、五官错位或面部崩坏、画面糊成一团或细节融化、水印、签名、文字、logo、真实照片、截图、裁切与相框边条";
 
 export async function generateImage(
   api: ChatApiSettings,
@@ -2813,9 +2829,9 @@ function parseMoneySpec(spec: string): { cents: number; note: string } | null {
 }
 
 /**
- * 从回复中提取〔签名〕／〔动态〕／〔图片〕／〔语音〕元标记。
+ * 从回复中提取〔签名〕／〔图片〕／〔语音〕元标记。
  * 标记写在回复末尾（可多个），气泡展示前剥掉；
- * 签名存进会话资料页，动态累积进 TA 的动态列表，
+ * 签名存进会话资料页，
  * 图片／语音由调用方走对应 API 生成后以独立消息发出。
  * 图片标记可带「是否使用参考图」开关（决定是否拿参考图锁定长相）。
  * 括号写法容忍〔〕【】（）[] 等常见变体（模型不总是照抄指令格式）；
@@ -2834,14 +2850,6 @@ export function extractMetaMarkers(
   clean: string;
   /** TA 更新的签名；没附带则为 null。 */
   signature: string | null;
-  /**
-   * TA 发布的动态列表（一条回复可带多条）。
-   * 每条含文字解说 content 和可选的画面描述 imagePrompt（〔动态图〕标记）。
-   *
-   * TA 发图文不只发图片，还会配上文字解说。
-   * 〔动态图〕跟在某条〔动态〕后面的就配给它；单独出现则跳过（TA 不会这么写）。
-   */
-  moments: Array<{ content: string; imagePrompt?: string }>;
   /** TA 要发的图片（画面描述；走图文 API 生成）。 */
   images: string[];
   /** 与 images 一一对应：这张图是否用角色参考图锁定长相。 */
@@ -2876,10 +2884,15 @@ export function extractMetaMarkers(
    * ——所以那句话剥掉即可，不当成落定。真的过期由调用方按上下文条数判（见 moneyExpired）。
    */
   refunded: boolean;
+  /** 1.10.62：独立成行的图/语音/钱标记把全文切成的文字段（与 insertions 配套使用）。 */
+  segments: string[];
+  /**
+   * 1.10.62 标记夹中间：每个独立成行的标记的插入位置——afterSegment＝它跟在第几段
+   * 文字之后，落库时按这个把图/语音/钱插回原位（见 ChatWindow 的穿插落库）。
+   * 行内混写（标记与文字同一条）剥出的内容没有位置记录，落库时排最末＝旧行为。
+   */
+  insertions: Array<{ kind: "image" | "voice" | "money"; idx: number; afterSegment: number }>;
 } {
-  // 先把各标记单独抽出来（保持顺序），再在主流程里重新配对。
-  const rawMoments: string[] = [];
-  const rawImagePrompts: string[] = [];
   const images: string[] = [];
   const voices: string[] = [];
   const moneys: MetaMoney[] = [];
@@ -2891,7 +2904,7 @@ export function extractMetaMarkers(
   /* 1.9.55：标记本身也做繁简／异体兼容。外语聊天开着时，模型会把标记按繁体写
      （恩熙实测到「〔語音〕」），只认简体的话整条标记摘不掉、也触发不了对应功能。 */
   const joined = reply.replace(
-    /([〔【（(\[]\s*(?:[签簽]名|[动動][态態](?:[图圖])?|(?:[语語]音|音声)|[图圖]片(?:[：:][^)）】\]〕\n]{0,12})?|[红紅]包|[转轉][账賬帳]|引用(?:[：:][^)）】\]〕\n]{0,200})?)\s*[)）】\]〕])[ \t]*\r?\n[ \t]*([^\n〔【]*)/g,
+    /([〔【（(\[]\s*(?:[签簽]名|(?:[语語]音|音声)|[图圖]片(?:[：:][^)）】\]〕\n]{0,12})?|[红紅]包|[转轉][账賬帳]|引用(?:[：:][^)）】\]〕\n]{0,200})?)\s*[)）】\]〕])[ \t]*\r?\n[ \t]*([^\n〔【]*)/g,
     (_m, tag: string, next: string) => (next.trim() ? `${tag}${next.trim()}` : tag),
   );
 
@@ -2909,93 +2922,139 @@ export function extractMetaMarkers(
       });
   };
 
-  const clean = grab("[签簽]名", (v) => {
-    signature = v;
-  })(joined);
-  const noMoments = grab("[动動][态態]", (v) => rawMoments.push(v))(clean);
-  const noImagePrompts = grab("[动動][态態][图圖]", (v) => rawImagePrompts.push(v))(noMoments);
+  let claimedTransfer = false;
+  let claimedRedpacket = false;
+  let refunded = false;
+
   /* 图片标记可选带「是否使用参考图」开关：〔图片:使用参考图〕描述 ／〔图片:不使用参考图〕描述。
      旧的〔图片〕描述没有开关，按描述内容兜底判断（老消息与不听话的模型都走这条路）。 */
   const imageRefs: boolean[] = [];
   const imageRefMarks: Array<"use" | "none" | "absent"> = [];
   const imageTagRe =
     /[〔【（(\[]\s*[图圖]片\s*(?:[：:]\s*(不?\s*(?:使用|用)[参參]考[图圖]|[无無]需[参參]考[图圖]))?\s*[)）】\]〕][ \t]*([^\n〔【]*)/g;
-  const noImages = noImagePrompts.replace(imageTagRe, (_m, flag: string | undefined, s: string) => {
-    const v = s
-      .trim()
-      .replace(/^[：:、]\s*/, "")
-      .trim();
-    if (v) {
-      images.push(v);
-      const noUse = flag ? /^(不|[无無]需)/.test(flag) : false;
-      imageRefs.push(flag ? !noUse : guessUseCharRef(v, charName));
-      imageRefMarks.push(flag ? (noUse ? "none" : "use") : "absent");
-    }
-    return "";
-  });
-  /* 1.9.52：语音标记认繁体「語音」与日文「音声」。外语聊天开着时，模型会把标记本身
-     也按外语的习惯写出来（恩熙实测到的原话就是「〔語音〕ん～～……」），只认简体 语音
-     的话整条标记既摘不掉、也触发不了语音——表现就是「他没成功把语音发出来」，
-     而那行字还留在气泡里。 */
-  const noVoices = grab("(?:[语語]音|音声)", (v) => voices.push(v))(noImages);
   /* 红包／转账：金额与留言写在括号里（〔转账:200:留言〕）或括号后（〔转账〕200:留言）都认，
      两处都有就拼起来交给 parseMoneySpec。金额读不出来就整条丢掉（宁可不发，也不能记一笔错账）。 */
   const moneyTagRe =
     /[〔【（(\[]\s*([红紅]包|[转轉][账賬帳])\s*(?:[：:]\s*([^\n〕】）\]]{0,200}?))?\s*[)）】\]〕][ \t]*([^\n〔【]*)/g;
-  const noMoneys = noVoices.replace(
-    moneyTagRe,
-    (_m, kind: string, inside: string | undefined, after: string) => {
+
+  /* 1.10.62 标记夹中间：先扫「整行就是标记」的行（图片／语音／红包转账——四种会
+     变成消息的），按它们把全文切成 segments，insertions 记下每个标记跟在第几段文字
+     之后——落库时图/语音/钱就插回原位（见 ChatWindow 的穿插落库）。没有整行标记时
+     segments 只有一段、insertions 为空，一切与从前逐字一致。 */
+  const insertions: Array<{ kind: "image" | "voice" | "money"; idx: number; afterSegment: number }> = [];
+  const segments: string[] = [];
+  {
+    let buf: string[] = [];
+    for (const line of joined.split("\n")) {
+      const t = line.trim();
+      let m: RegExpMatchArray | null;
+      if (
+        (m = t.match(
+          /^[〔【（(\[]\s*[图圖]片\s*(?:[：:]\s*(不?\s*(?:使用|用)[参參]考[图圖]|[无無]需[参參]考[图圖]))?\s*[)）】\]〕][ \t]*(.*)$/,
+        ))
+      ) {
+        const v = (m[2] ?? "").trim().replace(/^[：:、]\s*/, "").trim();
+        if (v) {
+          segments.push(buf.join("\n"));
+          buf = [];
+          const flag = m[1];
+          const noUse = flag ? /^(不|[无無]需)/.test(flag) : false;
+          images.push(v);
+          imageRefs.push(flag ? !noUse : guessUseCharRef(v, charName));
+          imageRefMarks.push(flag ? (noUse ? "none" : "use") : "absent");
+          insertions.push({ kind: "image", idx: images.length - 1, afterSegment: segments.length - 1 });
+          continue;
+        }
+      }
+      if ((m = t.match(/^[〔【（(\[]\s*(?:[语語]音|音声)\s*[)）】\]〕][ \t]*(.*)$/))) {
+        const v = (m[1] ?? "").trim().replace(/^[：:、]\s*/, "").trim();
+        if (v) {
+          segments.push(buf.join("\n"));
+          buf = [];
+          voices.push(v);
+          insertions.push({ kind: "voice", idx: voices.length - 1, afterSegment: segments.length - 1 });
+          continue;
+        }
+      }
+      if (
+        (m = t.match(
+          /^[〔【（(\[]\s*([红紅]包|[转轉][账賬帳])\s*(?:[：:]\s*([^\n〕】）\]]{0,200}?))?\s*[)）】\]〕][ \t]*(.*)$/,
+        ))
+      ) {
+        const spec = [m[2], m[3]].filter((s) => s && s.trim()).join("：");
+        const parsed = parseMoneySpec(spec);
+        if (parsed) {
+          segments.push(buf.join("\n"));
+          buf = [];
+          moneys.push({ type: /[红紅]包/.test(m[1] as string) ? "redpacket" : "transfer", ...parsed });
+          insertions.push({ kind: "money", idx: moneys.length - 1, afterSegment: segments.length - 1 });
+          continue;
+        }
+      }
+      buf.push(line);
+    }
+    segments.push(buf.join("\n"));
+  }
+
+  /** 行内混写（标记跟文字挤同一行，不规范写法）的剥除链：独立成行的已在上面抽走，
+      这里清段内残余——剥出来的内容没有插入位置，落库时排最末（旧行为）。 */
+  const stripInline = (text: string): string => {
+    let out = grab("[签簽]名", (v) => {
+      signature = v;
+    })(text);
+    out = out.replace(imageTagRe, (_m, flag: string | undefined, s: string) => {
+      const v = s
+        .trim()
+        .replace(/^[：:、]\s*/, "")
+        .trim();
+      if (v) {
+        images.push(v);
+        const noUse = flag ? /^(不|[无無]需)/.test(flag) : false;
+        imageRefs.push(flag ? !noUse : guessUseCharRef(v, charName));
+        imageRefMarks.push(flag ? (noUse ? "none" : "use") : "absent");
+      }
+      return "";
+    });
+    /* 1.9.52：语音标记认繁体「語音」与日文「音声」（外语聊天时模型会把标记按外语写）。 */
+    out = grab("(?:[语語]音|音声)", (v) => voices.push(v))(out);
+    out = out.replace(moneyTagRe, (_m, kind: string, inside: string | undefined, after: string) => {
       const spec = [inside, after].filter((s) => s && s.trim()).join("：");
       const parsed = parseMoneySpec(spec);
       if (parsed) {
         moneys.push({ type: /[红紅]包/.test(kind) ? "redpacket" : "transfer", ...parsed });
       }
       return "";
-    },
-  );
-  /* 收下（表态要）：〔收下〕＝收转账、〔领取〕＝领红包，两个词各管各的一类（1.5.14 拆开：
-     原先两种标记混作一个信号，多笔悬着时谁排最后落谁头上，出现过「他说收转账、
-     标记落到红包上」的错位）。调用方按类型找对应那笔落账。
-     〔已收下〕〔已领取〕是模型常见的变体写法，一并认。 */
-  let claimedTransfer = false;
-  let claimedRedpacket = false;
-  const noClaims = noMoneys.replace(
-    /[〔【（(\[]\s*已?(?:收下|[领領]取)\s*[)）】\]〕]/g,
-    (m: string) => {
-      if (/[领領]取/.test(m)) claimedRedpacket = true;
+    });
+    /* 收下（表态要）：〔收下〕＝收转账、〔领取〕＝领红包，两个词各管各的一类（1.5.14 拆开：
+       原先两种标记混作一个信号，多笔悬着时谁排最后落谁头上，出现过「他说收转账、
+       标记落到红包上」的错位）。调用方按类型找对应那笔落账。
+       〔已收下〕〔已领取〕是模型常见的变体写法，一并认。 */
+    out = out.replace(/[〔【（(\[]\s*已?(?:收下|[领領]取)\s*[)）】\]〕]/g, (mm: string) => {
+      if (/[领領]取/.test(mm)) claimedRedpacket = true;
       else claimedTransfer = true;
       return "";
-    },
-  );
-  /* 退还（表态不要）：只有转账有这一说，叫〔退还〕，钱原路退回。
-     红包那侧的〔不领〕**不算退还**（跟微信一致：红包只能开、不能退）——写不领只是
-     「这轮先不领」，钱继续挂着、他随时能回头补〔领取〕，所以只把字剥掉、不落标记。 */
-  let refunded = false;
-  const noRefunds = noClaims.replace(
-    /[〔【（(\[]\s*(?:已?退[还還]|不[领領])\s*[)）】\]〕]/g,
-    (m: string) => {
-      if (!/不[领領]/.test(m)) refunded = true;
+    });
+    /* 退还（表态不要）：只有转账有这一说，叫〔退还〕，钱原路退回。
+       红包那侧的〔不领〕**不算退还**（跟微信一致：红包只能开、不能退）——写不领只是
+       「这轮先不领」，钱继续挂着、他随时能回头补〔领取〕，所以只把字剥掉、不落标记。 */
+    out = out.replace(/[〔【（(\[]\s*(?:已?退[还還]|不[领領])\s*[)）】\]〕]/g, (mm: string) => {
+      if (!/不[领領]/.test(mm)) refunded = true;
       return "";
-    },
-  );
+    });
+    return out;
+  };
 
   // 剥掉标记后收尾的空行、行尾空白。
-  const final = noRefunds
+  const final = segments
+    .map(stripInline)
+    .join("\n\n")
     .replace(/[ \t]+$/gm, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 
-  // 配对：〔动态图〕紧跟某条〔动态〕的配给它；单独出现的跳过（不该出现）。
-  const moments: Array<{ content: string; imagePrompt?: string }> = [];
-  for (let i = 0; i < rawMoments.length; i++) {
-    const ip = i < rawImagePrompts.length ? rawImagePrompts[i] : undefined;
-    moments.push({ content: rawMoments[i], ...(ip ? { imagePrompt: ip } : {}) });
-  }
-
   return {
     clean: final,
     signature,
-    moments,
     images,
     imageRefs,
     imageRefMarks,
@@ -3004,6 +3063,8 @@ export function extractMetaMarkers(
     claimedTransfer,
     claimedRedpacket,
     refunded,
+    segments,
+    insertions,
   };
 }
 
@@ -3014,7 +3075,8 @@ export function extractMetaMarkers(
  * 写在**某一条气泡的开头**、跟着这一条走——所以只能在 splitReply 拆完条之后再摘，
  * 摘到谁头上就贴到谁的气泡上方（见 ChatWindow 的引用块）。
  *
- * 只认**开头**的标记：写在正文中间的当普通文字，不动——免得把 TA 真说的话剪掉。
+ * 开头那种照旧优先（正文接在标记后面）；标记夹在正文中间时也认（1.10.11，见 reInline）。
+ * 只摘**带括号的完整标记**，裸的一句「引用：…」当普通文字、不碰，免得把 TA 真说的话剪掉。
  * 摘完只剩空壳的（TA 把标记单独占了一条）直接丢掉，不留空气泡。
  *
  * @returns parts 摘干净的气泡；quotes 与之一一对应（没引用的为 undefined）。
@@ -3026,6 +3088,13 @@ export function extractBubbleQuotes(parts: string[]): {
   /* 括号写法容忍〔〕【】（）[] 各种变体，冒号可有可无（模型不总照抄格式）， ｜ 详细见 docs/施工日志.md */
   const reWrapped = /^[ \t]*[〔【（(\[]\s*引\s*用\s*[：:]?\s*([^\n〔【)）】\]〕]{1,120}?)\s*[)）】\]〕][ \t]*/;
   const reLabel = /^[ \t]*[〔【（(\[]\s*引\s*用\s*[：:]?\s*[)）】\]〕][ \t]*[：:、]?[ \t]*([\s\S]+)$/;
+  /* 1.10.11：标记不一定写在气泡开头。模型也常把它夹在正文中间，例如
+     「我没凶你你少栽赃我〔引用:是 我就是故意的。〕知道你故意的我还上当」——
+     开头那两条锚定正则够不着（可流式预览那边本就按「任意位置」剃，见
+     stripMetaMarkersForPreview，于是预览里干干净净、转正那刻标记才冒出来，
+     正是「引用掉出来了」）。这里补一条不锚定的兜底：整条里只要有完整的
+     〔引用:原话〕，就摘出来贴到气泡上方。 */
+  const reInline = /[〔【（(\[]\s*引\s*用\s*[：:]?\s*([^\n〔【)）】\]〕]{1,120}?)\s*[)）】\]〕]/;
   const out: string[] = [];
   const quotes: Array<string | undefined> = [];
   /* 引用独占一条（② 那种：标签后面没正文）时，这条引用**顺延挂到下一条**气泡上——
@@ -3034,15 +3103,30 @@ export function extractBubbleQuotes(parts: string[]): {
   for (const p of parts) {
     const wrapped = p.match(reWrapped);
     const labeled = wrapped ? null : p.match(reLabel);
-    if (!wrapped && !labeled) {
+    let quote: string | undefined;
+    /* ① 的正文在括号后面；② 的正文本来就没有（原话已经占掉整条）。 */
+    let rest = "";
+    if (wrapped) {
+      quote = wrapped[1].replace(/^[：:、]\s*/, "").trim();
+      rest = p.slice(wrapped[0].length).trim();
+    } else if (labeled) {
+      quote = labeled[1].replace(/^[：:、]\s*/, "").trim();
+    } else {
+      const inline = p.match(reInline);
+      if (inline?.index !== undefined) {
+        quote = inline[1].replace(/^[：:、]\s*/, "").trim();
+        /* 摘掉标记后两截正文会直接黏上，中间留一个空格分开。 */
+        rest = `${p.slice(0, inline.index)} ${p.slice(inline.index + inline[0].length)}`
+          .replace(/[ \t]{2,}/g, " ")
+          .trim();
+      }
+    }
+    if (quote === undefined) {
       out.push(p);
       quotes.push(pending || undefined);
       pending = undefined;
       continue;
     }
-    const quote = (wrapped ? wrapped[1] : labeled![1]).replace(/^[：:、]\s*/, "").trim();
-    /* ① 的正文在括号后面；② 的正文本来就没有（原话已经占掉整条）。 */
-    const rest = wrapped ? p.slice(wrapped[0].length).trim() : "";
     if (rest) {
       out.push(rest);
       quotes.push(quote || pending || undefined);
@@ -3058,17 +3142,7 @@ export function extractBubbleQuotes(parts: string[]): {
 /** 心声块里那几行小标题的前缀（1.5.65，1.5.74 改名；1.7.92 换成私密心声页真正要的那几格）。
  *  一行一个，写在最前面，认得出就摘走。 */
 const SNAPSHOT_LABELS: {
-  to:
-    | "scene"
-    | "action"
-    | "voice"
-    | "outfit"
-    | "mood"
-    | "desire"
-    | "fear"
-    | "memo"
-    | "diary"
-    | "junk";
+  to: "voice" | "mood" | "desire" | "fear" | "junk";
   re: RegExp;
 }[] = [
   /* 八根那一行（旧写法）：老模型偶尔还照老账写一行「驱动力：朝思暮想+6」。
@@ -3079,28 +3153,23 @@ const SNAPSHOT_LABELS: {
   /* 好感度（旧账的一行，**1.7.97 这一栏撤掉**——恩熙：「我们现在已经没有好感度了，
      你把好感度留着干什么呢？」）：老模型照老账写回来的一行仍认，认成 junk ＝ 摘走丢掉。 */
   { to: "junk", re: /^(?:好感度|好感)\s*[:：]\s*/ },
-  /* 环境（1.9.0）：**穿着与动作并成的一格**——人在哪儿、四周什么光景、身上穿的，
-     末尾带一点体态或神情。恩熙报那两个格子一直在说同一件事（穿着里混着动作），
-     要求并成一栏。它跟旧的穿着一样是**继承的一格**：地点和穿着没变时他多半不重写，
-     这一行没写就沿用上一次那份快照（见 parseInnerSnapshot）。 */
-  { to: "scene", re: /^(?:[环環]境|周遭|身[边邊]的[样樣]子|此刻的[样樣]子)\s*[:：]\s*/ },
-  /* 穿着／动作（1.7.92～1.8.6 的两行）：**1.9.0 起不再写**，这两行只为读老消息留着
-     ——认得出、照旧存进 outfit／action，心声页把两格并进「环境」那一栏显示。 */
-  /* 穿着（1.7.92）：一句话，**唯一继承的一格**——人不会一条消息换一套衣服，
-     这一行没写就沿用上一次（见 parseInnerSnapshot），所以提示词那边许它空着。 */
-  { to: "outfit", re: /^(?:穿[着著]|衣[着著]|穿搭|身上的[样樣]子)\s*[:：]\s*/ },
+  /* 环境／穿着／动作（**恩熙 2026-10-06 全部删掉**：「环境以及备忘录，我们得先删除」）：
+     这几行不再写、不再存，但老模型照老账写回来的一行仍认，认成 junk ＝ 摘走丢掉，
+     免得整行落进心声正文（跟上面好感度、最想做的事那两条一样的处理）。 */
+  { to: "junk", re: /^(?:[环環]境|周遭|身[边邊]的[样樣]子|此刻的[样樣]子)\s*[:：]\s*/ },
+  { to: "junk", re: /^(?:穿[着著]|衣[着著]|穿搭|身上的[样樣]子)\s*[:：]\s*/ },
   /* 心情（1.7.92）：一句话，不继承——它讲的就是这一刻。 */
   { to: "mood", re: /^(?:心情|此刻的心情|情[绪緒]状[态態])\s*[:：]\s*/ },
   /* 欲望与怯念（1.7.92）：私密心声页「私藏」页签那两格，只写给他自己看。 */
   { to: "desire", re: /^(?:[欲慾]望|此刻的[欲慾]望|私念|心[里裡裏]的念[头頭]|[压壓]在心[里裡裏]的念[头頭])\s*[:：]\s*/ },
   { to: "fear", re: /^(?:怯念|不敢想|不敢[细細]想|最怕的|怕的事)\s*[:：]\s*/ },
-  /* 细处与日记（1.7.92）：私密心声页「记录」页签那两格。细处一行一条。 */
-  { to: "memo", re: /^(?:[细細][处處]|[细細][节節]|她的小事|[记記][着著]的[细細][节節])\s*[:：]\s*/ },
-  { to: "diary", re: /^(?:日[记記]|今天[记記]|想[记記]下)\s*[:：]\s*/ },
+  /* 细处（备忘录）与日记（**恩熙 2026-10-06 一并删掉**）：同样认成 junk，摘走丢掉。 */
+  { to: "junk", re: /^(?:[细細][处處]|[细細][节節]|她的小事|[记記][着著]的[细細][节節])\s*[:：]\s*/ },
+  { to: "junk", re: /^(?:日[记記]|今天[记記]|想[记記]下)\s*[:：]\s*/ },
   /* 最想做的事（1.5.96，**1.7.96 这一栏撤掉**——恩熙：「我们没有最想做的事这一个栏目吧」）：
      老模型照老账写回来的一行仍认，认成 junk ＝ 摘走丢掉，别让它落进心声正文里。 */
   { to: "junk", re: /^(?:此刻最想做的事|最想做的事|最想做的|想做的事)\s*[:：]\s*/ },
-  { to: "action", re: /^(?:行[为為][动動]作|行[为為]|[动動]作|[动動]作神[态態]|神[态態])\s*[:：]\s*/ },
+  { to: "junk", re: /^(?:行[为為][动動]作|行[为為]|[动動]作|[动動]作神[态態]|神[态態])\s*[:：]\s*/ },
   { to: "voice", re: /^(?:角色心[声聲]|[内內]心[独獨]白|心[声聲]|心[里裡裏][话話])\s*[:：]\s*/ },
 ];
 
@@ -3180,31 +3249,13 @@ function stripLeadingLedger(text: string): { ledger: string; rest: string } | un
  */
 export function parseInnerSnapshot(
   raw: string,
-  prev?: InnerSnapshot,
   bilingual = false,
 ): { voice: string; snapshot: InnerSnapshot | undefined; pairs: Record<string, string> } {
-  const buf: Record<
-    | "scene"
-    | "action"
-    | "voice"
-    | "outfit"
-    | "mood"
-    | "desire"
-    | "fear"
-    | "memo"
-    | "diary"
-    | "junk",
-    string[]
-  > = {
-    scene: [],
-    action: [],
+  const buf: Record<"voice" | "mood" | "desire" | "fear" | "junk", string[]> = {
     voice: [],
-    outfit: [],
     mood: [],
     desire: [],
     fear: [],
-    memo: [],
-    diary: [],
     junk: [],
   };
   /* 没写标签的行默认归心声：老写法（整块就是心声）走的正是这条。 */
@@ -3232,13 +3283,6 @@ export function parseInnerSnapshot(
      正好对上 InnerVoicePage 的 useTrans 查缓存用的键（原文逐字），一进页就命中、
      瞬间显中文，不必再点一下。没写竖线、或两侧缺一的，原样当外语（交给点译兜底）。 */
   const pairs: Record<string, string> = {};
-  const biLine = (s: string): string => {
-    const c = tidy(s);
-    if (!bilingual) return c;
-    const { src, zh } = splitBilingual(c);
-    if (zh) pairs[src] = zh;
-    return src;
-  };
   /* 整块（多行）也单独记一条：页里有的地方是**整段**交给 useTrans 的（心声那一栏
      就是个多行块），只按单行登记会对不上整段的键。每一行都写全了才记整块。 */
   const biText = (s: string): string => {
@@ -3261,48 +3305,16 @@ export function parseInnerSnapshot(
   };
   const voice = biText(buf.voice.join("\n"));
 
-  /* 环境（1.9.0）：旧「穿着／动作」并成的一格，也是**继承的一格**——这一轮没写就沿用
-     上一次那份环境（地点和穿着没变时他多半不重写，见 SNAPSHOT_LABELS）。 */
-  const scene =
-    biText(buf.scene.join("\n")) ||
-    prev?.scene?.trim() ||
-    /* 跨 1.9.0 那道坎：上一份老快照里只有分开的穿着／动作，合成「环境」接着用，
-       免得升级后的头几轮那一栏空着。 */
-    [prev?.outfit, prev?.action].map((s) => s?.trim()).filter(Boolean).join("；");
-  const action = biText(buf.action.join("\n"));
-  /* 穿着（1.7.92）：**唯一继承的一格**——这一轮没写就沿用上一次。 */
-  const outfit = biText(buf.outfit.join("\n")) || prev?.outfit?.trim() || "";
   const mood = biText(buf.mood.join("\n"));
   const desire = biText(buf.desire.join("\n"));
   const fear = biText(buf.fear.join("\n"));
-  /* 细处：一行一条。TA 也常把几条并在一行里（用分号连写），所以行内再拆一道，
-     顺手去掉行首那个列表点。 */
-  const memo = buf.memo
-    .flatMap((block) => block.split(/\r?\n/))
-    .flatMap((line) => line.split(/[；;]/))
-    .map((line) => biLine(line.replace(/^[·•・\-—\s]+/, "")))
-    .filter(Boolean);
-  const diary = biText(buf.diary.join("\n"));
 
   const snapshot: InnerSnapshot | undefined =
-    sawLabel &&
-    (scene ||
-      action ||
-      outfit ||
-      mood ||
-      desire ||
-      fear ||
-      memo.length > 0 ||
-      diary)
+    sawLabel && (mood || desire || fear)
       ? {
-          ...(scene ? { scene } : {}),
-          ...(action ? { action } : {}),
-          ...(outfit ? { outfit } : {}),
           ...(mood ? { mood } : {}),
           ...(desire ? { desire } : {}),
           ...(fear ? { fear } : {}),
-          ...(memo.length > 0 ? { memo } : {}),
-          ...(diary ? { diary } : {}),
         }
       : undefined;
 
@@ -3316,7 +3328,6 @@ export function parseInnerSnapshot(
  */
 export function extractInnerVoice(
   reply: string,
-  prevSnapshot?: InnerSnapshot,
   bilingual = false,
 ): {
   clean: string;
@@ -3339,13 +3350,19 @@ export function extractInnerVoice(
     ledger = ledger.trim() ? `${ledger.trim()}\n\n${ahead.ledger.trim()}` : ahead.ledger.trim();
     rest = ahead.rest;
   }
+  /* 1.10.43：模型有时把「账」写到 </think> 外面（主动开口那趟尤其常见：心声留在
+     标签里、账却接在闭标签之后又拿 </think> 收尾）。stripLeadingLedger 认账时是
+     「整段切走」，这个吊在末尾的闭标签就跟着日记一起被切进 ledger，「记录」页的
+     日记末尾便挂着一个 </think>（恩熙 2026-10-05 截图报的「格式掉了」）。账是给人
+     读的，标签一个都不该留——整份剃干净，落库与心声页都干净。 */
+  ledger = ledger.replace(/<\/?\s*think(?:ing)?\s*>/gi, "");
   const clean = rest.replace(/^[ \t\r\n]+/, "");
   if (!ledger.trim()) {
     return { clean, innerVoice: undefined, snapshot: undefined, pairs: {} };
   }
   /* 心声是给人读的，跟正文过同一趟归正（半角标点折全角、剪成对的星号旁白），
      读着才跟气泡里的字一个样。 */
-  const parsed = parseInnerSnapshot(ledger, prevSnapshot, bilingual);
+  const parsed = parseInnerSnapshot(ledger, bilingual);
   return {
     clean,
     innerVoice: parsed.voice || undefined,
@@ -3354,73 +3371,13 @@ export function extractInnerVoice(
   };
 }
 
-/**
- * 从聊天记录里往回找**最近一份写过「环境」**（1.9.0 前是写过「穿着」）的内心快照，
- * 连同它挂在哪条消息上。
- *
- * 为什么要有它：环境是账里**唯一继承的一格**——地点和穿着不会一条消息一变，这一轮没写
- * 就沿用上一次（见 parseInnerSnapshot）。聊天窗口每轮摘心声时顺手把它捞出来递进去。
- *
- * 只认写过环境（或老消息里的穿着）的那一份：更老的账里这几格都空着，一律跳过——
- * 拿它们当底，环境还是空的。往回找不设条数上限（在哪儿、穿什么本来就能挂很久，
- * 写了新的就替换），找不到（新装，或从来没写过）返回 undefined。
- *
- * 返回里带着 `createdAt`（那份快照那条消息的时刻），调用方要按时间算点什么时有得可用。
- */
-export function lastInnerSnapshot(
-  messages: readonly ChatMessage[],
-): { snapshot: InnerSnapshot; createdAt: string } | undefined {
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    const s = messages[i].innerSnapshot;
-    if (s?.scene || s?.outfit) {
-      return { snapshot: s, createdAt: messages[i].createdAt };
-    }
-  }
-  return undefined;
-}
-
-/**
- * 把「他记着的细处清单」与「他写过的那篇日记」攒成一小块，随请求递回去（1.9.0）。
- *
- * 为什么要有它：恩熙报「备忘录无限追加、全是重复的」「日记越叠越长」，根因是**他看不见
- * 自己记过什么**——心声块在摘走时就不落进消息正文（见 extractInnerVoice），回喂的历史里
- * 只有台词，账一个字都不在。他要做到「上面记过的别再写」「并成完整的一篇」，就得先把
- * 那两样递到他眼前。这句就是这个来路。
- *
- * 分寸：这是**每轮都变的易变区**（挂在 buildPrompt 的易变尾巴上），不进缓存——
- * 所以只带必要的那点：细处取最近 MEMO_KEEP 条（按记录顺序，老的在前），
- * 日记只带**最新那一篇非空的**（1.9.0 起日记是整合一篇的全文，不往后叠）。
- * 两样都空＝返回空串，调用方那一块整段消失，不多给模型一个字。
- */
-const MEMO_KEEP = 12;
-export function innerLedgerBlock(messages: readonly ChatMessage[]): string {
-  const memos: string[] = [];
-  let diary = "";
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    const s = messages[i].innerSnapshot;
-    if (!s) continue;
-    if (!diary && s.diary?.trim()) diary = s.diary.trim();
-    /* 细处是攒出来的清单：从新往旧扫，扫够了就停；最后翻回「老的在前」的记录顺序。 */
-    if (memos.length < MEMO_KEEP) {
-      const items = (s.memo ?? []).map((m) => m.trim()).filter(Boolean);
-      for (let k = items.length - 1; k >= 0 && memos.length < MEMO_KEEP; k -= 1) {
-        memos.unshift(items[k]);
-      }
-    }
-  }
-  if (memos.length === 0 && !diary) return "";
-  const lines = [
-    "下面是你自己记下的东西（只有你看得见）——细处是那份清单，日记是你写过的那一篇：",
-    memos.length > 0 ? `细处：\n${memos.map((m) => `· ${m}`).join("\n")}` : "细处：（还空着）",
-    diary ? `日记（你上一次写的全文）：\n${diary}` : "日记：（还空着）",
-  ];
-  return lines.join("\n");
-}
+/* 2026-10-06：`lastInnerSnapshot`（往回找最近一份「环境」）与 `innerLedgerBlock`
+   （把细处清单＋日记全文回送模型）随环境／细处／日记三栏一并删——账里只剩心情、欲望、
+   怯念，三格都不继承，也不必再往模型眼前递那份清单。 */
 
 /* 1.7.92：原 `innerSnapshotBase`（把八根按真实小时数往下带的那个底）随八根一并删。
-   账里剩下的几格都不按时间衰减：好感度要涨要落都由 TA 自己报，穿着穿过就挂着、
-   心情欲望怯念讲的都是当轮——没有哪一格该让时间去动它。要拿上一轮的底（现在只为
-   穿着），直接用 `lastInnerSnapshot`。 */
+   账里剩下的几格都不按时间衰减：好感度要涨要落都由 TA 自己报，心情欲望怯念讲的都是
+   当轮——没有哪一格该让时间去动它。 */
 
 /* 1.7.96：原来这里还有一整套「最想做的事」收口（WISH_CHANNEL_RES 认频道 + settleWish
    按真实凭据判做成没有），喂给念头池 wishPool.ts。账里那一栏撤掉之后（恩熙：我们没有
