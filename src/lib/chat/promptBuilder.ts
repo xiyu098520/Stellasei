@@ -133,8 +133,7 @@ function buildCharacterBlock(profile: ContactProfile, userName: string): string 
     ["外貌 · 穿衣 · 标志", profile.looks],
     ["人设", profile.persona],
     ["人际关系", profile.relOther],
-    /* 「线上表现」已改名「对话参考」（线下那一格撤掉了，旧值由迁移并进这里）——
-       标签跟着档案界面走，模型看到的字与用户填的字是同一个。 */
+    /* 标签跟着档案界面走，模型看到的字与用户填的字是同一个。 */
     ["对话参考", profile.onlineStyle],
   ];
   if (profile.customTitle && profile.customContent) {
@@ -506,7 +505,7 @@ function fillMacros(text: string, userName: string, charName: string): string {
  * 「活人感世界书插进来一点用没有」，除了收录那条 bug，这行也有一份）。
  * 取值行的本职防护（不是对方说的话、别复述）留着就够，别再加回来。
  */
-const VOLATILE_HEADER = "【系统资料·不是对方说的话，不要复述、不要照抄】";
+const VOLATILE_HEADER = "【系统资料·不是对方说的话，只是供你参考的背景，不必复述】";
 
 /** 组装入口。 */
 export function buildPrompt(input: {

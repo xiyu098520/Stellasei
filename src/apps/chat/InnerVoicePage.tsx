@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronLeft } from "lucide-react";
 import type { ChatMessage, InnerSnapshot } from "@/types/chat";
 
@@ -128,21 +128,11 @@ function buildEntries(messages: ChatMessage[]): VoiceEntry[] {
 
 export default function InnerVoicePage({
   messages,
-  transLang,
-  transCache,
-  onTranslate,
   onBack,
 }: {
   charName: string;
   charAvatar: string;
   messages: ChatMessage[];
-  /** 心声页双语（1.9.83）：外语聊天**且**心声那一格也开着时，才是他写下的字所用的那门语言，
-     页里各栏显「原文＋中文」两行；没开（含心声那格关着）就是 undefined，页里照旧纯中文。 */
-  transLang?: string;
-  /** 会话上的译文缓存（源文→中文）：<think> 里写下的中文、别处翻过的都在里头，命中就瞬间显。 */
-  transCache?: Record<string, string>;
-  /** 没命中缓存时才走它翻一次（ChatWindow 的 translateCached，翻完写回缓存）。 */
-  onTranslate?: (src: string) => Promise<string | undefined>;
   onBack: () => void;
 }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -325,15 +315,8 @@ export default function InnerVoicePage({
     </div>
   );
 
-  /* 心声页双语（1.9.83）：把语言与译文缓存铺给页里每一块字（见 useTrans／Tr）。 */
-  const trans = useMemo<TransApi>(
-    () => ({ lang: transLang, cache: transCache, onTranslate }),
-    [transLang, transCache, onTranslate],
-  );
-
   return (
-    <TransCtx.Provider value={trans}>
-      <>
+    <>
       <style>{`
         /* 独立整页（1.9.56）：不再是「从底下抽上来的弹窗」——没有蒙层、没有拉手，
            从状态栏下缘一路铺到屏底，它是一页自己的界面（跟聊天设置页一个待遇）。
@@ -413,11 +396,6 @@ export default function InnerVoicePage({
           border:0; cursor:pointer; color:inherit; }
         .iv2-chev { flex:none; margin-top:3px; transition:transform .24s cubic-bezier(.16,1,.3,1); }
         .iv2-chev.on { transform:rotate(180deg); }
-
-        /* 心声页双语（1.9.83）：一栏两行——原文在上，中文一行小字垫在下面（跟气泡一个口径）。
-           中文那行收小一档、压淡一档，别抢原文；没取到中文时这一行不出现。 */
-        .iv2-dual-orig { display:block; }
-        .iv2-dual-zh { display:block; margin-top:3px; font-size:12px; line-height:1.7; color:${IV.ink3}; }
 
         .iv2-hrow { background:transparent; }
         .iv2-hrow:active { background:rgba(224,65,122,.08); }
@@ -503,8 +481,7 @@ export default function InnerVoicePage({
                   {/* 心声：最要紧的一块，但字号跟其余栏目一样——靠行高与缩进读成一封信，不靠字号压人。 */}
                   <Band rail="心声" tone={TONE.inner} label="Inner">
                     {voice ? (
-                      <Tr
-                        text={voice}
+                      <div
                         className="iv2-sel iv2-txt"
                         style={{
                           display: "block",
@@ -517,7 +494,9 @@ export default function InnerVoicePage({
                           wordBreak: "break-word",
                           color: IV.ink2,
                         }}
-                      />
+                      >
+                        {voice}
+                      </div>
                     ) : (
                       <div className="iv2-txt" style={VAGUE}>
                         这一轮没留下心声。
@@ -544,80 +523,13 @@ export default function InnerVoicePage({
 
         {drawerOpen ? drawer : null}
       </div>
-        </>
-    </TransCtx.Provider>
+    </>
   );
 }
 
 /* =======================================================================
  * 局部零件
  * ===================================================================== */
-
-/** 心声页双语（1.9.83）：页里每一块字共用的「取中文译文」入口（由 ChatWindow 铺进来）。 */
-type TransApi = {
-  lang?: string;
-  cache?: Record<string, string>;
-  onTranslate?: (src: string) => Promise<string | undefined>;
-};
-const TransCtx = createContext<TransApi>({});
-
-/** 一栏字要用的中文译文（心声页双语，1.9.83）。
- *  外语聊天开着、且【心声页也直接显示中文】那格也开着时，页里各栏显「原文＋中文」两行
- *  （见 Tr）——这里只负责把中文取回来：先吃会话上的译文缓存（transCache——<think> 里
- *  写下的「原文|中文」右半边、别处翻过的都在里头），命中就零等待；没命中的当场补翻一次。
- *  「这一句属于哪个源文」一并记在 state 上：换了轮次／条目就对不上、当新的算，
- *  不必另起 effect 去清（effect 里 setState 会连环重渲染，lint 也不放行）。
- *  翻过（成或不成）都记在 tried 上，不在这儿重试成死循环。 */
-function useTrans(src: string | undefined) {
-  const { lang, cache, onTranslate } = useContext(TransCtx);
-  const raw = (src ?? "").trim();
-  const can = !!lang && !!onTranslate && !!raw;
-  const [got, setGot] = useState<{ src: string; zh?: string } | null>(null);
-  const mine = got?.src === raw;
-  const zh = ((mine ? got?.zh : undefined) ?? (raw ? cache?.[raw] : undefined) ?? "").trim();
-
-  /* 进页就把没缓存的那几句补翻一次（缓存里有的在上一行已经命中、不走这儿）。 */
-  const tried = useRef<string | null>(null);
-  useEffect(() => {
-    if (!can || zh || tried.current === raw) return;
-    tried.current = raw;
-    void onTranslate!(raw).then(
-      (t) => setGot({ src: raw, zh: t }),
-      () => setGot({ src: raw }),
-    );
-  }, [can, zh, raw, onTranslate]);
-
-  return { can, zh };
-}
-
-/** 一栏两种语言（1.9.83）：原文一行在上（照旧那支正文样式）、中文一行小字垫在下面
- *  ——跟聊天气泡一个口径（原文为主、中文随行），一眼能读也不丢外语。
- *  只在外语聊天与【心声页也直接显示中文】都开着时这么显；关着、或这段还没有字时，
- *  就当一个普通文本节点，页里跟从前一模一样（纯中文、也没有那枚「译／原」小键）。 */
-function Tr({
-  text,
-  className,
-  style,
-}: {
-  text: string;
-  className?: string;
-  style?: React.CSSProperties;
-}) {
-  const { can, zh } = useTrans(text);
-  if (!can) {
-    return (
-      <span className={className} style={style}>
-        {text}
-      </span>
-    );
-  }
-  return (
-    <span className={className} style={style}>
-      <span className="iv2-dual-orig">{text}</span>
-      {zh ? <span className="iv2-dual-zh">{zh}</span> : null}
-    </span>
-  );
-}
 
 /** 历史一条的摘要：有心声就用心声，没有就直说。 */
 function summaryOf(e: VoiceEntry): string {
@@ -661,7 +573,6 @@ function Band({
  *  两个触发区分开（原先整行一个按钮，两件事会打架）。 */
 function Slot({ text, empty }: { text: string | undefined; empty: string }) {
   const [open, setOpen] = useState(false);
-  const { can } = useTrans(text);
   const s = (text ?? "").trim();
   const bodyStyle: React.CSSProperties = {
     flex: 1,
@@ -684,17 +595,13 @@ function Slot({ text, empty }: { text: string | undefined; empty: string }) {
   }
   return (
     <div className="iv2-slot">
-      {can ? (
-        <Tr text={s} className="iv2-sel iv2-txt" style={bodyStyle} />
-      ) : (
-        <span
-          className="iv2-sel iv2-txt"
-          style={{ ...bodyStyle, cursor: "pointer" }}
-          onClick={() => setOpen((v) => !v)}
-        >
-          {s}
-        </span>
-      )}
+      <span
+        className="iv2-sel iv2-txt"
+        style={{ ...bodyStyle, cursor: "pointer" }}
+        onClick={() => setOpen((v) => !v)}
+      >
+        {s}
+      </span>
       <button
         type="button"
         className="iv2-slotchev"
@@ -749,8 +656,7 @@ function Sealed({ text, empty }: { text: string | undefined; empty: string }) {
 
   if (open) {
     return s ? (
-      <Tr
-        text={s}
+      <div
         className="iv2-sel iv2-txt"
         style={{
           display: "block",
@@ -761,7 +667,9 @@ function Sealed({ text, empty }: { text: string | undefined; empty: string }) {
           wordBreak: "break-word",
           color: IV.ink2,
         }}
-      />
+      >
+        {s}
+      </div>
     ) : (
       <div className="iv2-sel iv2-txt" style={{ ...VAGUE, margin: 0 }}>
         {empty}

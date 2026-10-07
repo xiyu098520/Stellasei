@@ -90,17 +90,17 @@ import {
   translateText,
 } from "@/lib/chat/chatApi";
 import { applyRegexRules, loadRegexRules } from "@/lib/chat/regexRules";
-/* 我发的语音条（1.10.20）：真录音走浏览器语音识别转文字——封装在 stt.ts，见那里的说明。 */
+/* 我发的语音条：真录音走浏览器语音识别转文字，封装在 stt.ts。 */
 import { createSTTSession, type STTSession } from "@/lib/chat/stt";
-/* TA 那本账的「开户」（1.4.36）：第一次跟他说话（或第一次翻他手机）时，
+/* TA 那本账的「开户」：第一次跟他说话（或第一次翻他手机）时，
    按人设给他开一本有来历的账——否则他手上一分钱没有，发红包／转账都无从谈起。 */
 import { openContactAccountIfEmpty } from "@/lib/chat/contactAccount";
 import type { RegexRule } from "@/types/regex";
 import { getApiBundle } from "@/lib/settings/chat";
-/* 钱包：发红包／转账要真从我的零钱（或某张卡）扣钱（1.4.33）。
-   1.4.63 起改成**先只扣我**（`payOutToContact`）——钱不进他的账，等他表态；
-   他退还／红包不领，再原路收回我出的那个口袋（`takeBackToPocket`）。
-   收款码的编号也存在同一本账里（`getPayCode`），码图现画（`renderPayCodeDataUrl`）。 */
+/* 钱包：发红包／转账要真从我的零钱（或某张卡）扣钱，而且**先只扣我**
+   （`payOutToContact`）——钱不进他的账，等他表态；他退还／红包不领，
+   再原路收回我出的那个口袋（`takeBackToPocket`）。收款码的编号也存在
+   同一本账里（`getPayCode`），码图现画（`renderPayCodeDataUrl`）。 */
 import {
   RED_PACKET_MAX_CENTS,
   adjustBalance,
@@ -178,13 +178,12 @@ import OfflineScenePage, {
   type OfflineGenerate,
 } from "./OfflineScenePage";
 /* 钱这一族的账册料：气泡上那三张钱卡（红包／转账／回执）挂的就是
-   书写体、等宽数字与硬影这几个。
-   （转账／红包的**填写界面** 1.4.54 起搬去 `MoneySendView` 单独一页了，
-   那一页自己引 `WalletSheet` 里的方签与输入样式。） */
+   书写体、等宽数字与硬影这几个。填写界面在 `MoneySendView`（自己引
+   `WalletSheet` 里的方签与输入样式）。 */
 import { WALLET_MONO, WALLET_PAPER_SHADOW } from "./WalletSheet";
-/* 红包封面（1.4.89）：预设表与「自定义图封面」的判定——红包卡与开红包页共用。
-   铺法得跟着取景位置走（1.5.5 起封面能挪），所以统一从这几个小工具出，
-   别在各处自己拼 `url(...) center/cover`——那样挪过的位置就白挪了。 */
+/* 红包封面：预设表与「自定义图封面」的判定——红包卡与开红包页共用。
+   铺法得跟着取景位置走，所以统一从这几个小工具出，别在各处自己拼
+   `url(...) center/cover`——那样挪过的位置就白挪了。 */
 import {
   isCustomRedCover,
   RED_COVER_CLAIMED_VEIL,
@@ -195,9 +194,9 @@ import {
   redCoverRefOf,
   redCoverSrcRefOf,
 } from "./redpacket";
-/* 我弄过的红包封面（1.5.5）：发出去那一刻顺手收一条进库，下次发红包就在画廊里挑。
-   还有一格「眼下用的那张」（1.5.10）：她选定一张就成了**各处通用的默认**，换到哪个
-   对话框、重开 App 都还是它，所以得落库——以前只活在内存里，退出会话就忘了。 */
+/* 我弄过的红包封面：发出去那一刻顺手收一条进库，下次发红包就在画廊里挑。
+   还有一格「眼下用的那张」：选定一张就成了**各处通用的默认**，换到哪个
+   对话框、重开 App 都还是它，所以得落库。 */
 import {
   getDefaultRedCover,
   putRedCoverToLibrary,
@@ -206,10 +205,10 @@ import {
 /* 红包封套的两张正脸：没开的封套（带「開」）与开完的金额卡。
    开红包那一页与发红包那页的试衣间共用同一张脸，形状都在那个文件里。 */
 import { RedEnvelopeCard, RedOpenedCard, RedPacketGlyph } from "./RedPacketCards";
-/* 转账／红包的填写页（1.4.54）：恩熙要「像微信那样跳出一个整页」——不再是底下滑上来的
-   面板。这里只管开关与递参数，钱怎么划走仍归 `doSendMoney`。 */
+/* 转账／红包的填写页：像微信那样跳出一个整页，不是底下滑上来的面板。
+   这里只管开关与递参数，钱怎么划走仍归 `doSendMoney`。 */
 import MoneySendView from "./MoneySendView";
-/* 支付密码那道闸（1.4.51）：钱出去之前弹六个格子的键盘（见 PayPasswordSheet）。 */
+/* 支付密码那道闸：钱出去之前弹六个格子的键盘（见 PayPasswordSheet）。 */
 import PayPasswordSheet from "./PayPasswordSheet";
 import type { ArchiveEntry } from "@/types/contact";
 import type {
@@ -241,10 +240,10 @@ const DIAG_VIA_CN: Record<ImageDiag["via"], string> = {
 
 /* 加号面板里那些项——
    本来就分两等：格子里的都是「发什么内容」，通栏那条「重新回复」是「让对面做一件事」。
-   内容项两列排，末行只剩一个（1.4.24 加了「收款码」）就让它自己收尾，
+   内容项两列排，末行只剩一个就让它自己收尾，
    那一格不再描竖栏线（见下面列表里的说明）。 */
 const PLUS_ITEMS = [
-  /* 「图片」把拍照并进来了（2026-10-02）：点它先问「图从哪来」，
+  /* 「图片」把拍照并进来了：点它先问「图从哪来」，
      手机相册那一路本来就把「拍照」含在里面（系统选图里就有相机）。 */
   { name: "图片", icon: ImageIcon },
   { name: "语音消息", icon: Mic },
@@ -252,11 +251,11 @@ const PLUS_ITEMS = [
   { name: "视频通话", icon: Video },
   { name: "语音通话", icon: Phone },
   { name: "红包", icon: IconRedPacket },
-  /* 转账用卡片（原来那个来回箭头不好看）。 */
+  /* 转账用卡片。 */
   { name: "转账", icon: CreditCard },
   { name: "文件", icon: File },
   { name: "位置", icon: MapPin },
-  /* 收款码（1.4.24）：把我钱包里那张码当图片发给 TA——一张图，走的是发图那条路。
+  /* 收款码：把我钱包里那张码当图片发给 TA——一张图，走的是发图那条路。
      这两枚不走 lucide，用我们自己画的那版（见 IconRedPacket／IconPayCode）。 */
   { name: "收款码", icon: IconPayCode },
 ] as const;
@@ -308,7 +307,7 @@ function IconPayCode({ size = 21, strokeWidth = 1.5 }: { size?: number; strokeWi
   );
 }
 
-/* 「去见他」（1.7.5）：第二条通栏动作。线上是隔着手机的微信体，这条是「见面」——
+/* 「去见他」：第二条通栏动作。线上是隔着手机的微信体，这条是「见面」——
    点开进线下场合那一页（OfflineScenePage），小说笔法写一场，不再一条条发消息。
    与「重新回复」并列摆，同为糖色通栏（都不是「发内容」）。 */
 const PLUS_OFFLINE_ACTION = { name: "去见他", icon: User } as const;
@@ -321,11 +320,10 @@ const RETELL_FALLBACK_HINT = "换个说法，把这一句重新回一遍，别�
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * 翻一句，翻不动再试一次（1.9.57）。
+ * 翻一句，翻不动再试一次。
  *
- * 恩熙 2026-10-03：「为什么有些会翻，有些不会翻呀？」——译文是每条单独打一次
- * 翻译接口换来的，网络／限流抽一下，那一条就永久空着（还找补不回来）。这里给它
- * 两次机会：接口报错、返回空、或者把原话原样吐回来（说明它根本没干活），都当翻
+ * 译文是每条单独打一次翻译接口换来的，网络／限流抽一下，那一条就永久空着（还找补不回来）。
+ * 这里给它两次机会：接口报错、返回空、或者把原话原样吐回来（说明它根本没干活），都当翻
  * 不动，隔半秒再来一遍；两次都不行才返回 undefined（那一条就不露译文，不拖累别的）。
  */
 async function translateWithRetry(
@@ -372,15 +370,15 @@ function formatWait(secs: number): string {
   return s > 0 ? `${m} 分 ${s} 秒` : `${m} 分钟`;
 }
 
-/** 收款回执（1.4.40）：钱到账之后，由**收款方**发出的那张卡（见 types/chat.ts 的 receipt）。
+/** 收款回执：钱到账之后，由**收款方**发出的那张卡（见 types/chat.ts 的 receipt）。
     微信里他点收了你的转账，聊天里除了你那张变淡的转账卡，还会多出**他发的**一张
     「已收款 ¥520.00／已存入零钱」；他转给你、你点收，就多出你发的一张。
     money＝那条转账消息（金额从它身上取）；role＝收款方是谁。
-    text＝卡上那行字（退还那张写「已退还」，见 1.4.41）。
+    text＝卡上那行字（退还那张写「已退还」）。
     落库的时机一律是「先把钱那条标成已收下、再发这张」：万一这一步没成，宁可少一张回执，
     也不要出现「回执有了、钱还停在等他收下」这种前后对不上的场面。
-    ⚠️ 1.4.42 起**红包不再走这张卡**（改走下面那条系统提示）——恩熙要的红包是微信那样
-    一条居中提示，不是一张卡；这条只留给转账与退还。 */
+    ⚠️ **红包不走这张卡**（改走下面那条居中系统提示）——她要的红包是微信那样一条居中
+    提示，不是一张卡；这条只留给转账与退还。 */
 function buildReceiptMsg(
   money: ChatMessage,
   role: "user" | "assistant",
@@ -393,21 +391,19 @@ function buildReceiptMsg(
     content: text ?? "已收款",
     amount: money.amount,
     createdAt: new Date().toISOString(),
-    /* 1.4.84：把原转账那条的时间戳抄一份（payAt）。两联的短编号都从时间戳末四位取，
-       回执要是取自己出生的时间，跟转账那联就不是一个号——恩熙：「收取跟退还，它
-       右上角那个数字应该是编号，是一样的呀。」同一笔钱＝同一个票号。 */
+    /* 把原转账那条的时间戳抄一份（payAt）。两联的短编号都从时间戳末四位取，
+       回执要是取自己出生的时间，跟转账那联就不是一个号——同一笔钱＝同一个票号。 */
     payAt: money.createdAt,
     isRead: true,
   };
 }
 
-/** 钱被领走之后该往聊天里落的那一条（1.4.42 恩熙把红包与转账分开）：
-    恩熙原话——「微信的红包是什么呀？我领取之后，它会显示一条系统消息说，你已领取叉叉叉的
-    红包，它应该是这样的。然后一样会变暗。」
-    ⇒ **红包**：一条居中的系统提示（红包卡自己变淡是 1.4.38 就做好的）；
-    ⇒ **转账**：仍是收款回执卡（1.4.40，她已验收「OK，现在对了」，不动它）。
+/** 钱被领走之后该往聊天里落的那一条（红包与转账分开走）：
+    微信的红包领取之后会显一条系统消息「你已领取叉叉叉的红包」，同时本来那张卡变暗。
+    ⇒ **红包**：一条居中的系统提示（红包卡自己变淡是卡片那边做好的）；
+    ⇒ **转账**：仍是收款回执卡。
     role＝领钱的人（我／他）：我领他的 → 「你已领取 XX 的红包」；他领我发的 → 「XX 已领取你的红包」。
-    只用 role／type／content 三个已有字段，**不新增字段**（同 1.4.40 回执卡的道理：
+    只用 role／type／content 三个已有字段，**不新增字段**（同收款回执卡的道理：
     settings/chat.ts 那套逐字段白名单一个字都不用改）。系统提示也不会回喂模型
     （buildApiMessages 把 role === "system" 整条滤掉），钱那条本身在历史里，模型照旧知道这笔钱。 */
 function buildMoneyEcho(
@@ -467,7 +463,7 @@ async function settleMoneyExpired(
   const cents = Math.round((m.amount ?? 0) * 100);
   const isRp = m.type === "redpacket";
   const label = isRp ? "红包" : "转账";
-  /* 老消息（1.4.63 之前发出的）没有 `payFrom`：那种发出去时就一次划走了（钱早在他账上），
+  /* 老消息没有 `payFrom`：那种发出去时就一次划走了（钱早在他账上），
      这里再往回搬一遍就是同一笔钱算两回——只补卡片上「已过期」那个字，账不动。 */
   if (cents > 0 && m.payFrom !== undefined) {
     const back = await takeBackToPocket({
@@ -542,7 +538,7 @@ async function expireStaleMoney(
 }
 
 /**
- * 「查看本轮请求」留档（1.7.49）。
+ * 「查看本轮请求」留档。
  * 请求只在发送那一刻存在、发完就没了，所以每轮发出去之前整条留一份：她对着中转商
  * 那边的账单，一眼能看出这一轮到底带了什么、哪些没带（尤其世界书带了几条）。
  * 线上、线下两条线都记（都从 ChatWindow 发出去）。
@@ -600,7 +596,7 @@ export default function ChatWindow({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [conv, setConv] = useState<Conversation | null>(null);
   const [loaded, setLoaded] = useState(false);
-  /* 历史分页（1.7.36）：消息流**默认只上屏最近 CHAT_PAGE_SIZE 条**，再往前的要她点
+  /* 历史分页：消息流**默认只上屏最近 CHAT_PAGE_SIZE 条**，再往前的要她点
      消息区最顶上那颗「加载更早的」才一次推上来——与线下页同一套（见 OfflineScenePage）。
      **只切屏幕这一路**：喂模型的 history 一直是全量 messages（见 send 里那段），
      所以翻页不动上下文、不动记忆。换会话即归零（不记上次翻到哪儿）。 */
@@ -611,7 +607,7 @@ export default function ChatWindow({
   /* 「发送图片」的二级面板：先问「这张图从哪来」——手机相册，还是小手机自己的相册。
      小手机相册（共同相册）还没做，先留入口，见 pickImageSource。 */
   const [showImageSource, setShowImageSource] = useState(false);
-  /* 「语音消息」的弹窗（1.10.20）：文字输入＝空气泡（不发音频），真录音＝带音频的语音条。
+  /* 「语音消息」的弹窗：文字输入＝空气泡（不发音频），真录音＝带音频的语音条。
      见 sendVoiceMsg 与 VoiceRecordModal。 */
   const [showVoiceModal, setShowVoiceModal] = useState(false);
   /* 选好、还没发出去的那张图：先把图摆出来问一句「要发这张吗」，
@@ -634,13 +630,13 @@ export default function ChatWindow({
   const [showSheet, setShowSheet] = useState(false);
   /* 语音／转文字 */
   const [playingVoice, setPlayingVoice] = useState<string | null>(null);
-  /* 「转文字」可**多开**：点开的各自留着，互不顶掉，再点同一条才收起（1.10.6，恩熙要）。
-     从前是单个 id（点第二条就把第一条顶掉），现改成一组 id。 */
+  /* 「转文字」可**多开**：点开的各自留着，互不顶掉，再点同一条才收起。
+     不设单个 id（单个会点第二条就把第一条顶掉），用一组 id。 */
   const [showTrans, setShowTrans] = useState<Set<string>>(() => new Set());
   /* 语音播放诊断：**只在播失败时**在气泡下露一行小字（原因 + App 版本 + iOS 版本），
      成功时绝不显。临时用来把她那边到底卡在哪一步带回来，排掉就删。 */
   const [voiceDiag, setVoiceDiag] = useState<{ id: string; text: string } | null>(null);
-  /* 1.10.21：播失败时兜底露出的原生播放器，源要用 blob:（data URL 在 iOS 上放不出，见
+  /* 播失败时兜底露出的原生播放器，源要用 blob:（data URL 在 iOS 上放不出，见
      playVoiceViaElement 上方注释）。这存着当前那条兜底音频的 blob URL；换一条或卸载时回收。 */
   const [voiceFallback, setVoiceFallback] = useState<{ id: string; url: string } | null>(null);
   /* 兜底 blob URL 的回收：换一条或组件卸载时 revoke 旧的，别把 blob 一直挂在内存里。 */
@@ -683,12 +679,12 @@ export default function ChatWindow({
     void setDefaultRedCover(v).catch(() => {});
   };
   const [payBusy, setPayBusy] = useState(false);
-  /* 支付密码那道闸（1.4.51）：把这一笔递给了密码键盘（null＝没这道闸）；
+  /* 支付密码那道闸：把这一笔递给了密码键盘（null＝没这道闸）；
      账本里现在那份密码也先读出来，交给键盘比对；金额是给面板顶上那行看的。 */
   const [payPwdKind, setPayPwdKind] = useState<null | "redpacket" | "transfer">(null);
   const [payPwdCurrent, setPayPwdCurrent] = useState("");
   const [payPwdAmount, setPayPwdAmount] = useState("");
-  /* 这一笔从哪儿出（1.4.55）：`"balance"`＝零钱，别的当卡的 id；
+  /* 这一笔从哪儿出：`"balance"`＝零钱，别的当卡的 id；
      她名下的卡也在这一页打开时读一遍，支付方式那张列表就用它。 */
   const [payMethod, setPayMethod] = useState("balance");
   const [payCards, setPayCards] = useState<WalletCard[]>([]);
@@ -699,11 +695,11 @@ export default function ChatWindow({
   const [showReModal, setShowReModal] = useState(false);
   const [reInput, setReInput] = useState("");
   const [showChatSettings, setShowChatSettings] = useState(false);
-  /* 1.5.65 心声档案：点 TA 的头像进来的整页（盖住聊天窗口那一层，跟聊天设置一个做法）。 */
+  /* 心声档案：点 TA 的头像进来的整页（盖住聊天窗口那一层，跟聊天设置一个做法）。 */
   const [showInnerPage, setShowInnerPage] = useState(false);
-  /* 签名那一行此刻显不显中文（1.9.50）：点一下中日来回切，各自记住此刻的样子。 */
+  /* 签名那一行此刻显不显中文：点一下中日来回切，各自记住此刻的样子。 */
   const [sigCn, setSigCn] = useState(false);
-  /* 1.7.5 线下场合：加号面板的「去见他」翻过去的一整页（见面，不再是发消息）。 */
+  /* 线下场合：加号面板的「去见他」翻过去的一整页（见面，不再是发消息）。 */
   const [showOffline, setShowOffline] = useState(false);
   /* 收藏（会话内状态，跟随旧档案） */
   const [favoritedIds, setFavoritedIds] = useState<Set<string>>(new Set());
@@ -712,7 +708,7 @@ export default function ChatWindow({
   const [imageExtras, setImageExtras] = useState<ImageApiExtras | null>(null);
   const [voiceApi, setVoiceApi] = useState<ChatApiSettings | null>(null);
   const [voiceExtras, setVoiceExtras] = useState<VoiceApiExtras | null>(null);
-  /* 副接口（1.9.48）：外语聊天的翻译默认走它——翻一句话不需要文采，越便宜越好。 */
+  /* 副接口：外语聊天的翻译默认走它——翻一句话不需要文采，越便宜越好。 */
   const [subApi, setSubApi] = useState<ChatApiSettings | null>(null);
   /* 类人记忆（注入 prompt＋总结触发；随会话加载）。 */
   const [memory, setMemory] = useState<CharacterMemory | null>(null);
@@ -767,7 +763,7 @@ export default function ChatWindow({
     [],
   );
 
-  /* ---------- 改自己／他发出去的话（1.7.50）：长按气泡 →「编辑」 ---------- */
+  /* ---------- 改自己／他发出去的话：长按气泡 →「编辑」 ---------- */
   /** 正在改的那条（null＝没在改）。 */
   const [editMsg, setEditMsg] = useState<ChatMessage | null>(null);
   const [editDraft, setEditDraft] = useState("");
@@ -797,13 +793,13 @@ export default function ChatWindow({
     () => conv?.voiceOverride ?? voiceExtras,
     [conv, voiceExtras],
   );
-  /* 翻译交给哪套接口（1.9.48）：设定里挑了副接口、且副接口**真配齐了**（启用＋地址＋模型）
+  /* 翻译交给哪套接口：设定里挑了副接口、且副接口**真配齐了**（启用＋地址＋模型）
      才用它；只要有一项没填就退回主文本接口——挑了个空的副接口却静默不翻，最难查。 */
   const translateApi = useMemo(() => {
     const s = subApi;
     const subReady = !!s && s.enabled && s.baseUrl.trim() !== "" && s.model.trim() !== "";
     /* 老会话还没存过 translate 这一格时，取跟设置页显示的**同一个出厂值**（副接口）——
-       否则设置页写着「副接口」、实际却悄悄走主接口，账单上就对不上了（恩熙查账没看见副接口扣费）。 */
+       否则设置页写着「副接口」、实际却悄悄走主接口，账单上就对不上了。 */
     const choice = conv?.translate?.api ?? "sub";
     if (choice === "sub" && subReady && s) return s;
     return effTextApi;
@@ -828,13 +824,13 @@ export default function ChatWindow({
   const streamTailRef = useRef("");
   /* 上屏时刻的镜像（预览渲染与落库都读它，避免在渲染期读 ref）。 */
   const streamStampsRef = useRef<string[]>([]);
-  /* 1.4.9 思维链：本轮思考过程的累积缓冲——onReasoning 一行行往里写，落库时挂到
+  /* 思维链：本轮思考过程的累积缓冲——onReasoning 一行行往里写，落库时挂到
      本轮第一条 TA 气泡上（一轮只挂一条，思考只有一个）。 */
   const reasoningRef = useRef<string>("");
-  /* 1.4.9 思维链两件套：①showReasoning＝全局开关（设置里的「显示思维链」，进场读一次）；
+  /* 思维链两件套：①showReasoning＝全局开关（设置里的「显示思维链」，进场读一次）；
      ②openReasoningIds＝哪几条消息的思考面板点开了（默认全收着）。 */
   const [showReasoning, setShowReasoning] = useState(true);
-  /* 1.4.12 正则规则缓存：挂载时读一遍（旧消息的「仅显示」规则进页就生效），
+  /* 正则规则缓存：挂载时读一遍（旧消息的「仅显示」规则进页就生效），
      每轮发送前再刷一次（刚建的规则下一轮就用上）。 */
   const [regexRules, setRegexRules] = useState<RegexRule[]>([]);
   const [openReasoningIds, setOpenReasoningIds] = useState<ReadonlySet<string>>(
@@ -852,8 +848,6 @@ export default function ChatWindow({
       return next;
     });
   }, []);
-  /* 1.5.60 那套「心声默认收着、点开才展开」的 state 已随 1.5.72 摘掉聊天里的心声入口
-     一起删掉——现在没有可开合的心声块了（心声全在那页档案里，那边自带历史抽屉）。 */
   /* visible 的镜像：requestReply 是个长跑的闭包，开跑那一刻就把 visible 的值抄住了——
      中途退回列表，闭包里那个 true 还是 true，判断不出「人已经不在这一间」。
      落库要不要记未读，得读「此刻」的值，所以用 ref 跟着走。 */
@@ -861,7 +855,7 @@ export default function ChatWindow({
   useEffect(() => {
     visibleRef.current = visible;
   }, [visible]);
-  /* messages 的镜像（1.8.4）：generateOfflineReply 是个长跑的闭包，deps 里没有 messages
+  /* messages 的镜像：generateOfflineReply 是个长跑的闭包，deps 里没有 messages
      （它若跟着 messages 变，整条线下回调每轮重建）。进线下时要拿「线上刚聊过的那一段」
      拼在见面请求最前，闭包里读不到最新的 messages，就用 ref 跟着走——同 visibleRef 一个道理。 */
   const messagesRef = useRef(messages);
@@ -940,15 +934,15 @@ export default function ChatWindow({
   /* 名字全部动态：档案本名 → 昵称 → 兜底「TA」。 */
   const charName = character.data.name || character.data.nickname || "TA";
   const myName = userName.trim() || "我";
-  /* 1.4.12 正则宏上下文：{{user}}＝我、{{char}}＝TA（发送与气泡显示共用一份）。
+  /* 正则宏上下文：{{user}}＝我、{{char}}＝TA（发送与气泡显示共用一份）。
      useMemo 稳住引用：sendReply 的 useCallback 依赖它，不包一层每渲染都重建回调。 */
   const regexCtx = useMemo(() => ({ userName: myName, charName }), [myName, charName]);
   const signature = conv?.signature?.trim() || defaultSignature(character.data);
-  /* 签名译文（1.9.50）：外语聊天开着时，缓存里那句中译（见 transCache）——有了它，
+  /* 签名译文：外语聊天开着时，缓存里那句中译（见 transCache）——有了它，
      名字下方那一行才可以「点一下」切中文；没翻好／没开外语，就只显示原文、点不动。 */
   const sigTrans =
     conv?.translate?.out.on === true ? conv?.transCache?.[(conv?.signature ?? "").trim()] ?? "" : "";
-  /* 1.7.20：默认字号 13 → 13.5。气泡正文这一版换了宋体（见 assistantBubbleStyle 的注），
+  /* 默认字号 13.5。气泡正文用宋体（见 assistantBubbleStyle 的注），
      宋体笔画比黑体细、同一字号看着更小更薄，提小半号补回来；她自己调过字号的仍以
      conv.fontSize 为准，这里只动默认那一档。 */
   const fontSize = conv?.fontSize ?? 13.5;
@@ -979,9 +973,8 @@ export default function ChatWindow({
       if (cancelled) return;
       setConv(c);
       setMessages(c.messages);
-      /* 线下那一场还开着吗（1.7.39）：开着就直接又摆出线下那一页——App 被杀掉／退到后台
-         再进来照样认（恩熙：「我下一次点击这个聊天框，依旧还是会停留在线下的结果」）。
-         换会话时也按这条新会话自己的值走，不把上一间屋子的「见着面」带过来。 */
+      /* 线下那一场还开着吗：开着就直接又摆出线下那一页——App 被杀掉／退到后台
+         再进来照样认。换会话时也按这条新会话自己的值走，不把上一间屋子的「见着面」带过来。 */
       setShowOffline(!!c.offlineOpen);
       setMemory(mem);
       setImageApi(bundle.image);
@@ -996,9 +989,8 @@ export default function ChatWindow({
          他始终没表态（也没退还）而聊天又往下走过「上下文条数」那么多条，这笔就作废、
          钱原路退回我出的那个口袋（见 expireStaleMoney）。
          没走过线的一律**留着**——他随时能回头补一个〔收下〕把它领走。
-         1.4.63 之前发出的老消息没有 `payFrom`：那种当时就一次划走了（钱早进他账上），
-         这里只补卡片上那一句；1.5.12 起**不再替他收下**（老口径「没写＝他收下」已废），
-         补的也是「已过期」——钱早给出去了，退不回来就不再动账。 */
+         老消息没有 `payFrom`：那种当时就一次划走了（钱早进他账上），
+         这里只补卡片上那一句「已过期」——钱早给出去了，退不回来就不再动账。 */
       const swept = await expireStaleMoney(c.messages, moneyExpiryLimitOf(mem), {
         characterId: character.id,
         maskId,
@@ -1053,7 +1045,7 @@ export default function ChatWindow({
     };
   }, [loaded, visible]);
 
-  /* 加载更早的消息（1.7.36）：只把**上屏条数**往上推一格，消息本身一条都没动。
+  /* 加载更早的消息：只把**上屏条数**往上推一格，消息本身一条都没动。
      推完要把视口钉住：新增的那些全在上头，不钉的话内容整体下坠，她正看着的那行会跑掉。
      做法＝记下推之前的 scrollHeight／scrollTop，推完（useLayoutEffect，还在上屏之前）
      把多出来的那段高度补回 scrollTop，屏幕上那行字一动不动。 */
@@ -1091,7 +1083,7 @@ export default function ChatWindow({
     [],
   );
 
-  /* 卸载时把正在响的那条语音掐掉，不然离开聊天还在说话。1.10.1 起播放只剩
+  /* 卸载时把正在响的那条语音掐掉，不然离开聊天还在说话。播放只剩
      playVoiceViaElement 一条路（媒体元素），所以只停它。 */
   useEffect(() => {
     return () => {
@@ -1386,8 +1378,8 @@ export default function ChatWindow({
 
   const markContactReceived = useCallback(
     async (m: ChatMessage) => {
-      /* 先把他那份加上（1.4.63）：钱在发出那一刻只从我这扣了、还没给他，
-         收下这一刻才落进他的零钱。老消息（1.4.63 之前发出的）没有 `payFrom`——
+      /* 先把他那份加上：钱在发出那一刻只从我这扣了、还没给他，
+         收下这一刻才落进他的零钱。老消息没有 `payFrom`——
          那种当时就一次划走了（钱已在他账上），这里只补卡片上那一句，不能再加一遍。
          加不成就先不动卡片：留着下次进会话再补（宁可晚一点，也不能卡片写着「他已收下」、
          钱却没进他的账）。 */
@@ -1414,10 +1406,10 @@ export default function ChatWindow({
       /* 弹窗此刻正开着这一条的话，文案也要跟着变——不然卡片已经「他已收下」，
          弹窗里还写着「等他收下」，两处对不上。 */
       setOpenMoney((cur) => (cur && cur.id === done.id ? done : cur));
-      /* 光把原来那张卡变淡还不算完（恩熙 1.4.40）：「他接受转账了，我的卡片变暗，
-         并且他会发出一个他接受转账的卡片」——所以再以**他的名义**落一条：
+      /* 光把原来那张卡变淡还不算完：他接受转账了，我的卡片变暗，
+         并且他会发出一个他接受转账的卡片——所以再以**他的名义**落一条：
          转账是收款回执卡（挂在他那侧、跟他的消息一样带头像），红包是一条系统提示
-         「XX 已领取你的红包」（1.4.42，恩熙要的微信那个样子）。 */
+         「XX 已领取你的红包」（微信那个样子）。 */
       const echo = buildMoneyEcho(m, "assistant", charName);
       try {
         await appendMessage(character.id, maskId, echo);
@@ -1438,7 +1430,7 @@ export default function ChatWindow({
   const settleContactRefund = useCallback(
     async (m: ChatMessage) => {
       const cents = Math.round((m.amount ?? 0) * 100);
-      /* 老消息（1.4.63 之前发出的）没有 `payFrom`：那种发出去时就一次划走了
+      /* 老消息没有 `payFrom`：那种发出去时就一次划走了
          （钱已经进了他的账），这里再往回搬一遍就是同一笔钱算两回——只补卡片上那个字。 */
       if (cents > 0 && m.payFrom !== undefined) {
         const back = await takeBackToPocket({
@@ -1514,7 +1506,7 @@ export default function ChatWindow({
         onDataChange();
         return;
       }
-      /* 线下那一场也进上下文（1.7.7）：把最近的线下经过拼成**一条**挂在历史最前——
+      /* 线下那一场也进上下文：把最近的线下经过拼成**一条**挂在历史最前——
          他才知道你们刚见过面、在一处都发生了些什么（不然回到手机还当没见过）。
          挂最前、不贴在本轮前面：前缀在这一整段里才恒定，站的自动前缀缓存能连读。
          只给他读：不落库、不上屏、不进未读数。 */
@@ -1551,7 +1543,7 @@ export default function ChatWindow({
       const controller = new AbortController();
       streamAbortRef.current = controller;
       streamTextRef.current = "";
-      /* 思考缓冲也归零：上一轮的思考绝不能串进这一轮（1.4.9）。 */
+      /* 思考缓冲也归零：上一轮的思考绝不能串进这一轮。 */
       reasoningRef.current = "";
       streamShownRef.current = 0;
       streamSettledRef.current = 0;
@@ -1567,7 +1559,7 @@ export default function ChatWindow({
       setStreamStamps([]);
       setFrozenTail(null);
       try {
-        /* TA 手头有多少零钱（1.4.36）也一起取：他要在读人设之外知道「本钱」有多少，
+        /* TA 手头有多少零钱也一起取：他要在读人设之外知道「本钱」有多少，
            发红包／转账才不至于凭空乱写。只挂易变区一行（见 promptBuilder 的零钱行）。
            这里顺带保证他那本账**开过**——第一次跟他说话就按人设开户（她已经翻过他手机的话，
            这一步什么也不做、只是把余额读出来）。开户本身出岔子（写库失败）不该连累聊天：
@@ -1606,10 +1598,10 @@ export default function ChatWindow({
           currentSignature: conv?.signature,
           /* 用户签名（「我」页面）：只挂易变区一行，TA 改不了它、只是看得见。 */
           userSignature,
-          /* TA 的零钱：他自己发红包／转账的花销从这本账出（1.4.36）。 */
+          /* TA 的零钱：他自己发红包／转账的花销从这本账出。 */
           walletBalance: taWallet,
           memoryBlock,
-          /* 我发的朋友圈里他有权看的那几条（1.10.27）：可见范围在这儿真的生效——
+          /* 我发的朋友圈里他有权看的那几条：可见范围在这儿真的生效——
              仅自己可见、或部分可见里没点到他，这一格就是空的。 */
           myMomentsBlock: await buildMyMomentsBlock(character.id, character.categoryId, maskId),
           excludeDialogue: true,
@@ -1641,32 +1633,28 @@ export default function ChatWindow({
           : "";
         /* AI 助手模式的联系人：正文与人设跟普通角色一样，只在末尾多一条
            【测试模式 · 绝对服从】（测试时指令绝对服从、不推脱）。 */
-        /* 1.6.5：buildStylePrompt 拆成两段收（见 chatApi 那段说明）——
+        /* buildStylePrompt 拆成两段收（见 chatApi 那段说明）——
            head＝【心声】（输出格式）＋沉浸指令，摆在整个 system 最前；
            tail＝消息格式／富媒体／【行为守则】／测试模式，摆到稳定段末尾。
-           从前它们是糊成一整段全摆最前，把「角色前」世界书挤到了后面。
-           1.7.0 照参考项目 wechat.js 的 buildChatSystem 重排：【心声】提到第一块
-           （它那边是【输出格式（最高优先级）】）、新开的【行为守则】压在末尾。 */
-        /* 语音提示词生效值（1.9.58）：角色单独配了一份就用角色的（存在＝用角色的，
+           【心声】摆第一块（对齐参考项目 wechat.js 的【输出格式（最高优先级）】）、
+           【行为守则】压在末尾。 */
+        /* 语音提示词生效值：角色单独配了一份就用角色的（存在＝用角色的，
            不回落全局）；没配＝跟随全局设置（开关＋正文）。取到的正文非空才注入，
            空着传 null 保持稳定段逐字不变。 */
         const vpText =
           conv?.voicePromptOverride?.text ??
           (prefs.voicePromptOn ? prefs.voicePromptText : "");
-        /* 正文非空就注入（1.9.89）。从前那份出厂规矩是「往台词前插英文方括号标签」，
-           只有 ElevenLabs 认，所以特意加了道「不是 ElevenLabs 就不注入」的分支；现在
-           出厂规矩改成「把语气写进文字本身」，对所有音色都成立，这道分支也就去掉了。
-           角色自己改过的规矩同样照注入——那是她要的说话方式。 */
+        /* 正文非空就注入。出厂规矩是「把语气写进文字本身」，对所有音色都成立，
+           不挑合成引擎；角色自己改过的规矩同样照注入——那是她要的说话方式。 */
         const voicePromptRule = vpText.trim() !== "" ? vpText : null;
-        /* 外语聊天（1.9.81）：语音的双语格式要「用户提示词压不掉」，所以在 buildStylePrompt
+        /* 外语聊天：语音的双语格式要「用户提示词压不掉」，所以在 buildStylePrompt
            里就带上目标语言（见那边的 voiceLang 参数）。取在调用之前，下面两处都要用。 */
         const trOut = conv?.translate?.out;
-        const trInnerOn = conv?.translate?.inner === true;
         const { head: stylePrompt, tail: styleRules } = buildStylePrompt(
           charName,
           myName,
           opts?.extraHint,
-          /* 1.10.69：聊天里一律告诉 TA「能发图／能发语音」，不看接口配没配——
+          /* 聊天里一律告诉 TA「能发图／能发语音」，不看接口配没配——
              配没配是「画不画得出来」的事，不是「能不能发」的事：没配也要落一个
              图片／语音气泡（描述摆着、点「生成」提示去配接口）。 */
           true,
@@ -1675,11 +1663,10 @@ export default function ChatWindow({
           /* 气泡条数：**每聊天设定**（见 bubbleCapOf）。0＝不限，连提示词那句都不加，
              保持逐字不变；开了才告诉 TA 这一轮最多几条。 */
           bubbleCap > 0 ? bubbleCap : null,
-          /* 语音提示词（1.9.58；1.9.60 校准定位）：角色单独配了就用角色的，没配就跟随全局
-             （设置里的开关＋正文）。管的是〔语音〕里那句台词怎么写，不是发语音的机制。
+          /* 语音提示词：管的是〔语音〕里那句台词怎么写，不是发语音的机制。
              开关开着且正文非空才注入；否则传 null，稳定区逐字不变（不吃缓存重建）。 */
           voicePromptRule,
-          /* 语音的目标外语（1.9.81）：开着「他说的外语」＝传该语言，语音固定写成「原文|中文」，
+          /* 语音的目标外语：开着「他说的外语」＝传该语言，语音固定写成「原文|中文」，
              压过用户自定义的语音规矩，语音永远自带中文。 */
           trOut?.on ? trOut.lang : null,
         );
@@ -1690,32 +1677,17 @@ export default function ChatWindow({
            不进 system。前缀缓存是整条链的哈希——会变的东西留在断点之前，整块缓存每轮作废。
            记忆碎片从 user 尾部挪进稳定段：挂在尾部时，那条 user 下一轮
            回喂历史只剩光原话、字面对不上，站子从那条起整段作废（记忆块每轮白写两遍）。 */
-        /* 外语聊天（1.9.48；1.9.50 扩到「他写下的字」）：他说话换一门语言——气泡正文、语音，
-           连签名／心声／日记／环境／心情／欲望／怯念／细处都用这门语言写（这些她**点一下**看中文，
-           见 transCache；不必自己附中文）。**中文标签与〔〕标记一律原样**——它们是解析的锚，
-           动了就解析不出来；思考过程这一版仍写中文。
-           钉在稳定段：它只在设置改动那一下才变，跟别的稳定内容一起吃前缀缓存。 */
-        /* 1.9.80：不再事后发第二次翻译请求，改成让模型**一次就写两半**——
-           每条消息写成「外文原文|简体中文」，解析层按竖线劈开（见 splitBilingual）。
-           1.9.81：语音那半的固定格式移到 buildStylePrompt 的【发语音】一节（用户提示词
-           压不掉），这里只管正文与 <think>。 */
-        /* 1.9.83：心声那一格的口径按恩熙定的来——开＝心声页两种语言，<think> 各行照旧写
-           「原文|中文」两半；关＝心声页只中文，<think> 各行**直接写简体中文**。
-           关着时若还写外语，页里就得靠现翻才看得懂、还得挂枚「译／原」小键——
-           恩熙不想看到那小键，所以让 TA 一开始就把心声写成中文，页里天然中文。 */
-        /* 1.9.85：按恩熙定的口径补上「身份」与「地道」两件事——从前这条只讲**格式**
-           （怎么写「原文|中文」），没讲**他是谁**（母语就是日语，本就是日本人），
-           也没讲**怎么说话**（按日语母语者的用词、语气来，不是把中文逐字换成日语）。
-           她原话：「我们应该要告诉这一个人设，他的母语就是日语……不能是死板的用中文
-           去翻译日语，而是想象自己是日本人，说话语气都要符合日语用词的规范」。
-           另按她确认的 A＋C：他听得懂中文、能用中文接话，偶尔也可自然蹦几句中文——
-           整句说中文的那条**直接写中文、不加竖线**（解析层认得，见 splitBilingual；
-           译文与气泡重复时由下面的去重去掉，别在气泡下再挂一遍同样的话）。 */
-        /* 1.9.86：规则里的样板句得跟着语言走——从前固定写着日语「こんにちは|你好」，
-           切到英语／韩语时那句就成了错榜样，会带偏模型。给七种语言各配一对问候；
-           万一下拉里将来加了没配的语言，退回「（语言名）原文|你好」的抽象写法。
-           1.10.13：整段提取到 chatApi 的 buildLangRule，线下社交反应生成也用同一份。 */
-        const langRule = buildLangRule(trOut?.on ? trOut.lang : null, trInnerOn);
+        /* 外语聊天：他说话换一门语言——气泡正文、语音、签名都用这门语言写（签名她
+           **点一下**看中文，见 transCache）。**中文标签与〔〕标记一律原样**——它们是解析的
+           锚，动了就解析不出来。钉在稳定段：它只在设置改动那一下才变，跟别的稳定内容一起
+           吃前缀缓存。模型**一次就写两半**：「外文原文|简体中文」，解析层按竖线劈开
+           （见 splitBilingual）；语音那半的固定格式在 buildStylePrompt 的【发语音】一节
+           （用户提示词压不掉）。
+           心声固定写简体中文（<think> 各行只写中文），不随外语走——恩熙定：只想让 TA
+           说出口的话／打出来的字是外语，心声本就该是中文，页里也不必点「译／原」小键。
+           外语的口径（母语身份、按母语者的用词语气说话、偶尔自然蹦中文）与各语言样板句
+           统一收在 buildLangRule，线下社交反应生成也用同一份。 */
+        const langRule = buildLangRule(trOut?.on ? trOut.lang : null, myName);
         const systemStable = stylePrompt + "\n\n" + built.stable + "\n\n" + styleRules + langRule;
         /* 拉黑状态是「会变的状态」（拉／解除各换一份），所以不占稳定段——走 system 的
            第二段 tail（缓存断点之后）：稳定段照旧逐字不变、缓存不受影响，
@@ -1723,15 +1695,14 @@ export default function ChatWindow({
         const systemTail = socialPrompt;
         /* 易变尾巴（签名取值／当前状态／关键词世界书／对话后世界书）挂在本轮 user 消息末尾，
            不进 system——它每轮都会变，一进 system 就把断点之后的整段作废。
-           1.5.95 校正：这里原写着「『当前状态』（分钟级时间）不再注入」，与代码不符——
-           buildPrompt 的易变区一直带着它（`input.timeAware` 为真时，见 promptBuilder
-           末尾那段）；ChatWindow 传的是设置里的「时间感知」开关，默认开。所以 TA 是看得见
-           「现在是几点」的，1.5.95 起还看得见「距上一条消息已经过了多久」（见 idleGapLine）。 */
-        /* 1.4.12：本轮要用的正则规则（每轮发送现取——设置里刚建／刚改的规则立刻生效）；
+           「当前状态」（分钟级时间）由 buildPrompt 的易变区带着（`input.timeAware` 为真时，
+           见 promptBuilder 末尾那段）；ChatWindow 传的是设置里的「时间感知」开关，默认开。
+           所以 TA 是看得见「现在是几点」的，也看得见「距上一条消息已经过了多久」（见 idleGapLine）。 */
+        /* 本轮要用的正则规则（每轮发送现取——设置里刚建／刚改的规则立刻生效）；
            顺手刷一遍显示缓存，旧消息的「仅显示」气泡也跟着换新规则。 */
         const rules = await loadRegexRules();
         setRegexRules(rules);
-        /* 1.4.12 userInput 正则：我说的原话先过一遍规则再送模型（屏幕上与存档里
+        /* userInput 正则：我说的原话先过一遍规则再送模型（屏幕上与存档里
            仍是原文——apiText 记的就是改后的这份，回喂历史字面一致，缓存不断）。
            引用与易变尾巴不参与：规则只管「我说的话」。
            mediaOnly（发图片这类：消息本身就是内容、这一轮没有文字）时，本轮给模型的
@@ -1743,12 +1714,12 @@ export default function ChatWindow({
         const userTextForModel = opts?.mediaOnly
           ? (opts.mediaText ?? "（发来一张图片）")
           : applyRegexRules(userText, "userInput", regexCtx, rules);
-        /* 刚在线下见过面（1.7.5）：离开线下场合后的**下一轮**要带一句说明——不然 TA
+        /* 刚在线下见过面：离开线下场合后的**下一轮**要带一句说明——不然 TA
            回来还当隔着手机，会问「你怎么突然找我」这种话。挂在本轮 user 消息末尾（易变区，
            不进 system），用掉即清：只带这一轮，之后不再提。
            写下来的这一句会跟着 input 记进这条 user 的 apiText，回喂历史字面一致，缓存不断。 */
         const offlineNote = conv?.offlineReturnNote
-          ? "【你们刚刚在线下见过面，就在她面前；这一轮回到手机上说话，别当作没见过、别问「你怎么突然找我」。】"
+          ? "【你们刚刚在线下见过面，就在她面前；这一回轮到了在手机上说话。】"
           : "";
         const input =
           (opts?.quote ? `【引用】${opts.quote}\n${userTextForModel}` : userTextForModel) +
@@ -1767,7 +1738,7 @@ export default function ChatWindow({
            重写（1.25×）——这就是「♻几乎不动、✎一直在涨」的成因。
            没带尾巴（input 与原文一致）时不写：那种消息走原有的回喂逻辑就字面一致。 */
         const curUser = [...history].reverse().find((m) => m.role === "user");
-        /* 这截易变尾巴单独记一份（1.10.8）：红包／转账回喂时正文要按当时状态重算
+        /* 这截易变尾巴单独记一份：红包／转账回喂时正文要按当时状态重算
            （见 chatApi 的 money 分支），不能再整条照抄 apiText——但重算完得把这截
            接回去，否则前缀从尾巴那儿整段断开、每轮重写。普通文本用不着它。 */
         const tailPart =
@@ -1796,7 +1767,7 @@ export default function ChatWindow({
         /* 流式开关在「文本 API」里配置：关掉就直接走非流式，
            省掉一次注定白跑的流式请求（中转站按次计费时尤其值得）。 */
         const useStream = effTextApi.stream !== false;
-        /* 本轮附图（1.4.23）：只在「我这一轮刚发了图」时带，取**末尾连着的一串我发的
+        /* 本轮附图：只在「我这一轮刚发了图」时带，取**末尾连着的一串我发的
            消息**里最后一张。为什么只认这一串：图上配字时是「图 + 字」两条一起发出去的
            （见 sendPickedImage），两条都算这一轮；再往前就是上一轮的图了——图是按尺寸
            算 token 的，一路带着等于每轮把钱重烧一遍，绝不能带。
@@ -1829,7 +1800,7 @@ export default function ChatWindow({
             break;
           }
         }
-        /* 「查看本轮请求」留档（1.7.49）：把这一轮真发出去的东西记一份。
+        /* 「查看本轮请求」留档：把这一轮真发出去的东西记一份。
            full 走 chatApi 的 outgoingContents——与真请求同一份组装逻辑，逐字一致。 */
         recordRequest({
           mode: "online",
@@ -1846,10 +1817,9 @@ export default function ChatWindow({
         let reply = "";
         let stopped = false;
         let streamed = false;
-        /* 双语模式总闸（1.9.80）：他说的外语这一侧开着＝回复按「原文|译文」成对解析；
-           innerBilingual 再叠加「心声页双语」那一格（<think> 各行也成对写）。 */
+        /* 双语模式总闸：他说的外语这一侧开着＝回复按「原文|译文」成对解析。
+           心声不受此影响，永远写简体中文（恩熙定，见 buildLangRule）。 */
         const pairMode = conv?.translate?.out.on === true;
-        const innerBilingual = pairMode && conv?.translate?.inner === true;
         /* 流式增量回调抽成具名函数：站点回绝带图时我们要**摘图重发一次**，
            重发必须走同一份回调，否则第二次的内容不会上屏。 */
         const onStreamDelta = (full: string) => {
@@ -1891,7 +1861,7 @@ export default function ChatWindow({
                 onStreamDelta,
                 {
                   signal: controller.signal,
-                  /* 思考过程边到边记（1.4.9）：思考型模型先吐思考后吐正文，这段照收照存。 */
+                  /* 思考过程边到边记：思考型模型先吐思考后吐正文，这段照收照存。 */
                   onReasoning: (r) => {
                     reasoningRef.current = r;
                   },
@@ -1899,7 +1869,7 @@ export default function ChatWindow({
                 },
               )
             : /* 中间三个 undefined 走默认值（历史不限条数／maxTokens／temperature），
-                 只为把 signal 递进去；再往后把思考过程接住（1.4.9，非流式一次整段到）。 */
+                 只为把 signal 递进去；再往后把思考过程接住（非流式一次整段到）。 */
               fetchAIReply(
                 effTextApi,
                 { stable: systemStable, tail: systemTail },
@@ -1934,7 +1904,7 @@ export default function ChatWindow({
             throw err;
           }
         }
-        /* 拒答兜底（1.7.4，恩熙选的 A 方案）：模型没报错，但张嘴就是「抱歉，我不能…」——
+        /* 拒答兜底：模型没报错，但张嘴就是「抱歉，我不能…」——
            这不是 TA 说的话，是生成失败的另一种长相。**绝不能当成 TA 的消息落库**：
            一旦落进去，下一轮回喂就带着「我刚拒绝过」，此后不论怎么重发、怎么删最后一条，
            送上去的都是同一段历史、同一个结果（雪球越滚越死）。
@@ -1952,32 +1922,31 @@ export default function ChatWindow({
             throw refused;
           }
         }
-        /* 1.4.9 思维链把关：挂不挂在这判——「正文空、思考兜底当正文」的那一轮
+        /* 思维链把关：挂不挂在这判——「正文空、思考兜底当正文」的那一轮
            （chatApi 的兜底路径），reasoningRef 和 reply 一模一样，那是正文不是思考，
            挂上去就是同一段字两头重复。其余情况（正文非空＋独立思考）照挂；
            半途停止也保留已收到的思考（能看到它当时想到哪）。 */
         const reasoningClean = reasoningRef.current.trim();
         const reasoningFinal =
           reasoningClean && reasoningClean !== reply.trim() ? reasoningRef.current : undefined;
-        /* 1.4.12 aiOutput 正则：TA 的回复在剥标记、落库之前过一遍规则——存下来的
+        /* aiOutput 正则：TA 的回复在剥标记、落库之前过一遍规则——存下来的
            就是干净的，翻旧记录也干净。流式期间屏幕上可能先闪过原文、落库那刻换成
            替换后的，属预期（正则在半截文字上跑不可靠，只能整段收完再改）。 */
         reply = applyRegexRules(reply, "aiOutput", regexCtx, rules);
-        /* 1.5.60 心声：TA 每轮最前面那段 <think>…</think> 在这儿先摘下来（摘在
+        /* 心声：TA 每轮最前面那段 <think>…</think> 在这儿先摘下来（摘在
            末尾标记之前：心声里的字不该被当成〔图片〕那类标记顺走），
            摘完的正文再往下走标记与拆条，一个字都不受影响。
-           2026-10-06：环境／细处／日记三栏删掉后，账里只剩心情、欲望、怯念，都不继承，
-           摘的时候不必再往回找上一份快照。 */
-        const voice = extractInnerVoice(reply, innerBilingual);
+           账里只有心情、欲望、怯念，都不继承，摘的时候不必往回找上一份快照。 */
+        const voice = extractInnerVoice(reply);
         // 先剥掉末尾的〔签名〕／〔图片〕／〔语音〕标记（气泡里永远看不到），再拆条连发。
         const extracted = extractMetaMarkers(voice.clean, charName);
         /* 与上面的流式预览传同一个上限：预览转正时条数一致，不会突然合并或裂开。 */
-        /* 1.5.47 TA 引用回复：拆完条再摘〔引用:原话〕——标记跟着某一条走，摘到谁头上
+        /* TA 引用回复：拆完条再摘〔引用:原话〕——标记跟着某一条走，摘到谁头上
            就贴到谁的气泡上方。库里存「我：原话」（跟 quoteMsg 一个写法），
            气泡那侧照旧按「对面那个名字」把前缀摘掉显示。 */
         const rawParts = splitReply(extracted.clean, bubbleCap, pairMode);
         const { parts: pairedParts, quotes } = extractBubbleQuotes(rawParts);
-        /* 双语劈分（1.9.80）：一条「原文|译文」里，左半边进气泡（content／TTS 都读它），
+        /* 双语劈分：一条「原文|译文」里，左半边进气泡（content／TTS 都读它），
            右半边进译文行。漏写竖线的那条 inlineTrans 为 undefined，交给副接口兜底。 */
         const parts = pairMode ? pairedParts.map((p) => splitBilingual(p).src) : pairedParts;
         const inlineTrans = pairMode ? pairedParts.map((p) => splitBilingual(p).zh) : [];
@@ -1987,12 +1956,9 @@ export default function ChatWindow({
         const imageRefs = stopped ? [] : extracted.imageRefs;
         const imageRefMarks = stopped ? [] : extracted.imageRefMarks;
         const voices = stopped ? [] : extracted.voices;
-        /* TA 自己发的红包／转账（1.4.36）：跟签名／图片一样，半途停止就不作数——
+        /* TA 自己发的红包／转账：跟签名／图片一样，半途停止就不作数——
            他那句话都没说完，钱当然也不该划出去。 */
         const moneys = stopped ? [] : extracted.moneys;
-        /* 1.7.96：原来这儿还多一步 settleWish——给快照补上「最想做的事做成没有」，
-           供念头池判断。账里「最想做的事」这一栏撤掉之后（恩熙：我们没有这个栏目），
-           这一步与念头池一并删掉，解析出来的快照直接用。 */
         const snapshotNow = voice.snapshot;
         /* TA 这一轮要落的每一条都从这儿走，落一条就办两件事：
            ① 「人不在这一间屋子」时把列表未读 +1——退到列表去干别的事，TA 说话了，
@@ -2008,7 +1974,7 @@ export default function ChatWindow({
           onDataChange();
           return conv;
         };
-        /* 外语聊天（1.9.48；1.9.80 改双主打）：他说的外语 → 中文，逐条翻好挂到译文行上。
+        /* 外语聊天：他说的外语 → 中文，逐条翻好挂到译文行上。
            译文**优先用模型自己写的那半**（inlineTrans，随回复一次到齐）；只有哪一条漏写了
            竖线，才用（副）翻译接口兜底补翻那一条——接口抽风最多让那一条没译文，不再全场空白。
            只翻**说出口的话**（气泡正文），签名／心声／思考一概不碰；半途停止不翻。 */
@@ -2021,12 +1987,12 @@ export default function ChatWindow({
               ),
             )
           : [];
-        /* 1.9.85：他偶尔整句说中文时那条没有竖线，兜底翻（中文→中文）会把原文原样吐回，
+        /* 他偶尔整句说中文时那条没有竖线，兜底翻（中文→中文）会把原文原样吐回，
            译文行就跟气泡一字不差——那行小字纯属重复，抹掉，别在气泡下再挂一遍同样的话。 */
         for (let i = 0; i < partTrans.length; i++) {
           if (partTrans[i] && partTrans[i]!.trim() === parts[i].trim()) partTrans[i] = undefined;
         }
-        /* 1.10.62 标记夹中间：独立成行的图/语音/钱标记切出的文字段（extracted.segments），
+        /* 标记夹中间：独立成行的图/语音/钱标记切出的文字段（extracted.segments），
            各段拆出的条数加起来与整篇一致（气泡上限没触发合并的常态）时，按标记原位
            穿插落库；对不上就退回旧顺序（文字→图→语音→钱），位置宁后勿乱。 */
         const segLens = extracted.segments.map(
@@ -2067,7 +2033,7 @@ export default function ChatWindow({
           voices.forEach((_, i) => events.push({ t: "voice", i }));
           moneys.forEach((_, i) => events.push({ t: "money", i }));
         }
-        /* 外语聊天（1.9.48；1.9.80 改双主打）：语音跟气泡正文同一门语言，照样挂一行中文译文。
+        /* 外语语音跟气泡正文同一门语言，照样挂一行中文译文。
            台词本身也是「原文|中文」：**TTS 只念左半边原文**，右半边进译文行；
            漏写竖线的那条才用（副）接口兜底补翻。 */
         const voicePairs = pairMode ? voices.map((v) => splitBilingual(v)) : [];
@@ -2081,7 +2047,7 @@ export default function ChatWindow({
                 ),
               )
             : [];
-        /* 图/语音占位与钱的落库收口（1.10.62）：穿插模式在事件位置调用，末尾兜底同款。 */
+        /* 图/语音占位与钱的落库收口：穿插模式在事件位置调用，末尾兜底同款。 */
         const imagePlaceholders: ChatMessage[] = [];
         const voicePlaceholders: ChatMessage[] = [];
         const sysNotice = (text: string): ChatMessage => ({
@@ -2141,7 +2107,7 @@ export default function ChatWindow({
           voicePlaceholders.push(placeholder);
           return placeholder;
         };
-        /* TA 自己发的红包／转账（1.4.36）：他手上那本账是真的，掏钱也得是真的。
+        /* TA 自己发的红包／转账：他手上那本账是真的，掏钱也得是真的。
            够，就落一条真的红包／转账气泡；不够／超限／扣账失败，就落一句系统提示——
            **绝不落假气泡**：气泡里写着 520、他账上一分没少，恩熙翻他手机一对就穿帮，
            比没发还糟。一轮多笔逐笔串行：后一笔看的是前一笔扣完之后的余额。 */
@@ -2185,7 +2151,7 @@ export default function ChatWindow({
         } else {
           clearStreamPreview();
         }
-        /* 1.10.62：按事件序列落库（文字条＋图/语音/钱按标记原位穿插）。
+        /* 按事件序列落库（文字条＋图/语音/钱按标记原位穿插）。
            流式＝一整批构建完一次性转正（同帧完成，视觉无跳变）；
            非流式＝逐条带节奏冒出来。 */
         const freshAll: ChatMessage[] = [];
@@ -2217,7 +2183,7 @@ export default function ChatWindow({
           }
           freshAll.push(msg);
         }
-        /* 心声／内心快照／思考只挂本轮第一条**文字**气泡（1.5.60／1.5.65／1.4.9）——
+        /* 心声／内心快照／思考只挂本轮第一条**文字**气泡——
            穿插后第一条 TA 消息可能是图片占位，挂那儿不像话，认第一条文字。 */
         if (firstTextAt >= 0) {
           if (voice.innerVoice) freshAll[firstTextAt].innerVoice = voice.innerVoice;
@@ -2240,18 +2206,6 @@ export default function ChatWindow({
             pushLocal(freshAll[k]);
           }
         }
-        /* 心声页双语（1.9.80）：这一轮模型把 <think> 各行也写成了「原文|中文」，右半边
-           收进会话的译文缓存——心声页里 useTrans(源文) 直接命中，**进页即显中文那行、零等待**。
-           键＝解析时洗净的源文（与 InnerVoicePage 取键同一份写法），保证对得上。
-           这里用 conv.transCache 作底、不用 transCacheRef：后者定义在本函数之后（TDZ）。 */
-        if (innerBilingual && !stopped && Object.keys(voice.pairs).length > 0) {
-          const mergedCache = { ...(conv?.transCache ?? {}), ...voice.pairs };
-          void updateConversation(character.id, maskId, { transCache: mergedCache })
-            .then(setConv)
-            .catch(() => {
-              /* 写不进去不影响这一轮聊天：下一次点心声页再走 translateCached 补翻。 */
-            });
-        }
         /* TA 附带的签名更新落库（资料页展示）。 */
         if (signature) {
           await appendMetaUpdates(character.id, maskId, { signature });
@@ -2260,11 +2214,9 @@ export default function ChatWindow({
           onDataChange();
           setConv((prev) => (prev ? { ...prev, signature } : prev));
         }
-        /* 1.10.62：图/语音/钱的占位与落库已并入上面的事件序列（imageEventMsg 等），
-           这里不再有「先文字、后图语音钱」的固定四段。 */
         /* 我发出去、还悬着等他表态的钱，按**类型**各找各的最近一笔：〔收下〕＝收转账、
-           〔领取〕＝领红包（1.5.14 拆开——原先两种标记在系统眼里是同一个信号，
-           多笔悬着时谁排最后就落到谁头上，出现过「他嘴上说收转账、标记落到红包上」的错位）。
+           〔领取〕＝领红包（两种标记在系统眼里本是同一个信号，多笔悬着时谁排最后就落到
+           谁头上，出现过「他嘴上说收转账、标记落到红包上」的错位，故按类型拆开）。
            转账写了〔退还〕就原路退回；**什么都没写＝没表态**，钱继续悬着，直到走过
            上下文那么多条才过期（见 expireStaleMoney）。`stopped`（我按了停）不算表态——留给下一轮。
            同类型多笔悬着时认最近那一笔；对应类型没有悬着的就**不动账**——他多半是在
@@ -2351,7 +2303,7 @@ export default function ChatWindow({
         }
         /* 类人记忆：本轮 user＋assistant 消息计数（连续发送可能一次补好几条用户消息）；
            达标后台总结（不挡聊天）。
-           线下那一场**不再并进这一趟**（1.7.46）：见面自有一条记忆线，由线下那趟按「几轮」
+           线下那一场**不并进这一趟**：见面自有一条记忆线，由线下那趟按「几轮」
            自己归总（见 maybeRunOfflineCondense）——两边各数各的账，同一段见面不会被归总两遍。 */
         let sentByMe = 0;
         for (let i = history.length - 1; i >= 0 && history[i].role === "user"; i--) sentByMe++;
@@ -2432,7 +2384,7 @@ export default function ChatWindow({
     /* 设定没读完不发（见上面「载入会话」）：第一轮必须带着正确的发图／发语音能力走，
        否则短版提示词会被写进缓存，之后每一轮的前缀都对不上。 */
     if (!text || isTyping || !loaded) return;
-    /* 外语聊天（1.9.48）：我打中文，**发出去之前**先翻成他那边的话——
+    /* 外语聊天：我打中文，**发出去之前**先翻成他那边的话——
        气泡里显示外语、下面挂回我这句中文本意，两边对得上。
        翻不过去就照中文发：他本来就懂中文，宁可按原话说，也别把这条卡死。 */
     const trSet = conv?.translate;
@@ -2500,7 +2452,7 @@ export default function ChatWindow({
     translateApi,
   ]);
 
-  /* ---------- 发一条语音（1.10.20） ---------- */
+  /* ---------- 发一条语音 ---------- */
   /* 两种来路落同一种气泡（type:"voice"）：
      · 文字输入 → 只有 content 里的字、**没有 audioUrl** ＝空气泡（点了不出声；他那边拿到这段文字）；
      · 真录音   → audioUrl 存音频 data URL（我自己能回听），content 存转写出来的字（他那边拿到这段文字）。
@@ -2860,7 +2812,7 @@ export default function ChatWindow({
     }
     /* 跟发图一样：连续发送模式／TA 正在回／设定没读完，这三种都不当场求回复。
        mediaText：跟落在消息上的 mediaNote 同一句（见上），这一轮先把「码里是什么」
-       递给 TA；往后各轮由 mediaNote 负责（1.4.30）。 */
+       递给 TA；往后各轮由 mediaNote 负责。 */
     if (conv?.manualReply === true || isTyping || !loaded) return;
     void requestReply("", {
       mediaOnly: true,
@@ -2881,19 +2833,16 @@ export default function ChatWindow({
     messages,
   ]);
 
-  /* ---------- 支付方式：这一笔从零钱出还是从某张卡出（1.4.55） ---------- */
-  /* 恩熙：「跳出一个页面……以及你要支付的方式，零钱或者是银行卡这种。」
-     `payMethod` 是 `"balance"` 就走零钱，否则当成卡的 id。
-     1.4.64 起这儿的判断**拆成两半**（恩熙：「我想转 5200，我虽然零钱是没有 5200 的，
-     但是我银行卡有啊，他就不应该判定说我的零钱只有多少钱、转不了，而是应该是到支付界面，
-     然后就是到输入密码的界面，然后选择零钱跟银行卡。如果说你选择零钱，他没有 5200，
-     这时候他才会判定转账不了。」）：
+  /* ---------- 支付方式：这一笔从零钱出还是从某张卡出 ---------- */
+  /* `payMethod` 是 `"balance"` 就走零钱，否则当成卡的 id。
+     判断拆成两半：
        · `checkPacketLimit`＝红包天花板，跟出的哪个口袋无关，**填完钱那一步就拦**；
        · `checkPaySource`＝只判「选中的这个口袋够不够」，**只在支付方式定了之后**判
-         （就是真动手那半 `sendMoneyNow`：密码过了、方式选好了）。 */
+         （就是真动手那半 `sendMoneyNow`：密码过了、方式选好了）。
+       所以「零钱不够」不该在选方式之前就拦——先到支付界面、选定零钱，再判它够不够。 */
 
-  /* 红包天花板（1.4.62）：恩熙要红包有限额、超过就只准转账
-     （`RED_PACKET_MAX_CENTS`，1000 元）。跟口袋无关，所以不塞进「够不够」那半里。 */
+  /* 红包天花板（`RED_PACKET_MAX_CENTS`，1000 元）：红包有限额、超过就只准转账。
+     跟口袋无关，所以不塞进「够不够」那半里。 */
   const checkPacketLimit = useCallback(
     (cents: number, kind: "redpacket" | "transfer"): boolean => {
       if (kind === "redpacket" && cents > RED_PACKET_MAX_CENTS) {
@@ -2942,7 +2891,7 @@ export default function ChatWindow({
     [payCards],
   );
 
-  /** 密码键盘上那张支付方式列表的几项（1.4.56）：零钱排最前，后面是她名下的卡
+  /** 密码键盘上那张支付方式列表的几项：零钱排最前，后面是她名下的卡
    *  （跟钱包页搬运面板一个排法）；每行右边写那个口袋里还剩多少。 */
   const payMethods = useMemo(
     () => [
@@ -2957,7 +2906,7 @@ export default function ChatWindow({
     [myBalance, payCards],
   );
 
-  /** 她在密码那一屏换了支付方式（1.4.56）：记下来，顶上那行字跟着换。 */
+  /** 她在密码那一屏换了支付方式：记下来，顶上那行字跟着换。 */
   const pickPayMethod = useCallback(
     (id: string) => {
       setPayMethod(id);
@@ -2967,17 +2916,15 @@ export default function ChatWindow({
   );
 
   /* ---------- 发红包／转账：钱先只从我的零钱（或某张卡）扣掉 ---------- */
-  /* 以前这里是写死 66／520 的假动作——气泡上写着发出去两百块，钱包一分没动。
-     现在两件事都做：落一条带金额的气泡消息（给聊天记录看），
-     再让钱包账本把这一笔从我选的那个口袋扣掉（零钱／那张卡都走 `payOutToContact`）。
-     1.4.63 起**只扣我、先不给他**（恩熙：「他可以自己判断要收下还是退回」）：
+  /* 落一条带金额的气泡消息（给聊天记录看），再让钱包账本把这一笔从我选的那个口袋扣掉
+     （零钱／那张卡都走 `payOutToContact`）。**只扣我、先不给他**：
      钱悬在中间，他表态才落定——收下才进他的零钱（见 markContactReceived），
      退还／红包不领就原路回我出的这个口袋（见 settleContactRefund）。
      所以这条消息要带上出钱的口袋（`payFrom`），退的时候才知道回零钱还是回那张卡。
      顺序是**先落消息、再扣钱**：反过来的话，钱扣了却没有那条气泡，
      账上凭空少一笔、聊天里还看不出是发给谁的。
      金额单位换算：输入框是「元」，账本是「分」（parseYuan 直接给分）。
-     `sendMoneyNow` 是**真动手**的那半；外头还有一道 `doSendMoney` 的闸（1.4.51）：
+     `sendMoneyNow` 是**真动手**的那半；外头还有一道 `doSendMoney` 的闸：
      设过支付密码就先弹六个格子，输对了才走到这儿。 */
   const sendMoneyNow = useCallback(
     async (kind: "redpacket" | "transfer") => {
@@ -2998,10 +2945,10 @@ export default function ChatWindow({
         type: kind,
         content: note,
         amount: yuan,
-        /* 这一笔从哪个口袋出的（1.4.63）：`"balance"`＝零钱，否则是那张卡的 id。
+        /* 这一笔从哪个口袋出的：`"balance"`＝零钱，否则是那张卡的 id。
            他要是退还，就照这个**原路**退回（见 settleContactRefund）。 */
         payFrom: payMethod,
-        /* 红包封面（1.4.89）：发红包那页挑的那张；转账不带这格。 */
+        /* 红包封面：发红包那页挑的那张；转账不带这格。 */
         ...(kind === "redpacket" ? { redCover: payCover } : {}),
         createdAt: new Date().toISOString(),
         isRead: true,
@@ -3015,7 +2962,7 @@ export default function ChatWindow({
         setPayBusy(false);
         return;
       }
-      /* 这张封面顺手收进「我的封面」（1.5.5）：她挑过的封面下次在画廊里直接能挑。
+      /* 这张封面顺手收进「我的封面」：她挑过的封面下次在画廊里直接能挑。
          收不进就算了——封面早跟着消息存下了，不为一条收藏打断发钱。 */
       if (kind === "redpacket" && isCustomRedCover(payCover)) {
         void putRedCoverToLibrary(payCover).catch(() => {});
@@ -3092,9 +3039,9 @@ export default function ChatWindow({
     ],
   );
 
-  /* ---------- 发钱之前先过支付密码（1.4.51，恩熙要「输入密码那一种」） ---------- */
-  /* 这一步只拦**跟口袋无关**的两件：金额没填、红包超了天花板（1.4.62）。
-     **「够不够」不在这儿拦**（1.4.64）：她零钱可能不够、卡里够，得先进密码那一页
+  /* ---------- 发钱之前先过支付密码 ---------- */
+  /* 这一步只拦**跟口袋无关**的两件：金额没填、红包超了天花板。
+     **「够不够」不在这儿拦**：她零钱可能不够、卡里够，得先进密码那一页
      把支付方式选出来，选了才判（判在 `sendMoneyNow` 调的 `checkPaySource` 里；
      那一页的方式列表右边也印着每个口袋剩多少，她挑的时候就看得到）。
      没设过密码（账本里那份是空串）就直接走，不拿一个她没设过的密码拦她自己。
@@ -3121,13 +3068,13 @@ export default function ChatWindow({
   );
 
   /* ---------- 收下 TA 发来的红包／转账：钱真进我的零钱 ---------- */
-  /* 1.4.36 起 TA 的钱在他发出来那一刻就已经从他账上扣过了（见上面落库那段，
+  /* TA 的钱在他发出来那一刻就已经从他账上扣过了（见上面落库那段，
      `adjustBalance(character.id, "contact", -cents, …)`），所以这里**只往我这边加**，
      绝不能再动他那本账——再扣一次就是同一笔钱扣两遍。
      「点击领取」拦的是我这一半：没点之前钱还没到我手上，点了才进我的零钱，
      同时把这条消息标成已领，免得关掉弹窗再点一次、同一笔钱领两遍
      （moneyClaimed 落库，见 chat.ts 白名单）。
-     1.4.89 起回一个 boolean：开红包页要拿它决定动画放完之后是「揭晓金额」
+     回一个 boolean：开红包页要拿它决定动画放完之后是「揭晓金额」
      还是退回「还没开」的样子（钱没到账时那页不能装作领到了）。 */
   const claimMoney = useCallback(
     async (m: ChatMessage): Promise<boolean> => {
@@ -3154,9 +3101,9 @@ export default function ChatWindow({
       /* 就地替换那条气泡（不是 append）：pushLocal 是「往后加一条」，
          用在这里会把同一条钱显示成两条。 */
       setMessages((prev) => prev.map((x) => (x.id === done.id ? done : x)));
-      /* 从我这边落一条（恩熙：「他转给我，我收取也会有卡片」）：转账是我发的收款回执卡
+      /* 从我这边落一条：「他转给我，我收取也会有卡片」——转账是我发的收款回执卡
          ——它跟左边那张变淡的卡不是同一件事，那张是他的转账、原样留在那儿，这一张挂右侧、
-         带着我的头像；红包则是一条居中的系统提示「你已领取 XX 的红包」（1.4.42，微信那样）。 */
+         带着我的头像；红包则是一条居中的系统提示「你已领取 XX 的红包」（微信那样）。 */
       const echo = buildMoneyEcho(m, "user", charName);
       try {
         await appendMessage(character.id, maskId, echo);
@@ -3165,11 +3112,10 @@ export default function ChatWindow({
         /* 没写上就先算了：钱已经进了我的零钱、标记也落了库，少的只是这一条。 */
       }
       onDataChange();
-      /* 1.4.87 恩熙：「不论我退还了还是收下了，他应该都是能够收到消息的，并且回复我
-         ——比如我收下了，他就说『还知道收下就好』这种话」。把这件事当一句**括号旁白**
-         递给 TA（跟发钱那条路同一个机制，见 moneyNoteOf：user 侧就是括号说明），
-         他就知道我收下了、该接一句话。连续发送模式／他正在回／设定没读完这三种
-         不当场求回复——跟发钱同一条口径；这边卡片已经落定，跳过就跳过。 */
+      /* 不论我退还了还是收下了，他应该都能收到消息、并回我一句（比如「还知道收下就好」）。
+         把这件事当一句**括号旁白**递给 TA（跟发钱那条路同一个机制，见 moneyNoteOf：
+         user 侧就是括号说明），他就知道我收下了、该接一句话。连续发送模式／他正在回／
+         设定没读完这三种不当场求回复——跟发钱同一条口径；这边卡片已经落定，跳过就跳过。 */
       if (conv?.manualReply !== true && !isTyping && loaded) {
         void requestReply("", {
           mediaOnly: true,
@@ -3177,12 +3123,9 @@ export default function ChatWindow({
           historyBase: [...messages.map((x) => (x.id === done.id ? done : x)), echo],
         });
       }
-      /* 收下之后**不再弹任何东西**（1.4.39 恩熙点名去掉：「我收下他的钱之后，
-         我的消息对话框也会冒出了一个已收下」）。原来这里会把弹窗重新开一次
-         （上面写着「已收下」）、再飘一句 toast——两样都是重话：
-         卡片自己从「点击领取」变淡成「已领取」就是回执，钱也真进了零钱。
-         所以这里既不 setOpenMoney 也不 showToast（**只限成功这条路**；上面「没金额／钱没到账／
-         没标上已领」那几句失败提示仍要留着，showToast 还在依赖里）。
+      /* 收下之后**不再弹任何东西**：卡片自己从「点击领取」变淡成「已领取」就是回执，
+         钱也真进了零钱。这里既不 setOpenMoney 也不 showToast（**只限成功这条路**；
+         上面「没金额／钱没到账／没标上已领」那几句失败提示仍要留着，showToast 还在依赖里）。
          弹窗是上面那个按钮先关掉的，不管这里就保持关着；往后她再点开卡片，
          标题上仍看得见「· 已收下」。 */
       /* 钱到了、标记也落了（或至少钱到了）——告诉开红包页可以揭晓金额了。 */
@@ -3204,8 +3147,7 @@ export default function ChatWindow({
   );
 
   /* ---------- 把 TA 转来的钱退回去：钱原路回到他的零钱 ---------- */
-  /* 1.4.41 恩熙：「应该要在转账上面做一个退还的功能」。跟微信一样：他转来的转账，
-     我点开卡片有「收下」也有「退还」；不想要这笔就退回去。
+  /* 跟微信一样：他转来的转账，我点开卡片有「收下」也有「退还」；不想要这笔就退回去。
      钱的走法——他发钱时已经从他账上扣过了（见上面落库那段），所以退还就是**把那一笔
      加回他的账**；我这边一分没多过，也就没有可扣的。
      红包没有退还（跟微信一致：红包只能开、不能退），弹窗里那个按钮只给转账。
@@ -3251,8 +3193,8 @@ export default function ChatWindow({
         /* 回执没写上就先算了：钱已经回他账上、标记也落了库，少的只是这张回执。 */
       }
       onDataChange();
-      /* 1.4.87（同 claimMoney 那边）：退还这件事也要让 TA 知道并回一句——
-         当一句括号旁白递过去，他就知道这笔被退回了、该接一句话（怎么接随他的人设）。 */
+      /* 退还这件事也要让 TA 知道并回一句——当一句括号旁白递过去，
+         他就知道这笔被退回了、该接一句话（怎么接随他的人设）。 */
       if (conv?.manualReply !== true && !isTyping && loaded) {
         void requestReply("", {
           mediaOnly: true,
@@ -3277,7 +3219,7 @@ export default function ChatWindow({
     ],
   );
 
-  /* 线下总闸（1.7.39）：把「这一场正开着」写进会话（落库）。开着时线上发不了消息；
+  /* 线下总闸：把「这一场正开着」写进会话（落库）。开着时线上发不了消息；
      只有线下页那颗「结束这一场」把它放平（「返回」只收起这一页，不算结束）。 */
   const markOfflineOpen = useCallback(
     (open: boolean) => {
@@ -3317,8 +3259,8 @@ export default function ChatWindow({
         return;
       }
       if (name === "去见他") {
-        /* 线下场合（1.7.5）：不落任何消息、不发请求，只是把这一页翻过去见面。
-           1.7.39 起把「这一场开着」写进会话（落库）：App 重开／切后台再进来照样停在线下，
+        /* 线下场合：不落任何消息、不发请求，只是把这一页翻过去见面。
+           同时把「这一场开着」写进会话（落库）：App 重开／切后台再进来照样停在线下，
            而且这一场没结束之前，线上发不了消息（防线上线下打架）。 */
         setShowOffline(true);
         markOfflineOpen(true);
@@ -3332,19 +3274,19 @@ export default function ChatWindow({
         return;
       }
       if (name === "语音消息") {
-        /* 1.10.20：不再写死一条占位语音，改为开弹窗——文字输入（空气泡）或真录音（带音频）。 */
+        /* 开弹窗：文字输入（空气泡）或真录音（带音频）。 */
         setShowVoiceModal(true);
         return;
       }
       if (name === "红包" || name === "转账") {
-        /* 不再写死金额、也不在这里落消息：钱要从我的零钱真划出去（1.4.33），
+        /* 不在这里落消息、不写死金额：钱要从我的零钱真划出去，
            所以先开那一页把「多少钱、写什么留言」问清楚，落消息与过账都交给 doSendMoney。
-           金额默认空着、留言给一句惯用语（跟以前一样，改不改随她）。 */
+           金额默认空着、留言给一句惯用语（改不改随她）。 */
         const kind = name === "红包" ? "redpacket" : "transfer";
         setPayAmountText("");
         setPayNoteText(kind === "redpacket" ? "收下我的心意" : "请查收");
         setMyBalance(null);
-        /* 每一次都从零钱起手（1.4.55）：顺带把她名下的卡读一遍，支付方式那张列表要用。 */
+        /* 每一次都从零钱起手：顺带把她名下的卡读一遍，支付方式那张列表要用。 */
         setPayMethod("balance");
         setPayCards([]);
         setPaySend({ kind });
@@ -3477,7 +3419,7 @@ export default function ChatWindow({
     [messages, character.id, maskId, requestReply, showToast, onDataChange],
   );
 
-  /* ---------- 线下场合：写一段（1.7.5） ---------- */
+  /* ---------- 线下场合：写一段 ---------- */
   /* 线下**不复用 requestReply**：那条路绑着气泡／富媒体标记／心声账／记忆与未读数一整片假设，
      而这一场要的是小说体正文、不挂账、不进 messages。
      所以这里另走一份**单段 system**（chatApi 的 system 参数收字符串，就是一整段、不切
@@ -3497,28 +3439,22 @@ export default function ChatWindow({
       }
       const words = offlineWordsOf(conv);
       const [books, prefs] = await Promise.all([getWorldBooks(), getChatPrefs()]);
-      /* 「结束」划的那道分界线（1.7.9／1.7.10）：从**最后一条分界线之后**起算——
+      /* 「结束」划的那道分界线：从**最后一条分界线之后**起算——
          上一场已经收场（内容已归总进记忆），这一场不再整段重放；没划过线就全带。
          这是「这一场」的全部记录，进度单（beats）与归总都按它算。 */
       const sceneEntries = sceneEntriesOf(history);
-      /* 只带最近 N 轮原文（1.7.46）：第 N 轮以前那几轮已经归总进记忆，不再整段摆给他——
+      /* 只带最近 N 轮原文：第 N 轮以前那几轮已经归总进记忆，不再整段摆给他——
          记忆里有；重放一遍既白费上下文，又容易让他照着旧台词往下说。
          轮数就是线下设置里那个「记忆 · 带最近 __ 轮」（默认 10，可调 2–30）。
          零头（不到 N 轮）全带；这一场就是从零算起的。 */
       const rounds = offlineMemoryRoundsOf(conv);
-      /* 刀必须钉在整倍线上（1.7.52，规矩同 memory.ts 的 trimHistory）：
-         起点只认「第几块」，不认「最后几轮」。旧写法从末尾往前数 N 轮，
-         于是每进一轮窗口就往前滑一格、messages 的第一条跟着换人——站子一看开头
-         就对不上，整段从头重算，而且每轮都作废、永不自愈（面板上「第 N 个字处就不一样」
-         且 N 很小＝就是这个）。钉成整倍后，同一块内起点恒定、前缀只往尾巴上加，
-         只有跨块那一轮断一次——与归总（第 10、20…轮）同轮，回到「每 N 轮亏一轮」。
-
-         **门槛是两批、不是一批（1.7.59，恩熙 2026-09-28 定的「跟线上一样」）**：
-         旧写法一到第 N+1 轮就把窗口塌成**只剩当前这一轮**——前面刚归总完的那 N 轮
-         全被砍掉、只靠记忆带，线上不这么干：memory.ts 的 trimHistory 里总条数不满
-         2×门槛就一刀不切，归总过的那一批原文**照样在上下文里摆着**，攒够两批才切一刀
-         （窗口永远在「门槛」到「2×门槛-1」之间晃）。线下照抄同一条：不满 2N 轮全带，
-         满了才切掉最老那一批、留最近 N 轮——这才叫「跟线上同一个窗口口径」。 */
+      /* 刀必须钉在整倍线上：起点只认「第几块」，不认「最后几轮」。
+         从末尾往前数 N 轮的话，每进一轮窗口就往前滑一格、messages 的第一条跟着换人——
+         站子一看开头就对不上，整段从头重算，而且每轮都作废、永不自愈。
+         钉成整倍后，同一块内起点恒定、前缀只往尾巴上加，只有跨块那一轮断一次。
+         门槛是两批、不是一批：总条数不满 2N 就一刀不切（归总过的那批原文照样摆在上下文里），
+         攒够两批才切一刀；满了才切掉最老那一批、留最近 N 轮——与线上 memory.ts 的
+         trimHistory 同一条口径，窗口永远在「门槛」到「2×门槛-1」之间晃。 */
       const userIdx: number[] = [];
       sceneEntries.forEach((e, i) => {
         if (e.role === "user") userIdx.push(i);
@@ -3528,17 +3464,16 @@ export default function ChatWindow({
         from = userIdx[(Math.floor(userIdx.length / rounds) - 1) * rounds];
       }
       const sceneHistory = offlineAsMessages(sceneEntries.slice(from));
-      /* 回喂那一份要的是「上一轮真发出去的原样」（1.7.51）：她那条话后头还挂着【场景】／
+      /* 回喂那一份要的是「上一轮真发出去的原样」：她那条话后头还挂着【场景】／
          【已经演过的】／此刻那一串易变尾巴，回喂时只剩光原话的话，站子逐字比对到这条就断，
          其后整段每轮作废重写（面板上那个「第 N 个字处就不一样」＝这段尾巴的长度）。
          线上早有这一格（见 requestReply 里那段 apiText），线下一直漏着，补上。
          组装（buildPrompt）照旧用光原文——那份是给她看的现场，不外溢到别处。 */
       const sceneHistorySent = offlineAsMessages(sceneEntries.slice(from), true);
-      /* 去重（1.7.36）：她这一轮的话由下面当**单独一轮**交给请求（见 fetch* 的 userInput 形参），
+      /* 去重：她这一轮的话由下面当**单独一轮**交给请求（见 fetch* 的 userInput 形参），
          sceneHistory 的尾条就是同一条——不去掉的话，同一句话会在 messages 里连着出现两遍，
-         他把它当成「她说了两遍」，下一段就照着复读。线上早有这一步（见 requestReply 那段
-         的 apiHistory），线下一直漏着，补上。
-         她连发攒下的那一串（1.8.4）：末尾连着的好几条 user 一并摘出来、合成**一轮**发出去。
+         他把它当成「她说了两遍」，下一段就照着复读。
+         她连发攒下的那一串：末尾连着的好几条 user 一并摘出来、合成**一轮**发出去。
          一条一条当独立轮次摆进去，模型常只应最后一条——她报的「打三行字，他只读一两条」。
          合成的那一轮由**最后一条承接**（把合并原文记在它身上），前几条落 `foldedInto`
          ——回喂历史时不单独出现。发出去的是合并稿、回喂的也是合并稿（同一份），
@@ -3554,9 +3489,9 @@ export default function ChatWindow({
       /* 她这一轮真正被当成「一句话」的那份：连发时是几条接起来，单发时就是这一句。 */
       const spoken = runLines.length > 1 ? runLines.join("\n") : input;
       const sceneApi = sceneHistorySent.slice(0, sceneHistorySent.length - runIds.length);
-      /* 线上那一截（1.8.4）：进见面之前在手机上说的话，拼成**一条**挂在最前——
-         他才知道她为什么来、这趟见面接着哪句话往下（此前只带线下记录与记忆，线上一个字没带，
-         他张口就是「你怎么突然来了」）。见面期间线上是冻着的，这一条逐字不变，
+      /* 线上那一截：进见面之前在手机上说的话，拼成**一条**挂在最前——
+         他才知道她为什么来、这趟见面接着哪句话往下（不带的话他张口就是「你怎么突然来了」）。
+         见面期间线上是冻着的，这一条逐字不变，
          前缀缓存能一路连读；按条混进历史会把微信体的短句喂成见面小说的写法（格式串味）。
          新会话直接见面、线上还没聊过时为空，整条不挂。只给他读：不落库、不上屏、不进记忆。 */
       const onlinePrefix = onlineTranscript(messagesRef.current, charName, myName);
@@ -3574,28 +3509,25 @@ export default function ChatWindow({
         currentSignature: conv?.signature,
         userSignature,
         memoryBlock: memory ? await buildMemoryBlock(memory, myName) : "",
-        /* 我发的朋友圈里他有权看的那几条（1.10.27）：线下见面他也知道这些。 */
+        /* 我发的朋友圈里他有权看的那几条：线下见面他也知道这些。 */
         myMomentsBlock: await buildMyMomentsBlock(character.id, character.categoryId, maskId),
         excludeDialogue: true,
         sessionKey: `${character.id}::${maskId}`,
         timeAware: prefs.timeAware,
       });
-      /* 1.7.53：风格提示词从此只吐固定文字（字数那句已挪到 sceneInput 最末，见下）。 */
+      /* 风格提示词只吐固定文字（字数那句挪到 sceneInput 最末，见下）。 */
       const system = buildOfflineStylePrompt(charName, myName) + "\n\n" + built.stable;
-      /* 场景签（1.7.32）：她手标的地点挂在她这一轮的话**最前头**——「【场景】××」。
+      /* 场景签：她手标的地点挂在她这一轮的话**最前头**——「【场景】××」。
          取的是记录里最后一条场景签（倒扫，先撞分界线就归零，与线下页同一条口径，见 currentSceneOf）。
          场景签本身是 system（只给屏幕看、offlineAsMessages 已滤掉、不进 sceneHistory），
          所以地点只能从这儿补给他。 */
       const scene = currentSceneOf(history);
-      /* 进度单（1.7.45 加 → 1.7.60 改挂历史，恩熙 2026-09-28 点头「跟线上一样」）：
-         原先把每一轮 TA 结尾那句「【本轮】××」（见提示词第 12 条、OfflineScenePage 的
-         takeBeats）攒成一份「【已经演过的】」塞在**她这一轮的话里**。它在内容上是对的
-         （1.7.45 就是要治「看不见演到哪了 ⇒ 每轮重答第一轮那句、旧台词原句又搬回来」），
-         但位置错了：她那句话每轮全新，整份进度于是每轮重掏一次钱、场子越久越厚
-         （实测这一格从几百一路涨到 1.4 万）。
-         现在进度改由**历史里各段自己带**（见 offlineAsMessages 的 withBeat），
-         这里只留一句**固定长度**的硬命令，指着那些标记说话——
-         缓存断点之后那一截从此与线上同构：只随「她这句话」长，不随场次长。
+      /* 进度单：TA 每段结尾那句「【本轮】××」（见提示词第 12 条、OfflineScenePage 的
+         takeBeats）改由**历史里各段自己带**（见 offlineAsMessages 的 withBeat），
+         这里只留一句**固定长度**的硬命令，指着那些标记说话。
+         若把整份进度塞在**她这一轮的话里**，那句话每轮全新，整份进度于是每轮重掏一次钱、
+         场子越久越厚（实测这一格从几百一路涨到 1.4 万）。
+         改由历史各段自带后，缓存断点之后那一截只随「她这句话」长，不随场次长。
          取法与切分口径同一套（分界线之后起算，已收场的上一场不重复带）。 */
       const beats = sceneEntries.filter((e) => e.role === "assistant" && e.beat);
       const beatsHint =
@@ -3604,11 +3536,10 @@ export default function ChatWindow({
           : "";
       /* 易变尾巴（此刻时间／签名取值／关键词世界书）照线上那个口径挂在**她这一轮的话后面**：
          它每轮都变，进 system 会把整段作废；挂着不动的那半截才站得住。 */
-      /* 字数上限（1.7.53）：这一句原先插在**风格提示词第 10 条行尾**——也就是整条请求的第
-         942 个字上。它是那 942 个字里唯一一个她随时能改的东西（线下设置里的字数 ±），
-         一改，后面三万多字全部作废、站子整篇重算（账单「读≈0、写满 33K」就是这么来的，
-         面板也一直报「在第 942 个字处就不一样」）。挪到整条请求的最末、与易变尾巴做伴：
-         它再怎么变，前面一个字都不动。病根与实测见施工日志第 670 条。 */
+      /* 字数上限：这一句必须放在整条请求的最末、与易变尾巴做伴。
+         它是她随时能改的东西（线下设置里的字数 ±），若插在风格提示词中间，
+         一改，后面全部作废、站子整篇重算（账单「读≈0、写满 33K」就是这么来的）。
+         放最末后，它再怎么变，前面一个字都不动。 */
       const wordsRule =
         words && words.max > 0
           ? `\n\n【字数】这一轮写下来的正文，最多 ${words.max} 字。她这一轮没给你新事，写短些就行——几句话也够，不必凑满。`
@@ -3619,18 +3550,17 @@ export default function ChatWindow({
         spoken +
         (built.volatile ? `\n\n${built.volatile}` : "") +
         wordsRule;
-      /* 发出去＝存下来＝回喂（1.7.51）：把这一轮**真发出去的那一整份**（她那句话＋【场景】／
+      /* 发出去＝存下来＝回喂：把这一轮**真发出去的那一整份**（她那句话＋【场景】／
          【进度】那句命令／此刻那串易变尾巴）交回线下页，记在她这条记录上（见 OfflineEntry.apiText）。
-         下一轮回喂原样送回，站子逐字比对才一路对得上，前缀缓存才连读；线上早有这一格
-         （见 requestReply 那段），线下一直漏着，所以线下面板上那个断点永远落在此处。
-         连发合并的那几条也一并交代（1.8.4）：`carryId` 承接正文、`foldedIds` 并进它。 */
+         下一轮回喂原样送回，站子逐字比对才一路对得上，前缀缓存才连读。
+         连发合并的那几条也一并交代：`carryId` 承接正文、`foldedIds` 并进它。 */
       if (carryId) {
         onSent?.({ carryId, foldedIds, text: sceneInput, merged: spoken });
       }
       /* 字数上限换算成输出额度：一段 600 字中文留三倍余量，别让写到一半被截断。
          非流式那趟的 maxTokens 是形参（默认 800），这里显式给它。 */
       const maxTokens = Math.max(1200, words.max * 3);
-      /* 「查看本轮请求」留档（1.7.49）：线下这一轮也记一份（与线上同一套面板）。 */
+      /* 「查看本轮请求」留档：线下这一轮也记一份（与线上同一套面板）。 */
       recordRequest({
         mode: "offline",
         model: effTextApi.model,
@@ -3691,9 +3621,9 @@ export default function ChatWindow({
     [character.id, maskId, onDataChange],
   );
 
-  /* 外语聊天（1.9.50）：「点一下才翻」的那几处（名字下方的签名、心声页）共用的翻译入口。
+  /* 「点一下才翻」的那几处（名字下方的签名、心声页）共用的翻译入口。
      先查会话上的译文缓存 → 没有就翻一次 → 写回缓存。翻过的那句以后再点就是瞬间切，
-     既不等待也不再花钱（恩熙：「会不会有延迟」——只有第一次点要等零点几秒）。
+     既不等待也不再花钱（只有第一次点要等零点几秒）。
      并发合并：两处几乎同时翻时，各自手里的旧缓存会互相盖；用一支 ref 兜住最新的那份。 */
   const transCacheRef = useRef<Record<string, string>>({});
   useEffect(() => {
@@ -3722,7 +3652,7 @@ export default function ChatWindow({
     [conv, translateApi, applyPatch],
   );
 
-  /* 签名（1.9.50）：他现在是日本人，签名也用外语写；名字下方那一行**点一下切中文**。
+  /* 签名：他现在是日本人，签名也用外语写；名字下方那一行**点一下切中文**。
      提前翻好存着——就一行、很少变，翻一次几乎不花钱，点的时候却零等待。 */
   useEffect(() => {
     if (!conv?.translate?.out.on) return;
@@ -3732,8 +3662,8 @@ export default function ChatWindow({
   }, [conv?.translate?.out.on, conv?.signature, conv?.transCache, translateCached]);
 
   const clearMessages = useCallback(async () => {
-    /* 1.7.39：这个函数代劳的比名字多——`clearConversation` 里顺手把**线下那一场记录**
-       也倒掉了，并把「这一场开着」的总闸放平（恩熙：清记忆要「线上线下的一块清」）。
+    /* 这个函数代劳的比名字多——`clearConversation` 里顺手把**线下那一场记录**
+       也倒掉了，并把「这一场开着」的总闸放平（清记忆要「线上线下的一块清」）。
        所以下面还得把会话读回来、把线下那一页收掉，不然手上这份 conv 还留着
        `offlineOpen: true`，线上那格会一直锁着。 */
     await clearConversation(character.id, maskId);
@@ -3811,9 +3741,9 @@ export default function ChatWindow({
 
   /* ---------- 输入框自动增高 ---------- */
   /* 只量高度，不写 state（草稿非受控，见 sendMsg）——打字不再引起重渲染。
-     1.7.40：`scrollHeight` 含上下 padding（CSSOM 口径），要减掉才不多算——
+     `scrollHeight` 含上下 padding（CSSOM 口径），要减掉才不多算——
      输入框 padding 是「6px 4px」，不减就凭空多 12px，刚打一个字框就想长成两行。
-     改法与线下页那套（OfflineScenePage 的 autoGrow）一致。 */
+     与线下页那套（OfflineScenePage 的 autoGrow）一致。 */
   const autoGrow = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const t = e.target;
     t.style.height = "auto";
@@ -4176,9 +4106,9 @@ export default function ChatWindow({
           );
         }
         /* 旧版语音（音频本体没存下来）：点一下重新合成。
-           1.10.20：只对 TA 那侧——我自己发的语音本来就允许**没有音频**（空气泡，
+           只对 TA 那侧——我自己发的语音本来就允许**没有音频**（空气泡，
            文字模式发的那种），那不是「失效」，照下面那样渲染一个安静的气泡。
-           1.10.69：awaitGen（等用户点生成的那条）不走这一支——它要照常长成语音气泡
+           awaitGen（等用户点生成的那条）不走这一支——它要照常长成语音气泡
            （播放键／波形／时长都在），点一下才去合成。 */
         if (!m.audioUrl && m.role !== "user" && !m.awaitGen) {
           return (
@@ -4212,9 +4142,9 @@ export default function ChatWindow({
         const voiceWidth = Math.min(230, 90 + Math.min(60, durSec) * 2.5);
         const isPlaying = playingVoice === m.id;
         /* 真语音（语音 API 合成）：点播放键放真音频，播完自动回弹。
-           1.10.5：**只走媒体元素这一条**——一点就 `new Audio(dataUrl)` 新建、播完丢掉，
+           **只走媒体元素这一条**——一点就 `new Audio(dataUrl)` 新建、播完丢掉，
            跟参考项目 message-bubble.tsx 的 playSrc 一致；播放路径里绝不建 AudioContext，
-           也不做会话声明／手势解锁（1.10.3／1.10.4 那两套已被证伪，整块撤掉）。
+           也不做会话声明／手势解锁（那两套已被证伪，整块撤掉）。
            来因与修法见文件下方「语音播放」那段大注释、施工日志第 33 条。 */
         const togglePlay = () => {
           /* 没音频：TA 那条（等生成／没配接口）点一下＝去合成——配了接口就这时候才合，
@@ -4316,9 +4246,9 @@ export default function ChatWindow({
                 {voiceDiag.text}
               </div>
             ) : null}
-            {/* 1.10.2 保底：程序播放失败（诊断灰字出来了）就露一个原生 <audio controls>。
-                1.10.21：源改喂 **blob:**（data URL 在 iOS 上放不出声，连它自己也不响——
-                恩熙实测；故这里跟主播放路径一样走 URL.createObjectURL）。 */}
+            {/* 保底：程序播放失败（诊断灰字出来了）就露一个原生 <audio controls>。
+                源喂 **blob:**（data URL 在 iOS 上放不出声，连它自己也不响；故跟主播放
+                路径一样走 URL.createObjectURL）。 */}
             {voiceFallback && voiceDiag && voiceDiag.id === m.id && voiceFallback.id === m.id ? (
               <audio
                 src={voiceFallback.url}
@@ -4342,12 +4272,11 @@ export default function ChatWindow({
               >
                 {m.audioUrl || m.role === "user" || m.awaitGen ? (
                   <>
-                    {/* 1.9.56：「转文字」给的是**原文**——他说出口的那句话（外语聊天里就是外语），
+                    {/* 「转文字」给的是**原文**——他说出口的那句话（外语聊天里就是外语），
                         中文译文这时先让开（气泡下方那行暂时不露），收起原文又恢复。
-                        1.9.55 曾把这里改成默认给中文，方向反了，恩熙 2026-10-03 纠正回原文。
-                        1.9.82：方括号语气标签（[轻笑] 这类给合成引擎的记号）不给人看，
+                        方括号语气标签（[轻笑] 这类给合成引擎的记号）不给人看，
                         只留他真说出口的字（见 stripVoiceTags）。
-                        1.10.20：「原文」这行只给 TA 的语音挂；我自己的语音条（含空气泡）
+                        「原文」这行只给 TA 的语音挂；我自己的语音条（含空气泡）
                         本来就是「我说的字」，直接给转写内容，不必再标一句原文。 */}
                     {m.role !== "user" ? (
                       <div style={{ fontSize: 10, letterSpacing: ".14em", color: T.ink3, marginBottom: 3 }}>
@@ -4365,13 +4294,12 @@ export default function ChatWindow({
         );
       }
       case "redpacket": {
-        /* 1.4.89 整张换成微信那种「红纸封」（恩熙：「改红包的卡片样式以及详情界面，
-           不能跟转账是同样的模式，就是参考微信红包的样式那种感觉」）——转账是纸票据、
-           红包是红纸封，两个世界。卡＝一张带封面的红包：封面底（预设渐层或自定义图）
-           ＋左上一枚圆章「開」＋祝福语＋状态小字；领过（他没领也一样）整张洗成淡色
-           （一层 filter，封面是图也照洗——微信领过的红包也是这么整张发灰的）。
-           状态字沿用 1.4.38／1.4.63 那套口径（点击领取／已领取／他没领…）。
-           点开照旧走 setOpenMoney——点开的是开红包页（RedPacketModal），不再是白弹窗。
+        /* 红包卡＝微信那种「红纸封」：转账是纸票据、红包是红纸封，两个世界。
+           卡＝一张带封面的红包：封面底（预设渐层或自定义图）＋左上一枚圆章「開」
+           ＋祝福语＋状态小字；领过（他没领也一样）整张洗成淡色（一层 filter，
+           封面是图也照洗——微信领过的红包也是这么整张发灰的）。
+           状态字沿用转账那套口径（点击领取／已领取／他没领…）。
+           点开走 setOpenMoney——点开的是开红包页（RedPacketModal），不再是白弹窗。
            卡面渲染挪去模块级的 RedPacketCard：自定义封面要用 useMediaSrc 读仓库，
            renderBody 的 switch 里不能挂 hook。 */
         return (
@@ -4384,56 +4312,16 @@ export default function ChatWindow({
         );
       }
       case "transfer": {
-        /* 1.4.38 跟红包同一套口径（恩熙：「我转给他，他收取也会有卡片，然后颜色会变淡」）：
-           没收下＝白纸卡粉边、金额粉；收下之后整张转灰白、字和边一起淡。
-           1.4.41 起多一种落定法：「已退还」（他转给我、我退回去了）——它跟「已收下」
-           一样是落定，所以底、字、边一起转灰白。
-           1.4.51 起跟红包一起换成账册的料：方角、硬影、书写体标题、等宽金额。
-           1.4.66 照她给的汇款单参考图一比一搬了一张票根（洋文对照标签、票号、通体虚线、
-           铺满整条的状态带）；1.4.67 她说「你做的太像了，你做的一模一样，你不可以照抄呀」。
-           ⇒ 抄了「形」就丢了自己的话。这一版把抄来的记号**全撤掉**，只留「一层一层铺开」
-           这个方向，改用账册自己的话讲：顶上横头一道粉条、抬头一枚菱记＋书写体「转账」
-           ＋角上一枚方向箭号；当事人一行写「谁 ──→ 谁」；金额居中大字，下面压一道短粉线；
-           附言写成「附言 「…」」；状态落成右下角一枚方印。
-           撤掉的：`自 / FROM`、`至 / TO`、`转账金额 / TOTAL AMOUNT`、`备注附言 / MEMO`
-           四组中英对照，票号 `#xxxxx`，通体打孔虚线外框，整条铺满底色的状态带，
-           印旁边那串洋文落款。
-           1.4.69 她说「整体的框架是好的吧，但感觉不好看耶」——框架（横头／抬头／谁给谁／
-           金额／附言／落款这五块和顺序）一字不动，只重铺一层料：纸面改暖白渐层；
-           顶上那道横头改成自左向右淡下去的宽条；抬头「转账」加大加字距，右端箭号坐进
-           一块淡粉方底；「谁给谁」那一行撤掉两条撑开的细线、整行居中；金额整块坐进一条
-           淡粉色带（上缘以细线分栏）、数目加大；附言左缘加一道引注短线；落款方印加重。
-           颜色与落定四态一字未动。
-           1.4.71 她放开手：「你忘掉所有…你就做你喜欢的，你的审美…不一定颜色都要一样…
-           也不用跟背景符合。」⇒ 第一版**由我定**：跳出账册那套，做成一张**墨底卡**
-           （深墨渐层底／大圆角／柔和深影／左上一点极淡高光／暖金点缀／全左对齐）。
-           她回「确实不好看，你能再给我第二版吗？可以跳脱这些设计。」⇒ 1.4.72 第二版
-           整版翻过来（浅奶油便签／居中／青绿／轻影，详见下方变量那段注释）。
-           她再回「太素了…主次关系没有分清楚…谁转给谁…以及备注…都很重要…希望他们都能
-           结构上都有非常好的位置跟排版」⇒ 1.4.73 第三版：把五块东西**各自分栏**——
-           淡青绿横头／双方圆徽名牌／上下带线的金额栏／淡底带竖线的留言格／上缘收尾的
-           状态栏（详见下方变量那段注释）。
-           她再回「这看着像机票。」⇒ 1.4.74 第四版：通栏横条＋两端对称的圆徽＋正中一枚箭，
-           凑出来正是机票那条「起点 → 终点」的航段；这一版**把这些全撤掉**，只留一道左缘
-           竖带、内容全左对齐、谁给谁写成一句话（详见下方变量那段注释）。
-           她再回「请去掉竖带，改用更柔和的卡片风格」⇒ 1.4.75 第五版：那道 4px 竖带太硬太直，
-           像夹了根书脊；这一版**撤掉竖带**，整张改回一张**柔软的纸卡**——圆角再放大、边线更淡、
-           影子又大又轻、底色是一层斜向的极淡渐层（详见下方变量那段注释）。
-           1.4.76 我停了手：连着五版她都说「不好看」，而「不好看」这三个字不含信息 ⇒ 做了一页
-           临时样式台 `/card-lab`，把**四个大方向**摆出来让她指一个（详见施工日志第 476 条）。
-           她指了「**更倾向于 A，但是觉得 A 太简陋了**」⇒ 1.4.77 第六版：**方向归 A（账册风），
-           要解决的是「简陋」**——账册的料（方角、细边、硬影、书写体、等宽数字）她认，
-           嫌的是里面**太薄**：一列小灰字平铺，没有头、没有签、没有栏。⇒ 照账册的写法把结构做厚
-           （详见下方变量那段注释）。
-           1.4.78 她看过重写的样式台，第一次给出明确的方向词「**票据**」（之前只说「不好看」）；
-           1.4.79 顺手修了那页在手机上滚不动的问题（跟本卡无关，见施工日志 479）。
-           ⇒ 1.4.80 第七版：她指了那四个品种里的 **B（存根票根）**，并附三条——**编号不要这么长**、
-           **要像转账凭证一样有付款方跟收款人**、**可以大张一点**。这一版就照 B 做
-           （详见下方变量那段注释）。
-           （红包卡、receipt 卡都没动。） */
+        /* 转账卡：跟红包同一套口径——没收下＝未落定态，收下／退还／过期之后落定。
+           形态是**一张存根票根**（暖纸、方角、细边、硬边错位影、右缘一排撕口齿、
+           抬头「转账存根」＋右上短编号、中段付款方／收款人各占一行、金额最重、
+           附言垫一层淡底当栏、底部虚线下一行状态）。
+           ⚠️ 别再往「机票／账册便签／墨底卡／通栏横条」那几条路走——都试过了、都不要。
+           落定口径：粉褪成淡粉、蓝褪成淡蓝、纸转暖灰、影撤掉——安静下来仍是粉的，
+           不是整块转灰。 */
         const isFromMe = m.role === "user";
         const trRefunded = m.moneyRefunded === true;
-        /* 过期（1.5.12）：我发出去、他一直没表态，聊天又往下走过上下文那么多条——
+        /* 过期：我发出去、他一直没表态，聊天又往下走过上下文那么多条——
            这一笔作废、钱原路回我口袋（见 expireStaleMoney）。跟退还一样是「落定」，
            卡片一起转灰；只是记号跟话不一样。 */
         const trExpired = m.moneyExpired === true;
@@ -4454,131 +4342,46 @@ export default function ChatWindow({
         /* 票面上的「付款方／收款人」：我发的就是「我 → TA」，TA 发的反过来。 */
         const trFrom = isFromMe ? myName : charName;
         const trTo = isFromMe ? charName : myName;
-        /* 1.4.71（第一版，她回「确实不好看」）——墨底卡：深墨渐层底／大圆角／柔和深影／
-           左上一点极淡高光／暖金点缀／全左对齐（大号金额、一道淡下去的金线、右下角状态）。
-           1.4.72（第二版，她回「太素了」）——整版翻过来：浅奶油便签、全部居中、重音青绿、
-           影改轻、顶沿一枚青绿小签。
-           1.4.73（第三版）——**给每一块东西自己的栏位**（她说「主次关系没有分清楚、
-           谁转给谁跟备注也很重要、结构上要有非常好的位置跟排版」）。卡不再是一列居中
-           小字，改成**一张分栏的便签**，从上到下五栏，栏与栏之间有细线／底色分开：
-             ① 横头栏——通栏一条，淡青绿渐层底、下缘一道青绿细线，中间「转账」＋方向小箭；
-             ② 名牌栏——**谁给谁升成一格**：两侧各一枚圆徽（浅青绿底、里头是名字第一个
-                字），名字写在徽下、用实色（不再是淡灰小字），中间一枚青绿箭；
-             ③ 金额栏——通栏一格，**上下各一条细线**把它框出来，金额仍是整张最重的一件；
-             ④ 留言栏——有留言才有，**淡青绿底＋左缘一道青绿竖线**的一小块，像便签上贴的；
-             ⑤ 状态栏——最底一栏，上缘一条细线收尾 ＋ 极淡底，未落定时一枚青绿小圆点。
-           1.4.74（第四版，这一版）——她一句「这看着像机票」。病根不在颜色，在**结构**：
-           通栏横条 ＋ 两端对称的圆徽 ＋ 正中一枚箭，这正好就是机票上「起点 → 终点」那条
-           航段，再由道道横线把人切成几行，整张就成了登机牌。⇒ **把票味那几件全撤掉**：
-           一条横线不留、一条通栏底色带不留、不要两端对称、不要正中的箭。
-             ① 左缘一道通高 4px 青绿竖带（书脊）——全卡唯一的大块记号，落定转灰；
-             ② 内容全左对齐：抬头行「转账」小字 ＋ 方向小箭（这一枚表示进／出，不是航段）；
-             ③ 谁给谁写成一句话——「恩熙 转给 老公」：两头名字实色 13px/600、中间「转给」
-                淡下去，像说话不像航段；
-             ④ 金额 34px 左对齐坐在下面，整张最重，上下用留白呼吸（不再用线框）；
-             ⑤ 留言一小块淡青绿底、圆角 8（撤掉那道左竖线，免得跟书脊重复）；
-             ⑥ 状态最底一行：一枚小点／✓／↺ ＋ 小字，左对齐（撤掉上缘线与底色带）。
-           落定口径一字未动：青绿转灰、字全淡、影撤掉。
-           1.4.75（第五版，这一版）——她一句「请去掉竖带，改用更柔和的卡片风格」。那道 4px
-           竖带虽然替全卡定了「里外」，但**又直又硬、贴死在左缘，像夹进去一根书脊**，跟「柔和」
-           正相反。⇒ **撤掉竖带**，改回一张**软软的纸卡**，靠整张的软来托内容：
-             ① 底色从「一块平色」换成**一层很斜很淡的渐层**（上白下奶），像纸受光，不是色块；
-             ② 圆角 18 → 20，边线降到 `rgba(20,19,24,.05)`（几乎看不见，只留一点纸边）；
-             ③ 影子改成**大而轻**的一层（`0 10px 26px -18px rgba(20,19,24,.30)`），
-                不再贴着卡边、也不发黑——软的关键在影子散得开；
-             ④ 内容仍全左对齐，但不再需要给竖带让位，内边距四边放匀（`15px 16px 14px`）；
-             ⑤ 留言那块圆角 8 → 10、底色再淡一点（`rgba(46,139,117,.06)`），
-                整张里就没有一处硬直的东西。
-           落定口径仍一字未动：青绿转灰、字全淡、影撤掉（这张软卡落定后也收成一块平的灰纸）。
-           1.4.77（第六版，这一版）——她看过 `/card-lab` 那四张，指了「**更倾向于 A，
-           但是觉得 A 太简陋了**」。信息两条：**方向收在 A（账册风）**；**要治的是「简陋」**。
-           前五版我一直在换「料」（换色、换角、换影），可她说 A「简陋」时 A 用的就是账册的料
-           ——**可见她认这个料，嫌的是里面太薄**。⇒ 这一版**把料全换成账册那套**，力气全花在
-           **「砌厚」**上，照着红包卡那张同门账页的骨架来（它从没被她嫌弃过）：
-             ① 料回账册：白纸底、方角（`borderRadius: 0`）、1px 细边、`WALLET_PAPER_SHADOW`
-                那层硬边错位影；落定后底转灰白 `#FAF8F9`、边淡、影撤（跟红包卡同一套口径）；
-             ② **加了头**：左上**一枚 32×32 方签**（淡青绿底里兜着那枚进出方向箭），右边两行
-                ——书写体「转账」＋下面一行「谁 转给 谁」（名字实色 600）——**有签有题**，
-                不再是一行干灰字开头；
-             ③ **金额自己占一栏**：从「跟人挤在同一列里」升出来，上下留足呼吸，28px 等宽
-                数字、`¥` 青绿，整张最重；
-             ④ **附言有自己的格子**：一小块极淡青绿底（方角），左上角一枚「附言」小标签
-                （等宽 9px 加字距），下面才是话——**归属**（1.4.73 她说的那个词）；
-             ⑤ **落款栏**：上缘一条细线收尾，左端等宽小字写状态，右端一枚记号——还在等
-                是一枚**方角**小点（账册不做圆的），收下变 ✓、退还变 ↺。
-           宽度 228 → 204（比红包卡那张 196 略宽，好放更大的金额，但仍是同一家人的方角账页）。
-           落定口径仍一字未动：青绿转灰、字全淡、影撤掉。
-           1.4.80（第七版，这一版）——她看完 `/card-lab` 那一页，指了 **B（存根票根）**，
-           并提三条：① 右上角编号不要这么长；② 要像转账凭证那样**有付款方跟收款人**；
-           ③ 可以**大张一点**，不必这么小张。⇒ 整张**照 B 重做**，三条逐条落：
-             ① 纸：偏暖的米白 `#FCFAF6`（不再用账册那张纯白纸）；右缘不封边——那道边交给
-                右侧一排 **7px 的撕口齿**（透明底 ＋ 一枚枚纸色的半圆，像从存根上撕下来的）；
-                宽度 204 → **240**（大张一点）；
-             ② 抬头：左端书写体「**转账存根**」（B 的名字就写在这儿），右端一枚**短编号**
-                ——原先一串「NO. 年月日-金额」她嫌长，改成从这条消息的时间戳取**末四位**；
-             ③ 中段改成**付款方／收款人各占一行**（等宽小字名目 ＋ 实色名字，左边对齐成一栏），
-                这正是她要的「像转账凭证」；上下各一道**虚线**分段（B 的分段法），
-                不再用账册的细实线；
-             ④ 金额仍是整张最重（大号等宽数字），附言仍是金额下一行小字；
-             ⑤ 落款仍在最底一道虚线之下（左端等宽小字写状态、右端一枚记号）。
-           撤掉的：那枚兜在方签里的进出方向箭（`TrArrow`）——方向这件事现在由「付款方／
-           收款人」两行说清楚，不再需要一枚箭；连带 `ArrowUpRight／ArrowDownLeft` 两个图标
-           也从这个文件里撤了。
-           落定口径仍一字未动：青绿转灰、字全淡、影撤掉（这张票根落定后收成一块平的暖灰纸，
-           撕口齿也跟着换色——那排齿的颜色是从纸色算出来的）。
-           1.4.82（第八版，这一版）——她一次提了四条：
-             「整体再缩小一点」／「转账方跟收款方应该都会有这个卡片的」／「收付款方的名字
-             再往前一点、两行名字统一一下（太跳脱）」／「整体颜色不要绿要粉，名字可以用蓝，
-             名字跟金额用不同颜色区分一下」。逐条落：
-             ① 宽 240 → **218**、内边距 12/14/11 → 11/13/10，全卡字号各降一档
-                （金额 28 → 25、抬头 15 → 14、名字 12.5 → 11.5、状态 10.5 → 10）；
-             ② **收款方那一联**（下面 `case "receipt"`）照这张票根的形制重做——同一张纸、
-                同一条撕口齿、同一套「付款方／收款方」两行、同一处金额栏。从此一笔钱是
-                「双方各持一联」，不再是「我一张票、他一张小灰卡」（那一联的注释写在它自己那儿）；
-             ③ 名目那一栏 42 → 34、字距 .14em → .1em、同行间距 8 → 6：名字整体**往左挪**约 9px；
-                两行的名字用同一个字号／字重／同一个色，不再一深一浅地跳；
-             ④ 配色换过：青绿 `#2E8B75` 整条撤掉，改成——**金额与 ¥、落款的状态字与那枚记号
-                全是粉**（`T.pink`）；**名字改蓝**（`#3A6FD8`），跟金额的粉分开，一眼分得清
-                「谁」与「多少钱」；名目／编号／附言仍是灰。
-               ⇒ 连带改了那条沿用六轮的落定口径：从前落定是**转灰**，这一版改成**褪色**
-                （粉褪成淡粉、蓝褪成淡蓝，纸仍是那块平的暖灰纸）——她说不要绿要粉，落定后
-                再收成一整块灰就跟这句话正拧着；褪色仍是「安静下来」，只是安静下来还是粉的。
-           1.4.83（第九版，这一版）——她又提三条，全是「两行名字＋附言」这一带的微调：
-             ① 「名字可以单独改个字体」⇒ 名字换成**宋体**（`SERIF`）——凭证上的人名就该是
-                印刷宋体，跟等宽的名目、等宽的金额、无衬线的附言四种字摆在一起，名字自成
-                一路；字重 600 → 500（思源宋体只装到 500，写 600 会被浏览器合成描边、糊）；
-             ② 「再稍微贴近一点，付款方跟收款人」⇒ 名字跟前面的名目再贴近：名目那一栏
-                34 → 30、行内间距 6 → 4（名字整列又往左挪了约 6px）；
-             ③ 「备注那一栏底部有一层淡淡的阴影，稍微有一点区分」⇒ 附言那一行底下垫一层
-                **极淡的粉底**（`trNoteBg`），跟纸面分开——票据上「备注」本来就是一格垫了
-                底的栏；落定后那层底褪成极淡的灰。 */
-        /* 1.4.82 起颜色三分工（她：「名字或者是金额可以有不同的颜色区分一下」）：
+        /* 票根的形制（她要「像转账凭证」）：
+             ① 纸：偏暖的米白；右缘不封边——那道边交给右侧一排撕口齿（半圆纸齿，像从
+                存根上撕下来的）；落定后齿跟着纸色一起换（齿色由纸色算出来）；
+             ② 抬头：左端书写体「转账存根」，右端一枚**短编号**（从这条消息时间戳取末四位
+                ——短、每条不重样）；
+             ③ 中段：付款方／收款人各占一行（等宽小字名目 ＋ 实色名字，左对齐成一栏），
+                上下各一道虚线分段；
+             ④ 金额是整张最重的一件（大号等宽数字）；附言垫一层淡底、占自己一格；
+             ⑤ 最底一道虚线之下落款：左端等宽小字写状态、右端一枚记号。
+           ⚠️ 方向这件事由「付款方／收款人」两行说清楚，别再往回加箭头／航段那类记号；
+           也别用青绿——配色三分工见下。
+           名字用**宋体**（`SERIF`）字重 500：凭证上的人名就该是印刷宋体，跟等宽的名目、
+           等宽的金额、无衬线的附言四种字摆开自成一路；思源宋体只装到 500，写 600 会被
+           浏览器合成描边、糊。 */
+        /* 颜色三分工：
              · 金额与 ¥、落款的状态字与那枚记号＝**粉**（`trPink`）——钱这件事最亮；
              · 名字＝**蓝**（`trBlue`）——「谁」跟「多少钱」靠颜色分开，不用靠字重去挤；
              · 名目／编号／附言＝灰（`trSub`）。
-           落定那一档：粉褪成淡粉、蓝褪成淡蓝（旧口径是整块转灰）。
-           （原先那个 `trFg`（名字与金额共用的深墨）这一版用不上了，删掉。） */
+           落定那一档：粉褪成淡粉、蓝褪成淡蓝。 */
         const trPink = trDone ? "#D9B3C0" : T.pink;
         const trBlue = trDone ? "#A9B2C4" : "#3A6FD8";
         const trSub = trDone ? "#C3BDB5" : "#8E8880";
-        /* 1.4.83 附言底下垫的那层淡底：未落定是极淡的粉（跟金额那支粉同一族，只是淡到
+        /* 附言底下垫的那层淡底：未落定是极淡的粉（跟金额那支粉同一族，只是淡到
            只是「一层底」），落定褪成极淡的灰（跟着整张一起安静下来）。 */
         const trNoteBg = trDone ? "rgba(20,19,24,.04)" : "rgba(232,106,155,.07)";
         /* 票根那张暖纸：落定后收成一块平的暖灰（跟其余两色一起退下去）。 */
         const trPaper = trDone ? "#F6F4F1" : "#FCFAF6";
         /* 票根的分段法：虚线。落定后虚线也跟着淡下去。 */
         const trDash = trDone ? "1px dashed rgba(20,19,24,.12)" : "1px dashed rgba(20,19,24,.22)";
-        /* 票根右上角那枚编号（1.4.80）：她嫌原先「NO. 年月日-金额」太长。改成从这条消息的
-           时间戳里取**末四位**——四位数字、短、每条不重样，仍是它自己的号。 */
+        /* 票根右上角那枚编号：从这条消息的时间戳里取**末四位**——四位数字、短、
+           每条不重样，仍是它自己的号。 */
         const trNoMs = Date.parse(m.createdAt);
         const trNo = `NO. ${Number.isFinite(trNoMs) ? String(trNoMs % 10000).padStart(4, "0") : "0000"}`;
         return (
           <div
             onClick={() => setOpenMoney(m)}
             style={{
-              /* 1.4.80＝一张**存根票根**（她指的 B）：暖纸、方角、细边、硬边错位影。
+              /* 一张**存根票根**：暖纸、方角、细边、硬边错位影。
                  右缘**不封边**——那道边交给右侧那排撕口齿（见本元素末尾那个绝对定位的齿）；
-                 落定后整张转暖灰、影撤掉。1.4.82 起宽 240 → 218（她「整体再缩小一点」）。 */
+                 落定后整张转暖灰、影撤掉。 */
               position: "relative",
               width: 218,
               background: trPaper,
@@ -4596,9 +4399,8 @@ export default function ChatWindow({
             }}
           >
             {/* ① 抬头：左端「转账」二字＋右上角一枚短编号（四位数，见 trNo）。
-                字体走宋体（SERIF）不走书写体——1.4.81 她说「希望还是看起来不要这么幼稚的字体」，
-                宋体端正、像印刷的凭证抬头；书写体那一路只留给红包卡了
-                （1.4.82 起收款回执也换成宋体——见下面 `case "receipt"`）。 */}
+                字体走宋体（SERIF）不走书写体——宋体端正、像印刷的凭证抬头；
+                书写体那一路只留给红包卡（收款回执同样是宋体，见下面 `case "receipt"`）。 */}
             <div
               style={{
                 display: "flex",
@@ -4634,17 +4436,11 @@ export default function ChatWindow({
               </span>
             </div>
             <div style={{ marginTop: 8, borderTop: trDash }} />
-            {/* ② 付款方／收款方各占一行（1.4.80 她说「应该要像转账凭证一样，有个付款方跟
-                收款人」）——名目用等宽小字、名字用实色，两行左边对齐成一栏；谁进谁出看
-                这两行就明白，所以 1.4.80 把原先那枚方向箭撤了。
-                1.4.82 她再说「名字再往前一点、两行名字统一一下，感觉太跳脱」：名目那一栏
-                42 → 34、字距 .14em → .1em、同行间距 8 → 6，名字整列往左挪；两行的名字
-                同一个字号／字重／同一个蓝，不再一深一浅。名目也从「付款方／收款人」改成
-                **「付款方／收款方」**——她自己两次都说「收付款方」，一对一并排才不跳。
-                1.4.83 她又说「名字单独改个字体、再稍微贴近一点付款方跟收款人」：
-                名字换成**宋体**（`SERIF`，字重 500）——凭证上的人名就是印刷宋体，跟等宽
-                名目、等宽金额、无衬线附言摆在一起自成一路；名目栏 34 → 30、行内间距
-                6 → 4，名字又往左贴了一点。 */}
+            {/* ② 付款方／收款方各占一行——名目用等宽小字、名字用实色，两行左边对齐成一栏；
+                谁进谁出看这两行就明白，所以不用方向箭。名目统一叫「付款方／收款方」，
+                一对一并排才不跳。名字整列往左贴、两行同一个字号／字重／同一个蓝，
+                免得一深一浅显得跳脱；名字换成**宋体**（`SERIF`，字重 500）——
+                凭证上的人名就是印刷宋体，跟等宽名目、等宽金额、无衬线附言摆在一起自成一路。 */}
             <div style={{ marginTop: 9, display: "grid", gap: 6 }}>
               {[
                 { k: "付款方", v: trFrom },
@@ -4685,8 +4481,7 @@ export default function ChatWindow({
             </div>
             <div style={{ marginTop: 9, borderTop: trDash }} />
             {/* ③ 金额：整张最重的一件东西，自己占一栏、上下留足呼吸。
-                1.4.82 起这一栏整条走粉（她「不要是绿色的，还是要粉色的」）——站在蓝名字
-                对面，一眼分得清「谁」与「多少钱」。 */}
+                这一栏整条走粉——站在蓝名字对面，一眼分得清「谁」与「多少钱」。 */}
             <div
               style={{
                 display: "flex",
@@ -4720,10 +4515,9 @@ export default function ChatWindow({
                 {m.amount?.toFixed(2) || "0.00"}
               </span>
             </div>
-            {/* ④ 附言：有留言才有——票根上就是金额下面一行小字（B 的写法，不再给它一块底色格）。
-                1.4.83 她说「备注那一栏底部有一层淡淡的阴影，稍微有一点区分」⇒ 给它垫一层
-                极淡的粉底（`trNoteBg`）＋ 上下左右一点内衬，跟纸面分开——票据上的「备注」
-                本来就是一格垫了底的栏；方角跟整张一致，落定后那层底褪成极淡的灰。 */}
+            {/* ④ 附言：有留言才有——票根上就是金额下面一行小字。
+                给它垫一层极淡的粉底（`trNoteBg`）＋ 上下左右一点内衬，跟纸面分开——票据上的
+                「备注」本来就是一格垫了底的栏；方角跟整张一致，落定后那层底褪成极淡的灰。 */}
             {m.content.trim() ? (
               <div
                 style={{
@@ -4742,7 +4536,7 @@ export default function ChatWindow({
             ) : null}
             {/* ⑤ 落款：最底一道虚线之下（票根的分段法），左端等宽小字写状态，
                 右端一枚记号——还在等的时候是一枚小点，收下变 ✓、退还变 ↺。
-                1.4.82 起这一栏跟金额同一支粉（不再用青绿）。 */}
+                这一栏跟金额同一支粉。 */}
             <div
               style={{
                 marginTop: 9,
@@ -4782,9 +4576,9 @@ export default function ChatWindow({
                 />
               )}
             </div>
-            {/* 右沿那排撕口齿（B 的那道撕口）：透明底 ＋ 一枚枚**纸色**的半圆，看着像从存根上
-                撕下来的边。它压在纸的右缘之外 7px（所以纸宽 218、整张看到 225），
-                颜色从 `trPaper` 算出来——落定后纸转暖灰，这排齿跟着一起转。 */}
+            {/* 右沿那排撕口齿：透明底 ＋ 一枚枚**纸色**的半圆，看着像从存根上
+                撕下来的边。它压在纸的右缘之外 7px，颜色从 `trPaper` 算出来——
+                落定后纸转暖灰，这排齿跟着一起转。 */}
             <div
               style={{
                 position: "absolute",
@@ -4801,38 +4595,30 @@ export default function ChatWindow({
         );
       }
       case "receipt": {
-        /* 收款回执（1.4.40）：钱到账之后，收款方发出的那一联（恩熙：「他接受转账了，
-           我的卡片变暗，并且他会发出一个他接受转账的卡片」）。
-           1.4.82 她看着聊天里「一张票 ＋ 一张小灰卡」说「转账方跟收款方应该都会有这个
-           卡片的」⇒ 这一联**照转账那张票根的形制重做**：同一张暖纸、同一条右沿撕口齿、
-           同一套「付款方／收款方」两行、同一处金额栏、同一种宋体抬头、同一个宽 218——
-           一笔钱从此是「**双方各持一联**」，摆在一串里是一家人。
+        /* 收款回执：钱到账之后，收款方发出的那一联。**照转账那张票根的形制**——
+           同一张暖纸、同一条右沿撕口齿、同一套「付款方／收款方」两行、同一处金额栏、
+           同一种宋体抬头、同一个宽 218：一笔钱是「**双方各持一联**」，摆在一串里是一家人。
            两联的分工只靠**抬头那两个字**（「转账」／「收款」／「退还」）和落款那行字分。
-           这一联说的永远是「钱已经到这儿了」，所以它不挂那层硬影（影是「还在等」的紧张感，
-           回执不紧张）。
-           1.4.85 恩熙：「不论是转账方还是收款方还是退回方，都要明显的变暗，不是只有
-           单一方会变暗」——⇒ 这一联**整张取转账卡的落定档**：它一出生这笔钱就定了
-           （收下／退这个动作已经发生），没有「还在等」的那一档，所以纸是那块平的暖灰、
-           粉是淡粉、蓝是淡蓝，跟落定后的转账那联**一样暗**。1.4.82 那句「回执不褪色」
-           的旧口径就此作废——两联一张暗一张亮，摆在一起不像同一笔钱。
+           这一联说的永远是「钱已经到这儿了」，它一出生这笔钱就定了（收下／退这个动作
+           已经发生），没有「还在等」那一档，所以**整张取转账卡的落定档**：不挂那层硬影
+           （影是「还在等」的紧张感，回执不紧张），纸是那块平的暖灰、粉是淡粉、蓝是淡蓝，
+           跟落定后的转账那联**一样暗**——两联一张暗一张亮，摆在一起就不像同一笔钱了。
            内容全靠 m 自己身上那两个字段推：role＝**收款方是谁**（见 buildReceiptMsg 的注释），
-           所以付款方就是另一侧；退还那张同理（退还方＝role、付款方＝另一侧，见 1.4.41）。
-           旧形制（灰白底、左缘 4px 编目条、斜体小英文 RECEIVED）这一版整条撤掉。 */
+           所以付款方就是另一侧；退还那张同理（退还方＝role、付款方＝另一侧）。 */
         const recRefunded = (m.content || "已收款") === "已退还";
-        /* 抬头跟转账那张一样是两个字的宋体名词（1.4.81 那次换宋体的道理：凭证抬头要端正，
+        /* 抬头跟转账那张一样是两个字的宋体名词（同转账卡：凭证抬头要端正，
            书写体那一路只留给红包卡）。 */
         const recTitle = recRefunded ? "退还" : "收款";
         const recTo = m.role === "user" ? myName : charName;
         const recFrom = m.role === "user" ? charName : myName;
-        /* 编号跟转账那一联是**同一个号**（1.4.84 恩熙：「收取跟退还，它右上角那个数字
-           应该是编号，是一样的呀」）——取的是 `payAt`（原转账那条的时间戳，buildReceiptMsg
-           落库时抄的）；1.4.84 之前的老回执没这格，兜底用它自己的时间（老回执两联对不上
-           属正常，新出的转账起就都是同一个号了）。 */
+        /* 编号跟转账那一联是**同一个号**——取的是 `payAt`（原转账那条的时间戳，
+           buildReceiptMsg 落库时抄的）；老回执没这格，兜底用它自己的时间（老回执两联
+           对不上属正常，新出的转账起就都是同一个号了）。 */
         const recNoMs = Date.parse(m.payAt ?? m.createdAt);
         const recNo = `NO. ${Number.isFinite(recNoMs) ? String(recNoMs % 10000).padStart(4, "0") : "0000"}`;
-        /* 1.4.85 起，回执永远是「落定那一档」（值与转账卡的 trDone 档一字不差，改那边的
-           落定色时这里要跟着一起改）：纸＝平暖灰、粉＝淡粉、蓝＝淡蓝、灰＝更淡的灰、
-           虚线也更淡。两联落定后摆在一起一样暗。 */
+        /* 回执永远是「落定那一档」（值与转账卡的 trDone 档一字不差，改那边的落定色时
+           这里要跟着一起改）：纸＝平暖灰、粉＝淡粉、蓝＝淡蓝、灰＝更淡的灰、虚线也更淡。
+           两联落定后摆在一起一样暗。 */
         const recPaper = "#F6F4F1";
         const recPink = "#D9B3C0";
         const recBlue = "#A9B2C4";
@@ -4840,8 +4626,7 @@ export default function ChatWindow({
         const recDash = "1px dashed rgba(20,19,24,.12)";
         return (
           <div
-            /* 1.4.86 恩熙：「不论我点的是收款方的记录，还是转账方的记录，我都可以点进去
-               看详情」——回执这一联也挂上点开（面板那边给它单开了一套回执版的详情，
+            /* 回执这一联也挂上点开（面板那边给它单开了一套回执版的详情，
                不会再把回执当「他发来的转账」、也不会冒出收下／退还的按钮）。 */
             onClick={() => setOpenMoney(m)}
             style={{
@@ -4893,8 +4678,7 @@ export default function ChatWindow({
             </div>
             <div style={{ marginTop: 8, borderTop: recDash }} />
             {/* ② 付款方／收款方：跟转账那张一个字都不差的两行（名目那一栏、间距、字号全同，
-                1.4.83 起名字同样换宋体 500、名目栏 30、行内间距 4——两联改就得一起改，
-                不然「一家人」就散了）。 */}
+                名字同样宋体 500——两联改就得一起改，不然「一家人」就散了）。 */}
             <div style={{ marginTop: 9, display: "grid", gap: 6 }}>
               {[
                 { k: "付款方", v: recFrom },
@@ -4932,7 +4716,7 @@ export default function ChatWindow({
               ))}
             </div>
             <div style={{ marginTop: 9, borderTop: recDash }} />
-            {/* ③ 金额：与转账那张同一个号、同一处栏（1.4.85 起也是同一个「落定档」的淡粉）。 */}
+            {/* ③ 金额：与转账那张同一个号、同一处栏（也是同一个「落定档」的淡粉）。 */}
             <div style={{ display: "flex", alignItems: "baseline", gap: 3, marginTop: 10 }}>
               <span
                 style={{
@@ -4987,7 +4771,7 @@ export default function ChatWindow({
               )}
             </div>
             {/* 右沿那排撕口齿：与转账那张同一条（颜色从纸色算出来的那道边；
-                1.4.85 起纸是落定那块暖灰，齿也跟着是暖灰的）。 */}
+                纸是落定那块暖灰，齿也跟着是暖灰的）。 */}
             <div
               style={{
                 position: "absolute",
@@ -5101,7 +4885,7 @@ export default function ChatWindow({
           </div>
         );
       default:
-        /* 1.4.12 aiOutputDisplay 正则：只改 TA 文字气泡在屏幕上的样子，存档一字
+        /* aiOutputDisplay 正则：只改 TA 文字气泡在屏幕上的样子，存档一字
            不动——关掉规则，旧消息立刻还原。我的气泡不走这里（userInput 只改
            送出去的，屏幕永远显示原文）。 */
         return (
@@ -5120,25 +4904,21 @@ export default function ChatWindow({
      所以这条对它没有任何影响。
      边与影两处：
      ①边用粉调的 .22，不用 T.line（中性灰）——灰边压在白里发脏，跟整页的粉对不上；
-       底改半透（1.5.52）之后这枚边还得把气泡的轮廓交代住，所以由 .13 提到 .22——
-       不然白气泡坐到浅色壁纸上就没了边界。
+       底是半透之后，这枚边还得把气泡的轮廓交代住，不然白气泡坐到浅色壁纸上就没了边界。
      ②影用两层粉——贴身的 1px 定边界，
        底下 14px 的晕往后收（-8px 让它只落在气泡下缘外），气泡才像搁在纸上，
        而不是用笔在白底上画了个框。
-     ⚠️ 半透是 1.5.52（恩熙说「角色的也可以变成这种半透明的感觉吗」）加的：
-       底换成 alpha .72 的白——跟她自己那侧（第 553 条的 .70 粉）同一套口径，
-       传了照片壁纸时壁纸从气泡里淡淡透上来。
+     ⚠️ 半透的底：跟她自己那侧同一套口径，传了照片壁纸时壁纸从气泡里淡淡透上来。
        ①**不许上毛玻璃（backdrop-filter）**：一屏十几二十条，一屏多枚模糊在 iPhone 上会掉帧
          （globals.css 那条玻璃材质的警告：开销与面积成正比，别铺到一屏多枚）——只用 alpha。
        ②**alpha 不许再往下调**：这里坐的是深色字（T.ink），透太多就把壁纸的深浅直接拉到字底下，
-         字跟照片的花纹打架。1.5.53：恩熙说「角色的有点太透」，由 .72 收到 .86——
-         白底坐深色字本来就比粉底坐白字更吃透，不再跟她那侧的 .70 强行对齐。
-       ③两处顺带：影收一档（.07→.05、.30→.22，半透的底再压重影就又透出暗斑），
+         字跟照片的花纹打架；白底坐深色字本来就比粉底坐白字更吃透，不跟她那侧的粉底强行对齐。
+       ③两处顺带：影收一档（半透的底再压重影就又透出暗斑），
          补一道极淡的白文字影帮深色字从照片里浮出来；渐变幅度保留（幅度一小整块就塌成一张平纸）。
-       ④字体（1.7.20）：正文换**宋体**（`SERIF`＝站内自托管的思源宋，零新增加载）——
+       ④字体：正文换**宋体**（`SERIF`＝站内自托管的思源宋，零新增加载）——
          气泡里「说出口的话」读起来像写下来的，跟黑体的界面（按钮、列表、设置）拉开一层；
-         **只动气泡这一层、UI 一律不动**。行距同时由 1.55 提到 1.65：
-         宋体比黑体紧、笔画又细，不提会显挤显薄。字号在 fontSize（默认那档已同步提到 13.5）。 */
+         **只动气泡这一层、UI 一律不动**。行距同时拉大（宋体比黑体紧、笔画又细，
+         不拉会显挤显薄）；字号在 fontSize。 */
   const assistantBubbleStyle: CSSProperties = {
     position: "relative",
     background: "#FFFFFF",
@@ -5197,9 +4977,9 @@ export default function ChatWindow({
      也不许跟时间／已读那些小字排在一行里。
 
      ⚠️ 叹号必须跟**气泡**一起装进同一条 flex 行（见 failMarkRowStyle），靠这一行居中；
-     不许挂在整列上让它 alignSelf: "center"（2026-09-24 恩熙：「它应该是在每个气泡的正中间，
-     不会偏下的」）。整列里除了气泡，上头还有「思考 ▾」那行、底下还有时间小字这一行，
-     按整列算中线的结果就是被这两样往下拽——看着永远偏下，且气泡一高一低偏多少还不一样。 */
+     不许挂在整列上让它 alignSelf: "center"：整列里除了气泡，上头还有「思考 ▾」那行、
+     底下还有时间小字这一行，按整列算中线的结果就是被这两样往下拽——看着永远偏下，
+     且气泡一高一低偏多少还不一样。 */
   const failMarkRowStyle: CSSProperties = {
     display: "flex",
     alignItems: "center",
@@ -5346,7 +5126,7 @@ export default function ChatWindow({
 
     const isMe = m.role === "user";
     const body = renderBody(m);
-    /* 时间每条气泡都挂自己那条的（恩熙 1.10.34：不许「消失」）；
+    /* 时间每条气泡都挂自己那条的，不许「消失」；
        「已读」是整串的状态，仍只在这一串的最后一条报一次。 */
     const meta = (
       <div
@@ -5368,20 +5148,20 @@ export default function ChatWindow({
         ) : null}
       </div>
     );
-    /* 外语聊天的译文行（1.9.48）：贴着气泡**正下方**的一行小字，靠哪一侧跟那条气泡一致。
+    /* 外语聊天的译文行：贴着气泡**正下方**的一行小字，靠哪一侧跟那条气泡一致。
        他那一侧显示的是「他说的外语 → 中文」，我这一侧显示的是「我原本打的那句中文」；
        各自那个「显示翻译」关掉就不露（译文照旧存在消息里，随时开回来）。
        走 alignSelf＋maxWidth（同引用块那招）：它自己按文字长短收，绝不把上头的气泡撑宽。 */
     const trSet = conv?.translate;
-    /* 1.9.56：语音点开「转文字」时，原文（他说出口的那句）顶上来，中文译文行先让开；
+    /* 语音点开「转文字」时，原文（他说出口的那句）顶上来，中文译文行先让开；
        收起原文，中文译文行自动恢复。所以这里多挂一个 `!showTrans.has(m.id)`。
-       1.10.6 起「转文字」可多开，这一条开着就这一条让开，跟别的条互不影响。 */
+       「转文字」可多开，这一条开着就这一条让开，跟别的条互不影响。 */
     const showTransLine =
       (m.role === "user" ? trSet?.in.show === true : trSet?.out.show === true) &&
       !!m.translated &&
       !showTrans.has(m.id);
-    /* 1.10.7（恩熙）：译文行原来只有一根很淡的竖线、没有底色，换个壁纸就糊没了——
-       改成跟**引用块同一套**纸底＋竖线（半透明奶白底 + 3px 竖线），任何壁纸下都压得住。
+    /* 译文行跟**引用块同一套**纸底＋竖线（半透明奶白底 + 3px 竖线）——只一根很淡的
+       竖线、没有底色，换个壁纸就糊没了，这样任何壁纸下都压得住。
        字号／衬线仍按译文自己的来（它是译文，不跟引文混同）。 */
     const transLine = showTransLine ? (
       <div
@@ -5403,16 +5183,16 @@ export default function ChatWindow({
           whiteSpace: "pre-wrap",
         }}
       >
-        {/* 1.9.82：语音那行的中文译文同样不露方括号语气标签（跟「转文字」的原文一个口径，
+        {/* 语音那行的中文译文同样不露方括号语气标签（跟「转文字」的原文一个口径，
             见 stripVoiceTags）；其余消息的译文照旧原样显示。 */}
         {m.type === "voice" ? stripVoiceTags(m.translated ?? "") : m.translated}
       </div>
     ) : null;
-    /* 引用块（1.5.49 改脸）：1.5.47 那版是「一整块淡粉底 ＋ 顶上一行小字『引用』」，
-       恩熙看着说「有点丑」⇒ 改成左边一根细竖线那种（微信/Telegram 一个路数）：
-       ①去掉「引用」那两个字：单聊里引用的一定是对方（TA 的气泡引用我、我的气泡引用 TA），
+    /* 引用块：左边一根细竖线那种（微信/Telegram 一个路数），不用「一整块淡粉底 ＋ 顶上
+       一行小字『引用』」那版——
+       ①不摆「引用」那两个字：单聊里引用的一定是对方（TA 的气泡引用我、我的气泡引用 TA），
          一根竖线 ＋ 原话自带引号，已经把「这是引来的话」说清楚了，再顶一行小标签纯属多余装饰。
-       ②去掉整块底色：气泡自己已经是一块色，再压一层淡粉就是「补丁感」的来源；
+       ②不给整块底色：气泡自己已经是一块色，再压一层淡粉就是「补丁感」的来源；
          一根竖线既能划分区域、又不糊。
        ③原话在库里存的是「发信人：原话」（那是给模型看的写法，见 quoteMsg），
          这里把前缀摘掉。只认气泡对面那个名字、摘不掉就原样显示——免得把原话里
@@ -5511,9 +5291,8 @@ export default function ChatWindow({
             {noBubble ? (
               body
             ) : (
-              /* 我这侧的气泡（1.5.51 改半透）：恩熙说「这颜色太深了，能不能做有点透明感」⇒
-                 粉底整档提亮，并换成**半透明的粉**（alpha .70）——上传了照片壁纸时，
-                 壁纸会从气泡里淡淡透上来，气泡不再是糊在照片上的一块实心色，
+              /* 我这侧的气泡：粉底整档提亮，并换成**半透明的粉**（alpha .70）——上传了照片
+                 壁纸时，壁纸会从气泡里淡淡透上来，气泡不再是糊在照片上的一块实心色，
                  读起来是一层浮着的薄粉玻璃。
                  ①为什么不用毛玻璃（backdrop-filter）：聊天一屏就是十几二十条气泡，
                    一屏多枚模糊在 iPhone 上是真会掉帧的（globals.css 那条玻璃材质的警告写着
@@ -5525,8 +5304,8 @@ export default function ChatWindow({
                    整块就塌成一张平纸。
                  ④影从深粉收了一档（.22→.14、.36→.28）：气泡本身就是半透的，
                    影再重就又把它压回实心。内高光同理收到 .38。
-                 ⑤字体（1.7.20）：正文与对面那一侧（TA 气泡）一同换**宋体**（`SERIF`）、
-                   行距 1.55 → 1.65——两侧口径必须对齐，别一侧宋体一侧黑体。
+                 ⑤字体：正文与对面那一侧（TA 气泡）一同换**宋体**（`SERIF`）、行距拉大——
+                   两侧口径必须对齐，别一侧宋体一侧黑体。
                  主色 T.pink 没动，顶栏、按钮那些还用它。 */
               <div
                 style={{
@@ -5577,21 +5356,20 @@ export default function ChatWindow({
                 avatar: actualCharAvatar,
                 fallbackChar: charName.charAt(0),
                 gradient: AVATAR_GRADIENT,
-                /* 1.5.65：点 TA 的头像进「心声档案」。只挂 TA 这一侧，
+                /* 点 TA 的头像进「心声档案」。只挂 TA 这一侧，
                    我自己的头像不接（那一页讲的是他心里的事）。
-                   1.5.72 起这是心声**唯一的入口**（聊天里那截「心声 ▾」已摘掉）。 */
+                   这是心声**唯一的入口**（聊天里那截「心声 ▾」已摘掉）。 */
                 onClick: () => setShowInnerPage(true),
                 ring: "char",
               })
             )}
         <div style={{ maxWidth: 300, display: "flex", flexDirection: "column", minWidth: 0 }}>
-          {/* 心声（1.5.60 建）**1.5.72 从聊天里摘掉**：恩熙说「聊天页面就可以把这个心声
-              去掉，就让它直接变成头像里面有就可以了」——聊天流里那条「心声 ▾」整个删掉，
-              心声只从 TA 头像那一页看（心声档案，1.5.65，含历史抽屉，每一轮都在）。
+          {/* 心声**从聊天里摘掉**了：聊天流里那条「心声 ▾」整个删掉，
+              心声只从 TA 头像那一页看（心声档案，含历史抽屉，每一轮都在）。
               数据侧一个字没动：`innerVoice`／`innerSnapshot` 照旧挂在那一轮的第一条 TA
               气泡上、照旧落库，InnerVoicePage 直接读；extractInnerVoice 也照旧在摘。
               所以别把这段渲染加回来——有那页在，这里是重复的入口。 */}
-          {/* 思考过程入口（1.4.9 建，1.4.14 改淡）：带 reasoningText 的是思考型模型
+          {/* 思考过程入口：带 reasoningText 的是思考型模型
               那一轮的第一条气泡，全局开关「显示思维链」关掉时整个不露（思考照收照存，不丢）。
               样式走「不明显的」：一行淡灰小字贴在气泡上方，无底无边框，
               混在背景里不抢眼，点字才展开全文——长文限高滚动、可长按选中复制
@@ -5700,11 +5478,11 @@ export default function ChatWindow({
         : quoteText
     : "";
 
-  /* 线下那一场还开着吗（1.7.39）：落库的「总闸」。开着的时候线上发不了消息——
+  /* 线下那一场还开着吗：落库的「总闸」。开着的时候线上发不了消息——
      免得她在这一头打字、他又在那头演着，线上线下打架。只由线下页的「结束这一场」放平。 */
   const offlineOpen = !!conv?.offlineOpen;
 
-  /* 分页切片（1.7.36）：只把最近 visibleCount 条摆上屏，再往前的还没上来——
+  /* 分页切片：只把最近 visibleCount 条摆上屏，再往前的还没上来——
      顶上那颗「加载更早的」露不露、露几条，都由这两个数说了算。 */
   const shownMessages =
     messages.length > visibleCount ? messages.slice(-visibleCount) : messages;
@@ -5731,7 +5509,7 @@ export default function ChatWindow({
         /* 顶栏那对头像中间的小粉心会轻轻跳一下，做出「传信」的感觉：
            只动 transform，幅度压得小、
            周期拉得慢——是「在看的人才会发现它在动」的那种分量。
-           ⚠️ 别写 infinite（1.9.7）：无限动画会让合成器永远醒着、每 16ms 硬出一帧，
+           ⚠️ 别写 infinite：无限动画会让合成器永远醒着、每 16ms 硬出一帧，
            手机上聊久了就是发烫＋掉帧。改成只跳三下（约 5.7s）就歇——进聊天页那一下
            「传信」的读还在，之后静静停着，代价归零。 */
         @keyframes heartBeat { 0%,100% { transform: scale(1); } 45% { transform: scale(1.14); } }
@@ -5750,8 +5528,7 @@ export default function ChatWindow({
         .chat-body, .chat-body * { -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }
         /* 加号面板里那一枚枚章。
            ⚠️ 章的底与边**必须写在样式表里、不能写内联**：内联样式永远压过样式表，
-           写内联的话下面这条「按下」规则一辈子不生效（恩熙 2026-10-02 报过一次：
-           「点击之后只有文字会变，图标没变色」——就是这个原因）。 */
+           写内联的话下面这条「按下」规则一辈子不生效（现象：点下去只有文字会变、图标不变色，就是这个原因）。 */
         .plus-seal .seal-face {
           width: 50px;
           height: 50px;
@@ -5859,7 +5636,7 @@ export default function ChatWindow({
                 whiteSpace: "nowrap",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
-                /* 外语聊天（1.9.50）：签名也用日语写；下面那行**点一下切中文**、再点切回来。
+                /* 外语聊天：签名也用日语写；下面那行**点一下切中文**、再点切回来。
                    可点时才显示虚线与小手指（没开外语／还没翻好就照旧纯文本）。 */
                 cursor: sigTrans ? "pointer" : "default",
                 textDecoration: sigTrans ? "underline dashed rgba(255,253,248,.28)" : "none",
@@ -5984,7 +5761,7 @@ export default function ChatWindow({
             还没有消息，发一条吧
           </div>
         ) : null}
-        {/* 历史分页（1.7.36）：上头还有没上屏的，就在消息区最前面摆一颗「加载更早的」。
+        {/* 历史分页：上头还有没上屏的，就在消息区最前面摆一颗「加载更早的」。
             报的是**这个会话一共多少条**（不是这一页多少条）——她要知道的是总量；
             点一下再推一页上来，视口由上面那个 loadMoreRestoreRef 钉住、不动。 */}
         {loaded && olderCount > 0 ? (
@@ -6018,7 +5795,7 @@ export default function ChatWindow({
                  分页后按**上屏这一份**判（shownMessages），否则最上头那条不补日期。 */
               <Fragment key={m.id}>
                 {i === 0 || !sameDay(shownMessages[i - 1].createdAt, m.createdAt) ? (
-                  /* 时间线（恩熙 2026-10-02 定的脸）：一段**粉墨带**，两端化开就没了——
+                  /* 时间线：一段**粉墨带**，两端化开就没了——
                      没有边、没有圆角、也没有影，读起来是「印在纸上的一段色带」，
                      不是「一个装东西的盒子」。字压深到 #B33E70，小字才不飘。
                      跟系统提示（「已加入黑名单」那种）是同一套材质。 */
@@ -6136,16 +5913,14 @@ export default function ChatWindow({
               ring: "char",
             })}
             <span>
-              {/* 一律只写「正在输入…」（恩熙 2026-10-02）：原本按阶段分「思考中／在写心里话／
-                  正在输入」三种说法，她要求不分阶段、统一一句，跟着的秒数也一并去掉。 */}
+              {/* 一律只写「正在输入…」——不分阶段、也不带秒数。 */}
               <b style={{ color: T.pink, fontWeight: 500 }}>{charName}</b> 正在输入…
             </span>
           </div>
         ) : null}
       </main>
 
-      {/* 底部输入条：实底**墨色**，跟顶栏一头一尾、中间留浅（恩熙 2026-10-02 定的新脸）。
-          原来是一根压住照片的白横杆，改版后整条是墨的，压在它上头的控件才立得住。
+      {/* 底部输入条：实底**墨色**，跟顶栏一头一尾、中间留浅。
           墨底必须实心：不能做成顶栏那种薄纱——照片从一堆控件底下透上来，读起来是脏的。 */}
       <div
         style={{
@@ -6157,9 +5932,9 @@ export default function ChatWindow({
         }}
       >
         {offlineOpen ? (
-          /* 1.7.39：线下那一场开着的时候，线上这一格换成一条「回到这一场」——
-             不是一句提示语，是颗按钮：点它就把线下那一页再摆出来。恩熙：
-             「如果我已经在线下的情况下，线上是不可以做同时输入的」，也是防线上线下打架。 */
+          /* 线下那一场开着的时候，线上这一格换成一条「回到这一场」——
+             不是一句提示语，是颗按钮：点它就把线下那一页再摆出来。线上此时不许同时输入，
+             也是防线上线下打架。 */
           <div style={{ padding: "8px 12px 2px" }}>
             <button
               type="button"
@@ -6197,10 +5972,9 @@ export default function ChatWindow({
           </div>
         ) : (
           <>
-        {/* 引用栏（1.5.49 跟气泡里那个一起改脸）：竖细线 ＋ 淡字，长得跟气泡里的
-            引用块一模一样——发出去之后接在一起才像同一样东西。以前是贴边通栏＋单行
-            省略号，跟气泡里那个是两张脸；1.5.47 先统一成淡粉块，恩熙说丑，这版把
-            底块和「引用」小标签都去掉，只留一根竖线。 */}
+        {/* 引用栏：竖细线 ＋ 淡字，长得跟气泡里的引用块一模一样——发出去之后接在一起
+            才像同一样东西。不要贴边通栏＋单行省略号，也不摆淡粉底块与「引用」小标签，
+            只留一根竖线（跟气泡里那个同一套脸）。 */}
         {quoteText ? (
           <div style={{ padding: "10px 14px 0" }}>
             <div
@@ -6420,8 +6194,8 @@ export default function ChatWindow({
         </div>
           </>
         )}
-        {/* 加号面板：形是「一面印章墙」（恩熙 2026-10-02 定的脸）：
-            · 整块跟输入条同一个墨底，从底下一体长出来——不再是「飘在上头的一张白纸」；
+        {/* 加号面板：形是「一面印章墙」：
+            · 整块跟输入条同一个墨底，从底下一体长出来，不是「飘在上头的一张白纸」；
             · 板面压两层极淡的东西：11px 点阵（跟章面同一套，纸的肌理）＋
               顶上一道径向光（顶亮底沉，像一片被灯照到的墨）；
             · 九枚方章摆成 3×3：外框 1.5px 纸白、章面是浅墨竖直渐变 ＋ 居中铺的同一层点阵、
@@ -6843,7 +6617,7 @@ export default function ChatWindow({
                   label={showTrans.has(curMsg.id) ? "收起原文" : "转文字"}
                   color={T.pink}
                   onClick={() => {
-                    /* 1.9.56：可开可关；1.10.6：可**多开**——点开的各自留着，再点同一条才收起，
+                    /* 可开可关、可**多开**——点开的各自留着，再点同一条才收起，
                        中文译文行随「这一条开着」让开／恢复（见 showTrans.has）。
                        改 id 一律重建一个新 Set，不就地改老引用（React 不认同一个引用）。 */
                     setShowTrans((prev) => {
@@ -6890,7 +6664,7 @@ export default function ChatWindow({
         </>
       ) : null}
 
-      {/* 改话（1.7.50）：长按气泡 →「编辑」调出来。照线下「此刻在哪儿」那张底单做——
+      {/* 改话：长按气泡 →「编辑」调出来。照线下「此刻在哪儿」那张底单做——
           同一副白纸底、同一颗实心粉按钮。改的是**存档里的原话**，不是只改屏幕：
           改完他往后就按改后的记（见 saveEdit 为什么要把 apiText 一并抹掉）。 */}
       {editMsg ? (
@@ -7253,15 +7027,14 @@ export default function ChatWindow({
       ) : null}
 
       {/* 红包／转账：看这一条的金额与留言；TA 发来的还没收，就能在这里收下。
-          1.4.86 起回执（receipt）也能点开（单开一套回执版的详情，绝不冒出收下／退还
-          的按钮——回执的 role 是「收款方是谁」，跟钱那条的 role＝「谁发的」语义拧着）。
-          1.4.88 起**转账／回执的详情整张换成票**（TicketMoneyModal，文件底部）。
-          1.4.89 起**红包点开换成开红包页**（RedPacketModal，文件底部）——恩熙：
-          「参考微信红包的样式，有封面、封面可自定义，按下开之后有开红包的动画」。
+          回执（receipt）也能点开——单开一套回执版的详情，绝不冒出收下／退还
+          的按钮（回执的 role 是「收款方是谁」，跟钱那条的 role＝「谁发的」语义拧着）。
+          **转账／回执的详情整张换成票**（TicketMoneyModal，文件底部）；
+          **红包点开换成开红包页**（RedPacketModal，文件底部）——照微信红包，
+          有封面、封面可自定义，按下开之后有开红包的动画。
           没领的（TA 发给我的）先看到大红包，点「開」放动画、动画里真领钱（claimMoney），
           金额才揭晓；我发的／已落定的直接是揭晓后的样子。
-          1.4.93 起揭晓那一屏多一个「查看领取详情」，点进 RedPacketDetailPage——
-          恩熙：「点进去之后会有一个开与不开嘛，开了之后会有个详情页」。 */}
+          揭晓那一屏多一个「查看领取详情」，点进 RedPacketDetailPage（开了之后才有详情页）。 */}
       {openMoney ? (
         openMoney.type === "redpacket" ? (
           <RedPacketModal
@@ -7285,7 +7058,7 @@ export default function ChatWindow({
         )
       ) : null}
 
-      {/* 转账／红包：整页填金额与说明（1.4.54 恩熙要「像微信那样一整页」），
+      {/* 转账／红包：整页填金额与说明（像微信那样一整页），
           钱真从我的零钱划到 TA 那本账 */}
       {paySend ? (
         <MoneySendView
@@ -7371,7 +7144,7 @@ export default function ChatWindow({
         </ModalShell>
       ) : null}
 
-      {/* 语音消息（1.10.20）：加号面板的「语音消息」进来。文字模式＝空气泡，录音模式＝带音频的语音条。 */}
+      {/* 语音消息：加号面板的「语音消息」进来。文字模式＝空气泡，录音模式＝带音频的语音条。 */}
       {showVoiceModal ? (
         <VoiceRecordModal
           onClose={() => setShowVoiceModal(false)}
@@ -7405,28 +7178,18 @@ export default function ChatWindow({
         </div>
       ) : null}
 
-      {/* 心声档案（1.5.65）：点 TA 的头像进来。zIndex 比聊天设置高一点——
+      {/* 心声档案：点 TA 的头像进来。zIndex 比聊天设置高一点——
           将来从设置里也留个入口时，它盖在上面才对。 */}
       {showInnerPage ? (
         <InnerVoicePage
           charName={charName}
           charAvatar={actualCharAvatar}
           messages={messages}
-          /* 心声页双语（1.9.83）：跟着【心声页也直接显示中文】那格走——开着才把目标语言
-             铺进页里（各栏显「原文＋中文」两行，中文从 <think> 里写下的那半取，零等待）；
-             关着传空，页里就是纯中文、也不挂那枚「译／原」小键。 */
-          transLang={
-            conv?.translate?.out.on && conv.translate.inner === true
-              ? conv.translate.out.lang
-              : undefined
-          }
-          transCache={conv?.transCache}
-          onTranslate={translateCached}
           onBack={() => setShowInnerPage(false)}
         />
       ) : null}
 
-      {/* 线下场合（1.7.5）：加号面板的「去见他」进来。与心声档案同一层做法——
+      {/* 线下场合：加号面板的「去见他」进来。与心声档案同一层做法——
           整页盖住聊天窗口。收场由页里那枚「结束」触发（不点就一直在线下）：
           落一句「你们刚见过」给线上一轮，并把这一场并进记忆。 */}
       {showOffline ? (
@@ -7446,12 +7209,12 @@ export default function ChatWindow({
           }
           rounds={offlineMemoryRoundsOf(conv)}
           onRoundsChange={(n) => void applyPatch({ offlineMemoryRounds: n })}
-          /* 连续发送那颗开关（1.7.11 从这儿传进去的）在 1.7.33 撤了：线下锁死连发，
-             不再从这儿读 `conv.manualReply`（线上那颗照旧不动）。 */
+          /* 连续发送那颗开关不在线下页里：线下锁死连发，不读 `conv.manualReply`
+             （线上那颗照旧不动）。 */
           onGenerate={generateOfflineReply}
           /* 每演完一轮（她写一句、TA 回一段）后台看一眼：这一场攒够「带最近 __ 轮」那么多轮了吗？
              攒够就把这段归总进记忆（见面那条线），水位线推过去——下一轮起这段不再整段重放，
-             记忆里已经有了（1.7.46）。零头先攒着，收场时（onEnd）一并归总。
+             记忆里已经有了。零头先攒着，收场时（onEnd）一并归总。
              素材取全部记录：已归总过的那些由水位线（offlineSummarizedTo）自己滤掉，不会重算。 */
           onRoundEnd={(entries) => {
             void (async () => {
@@ -7473,7 +7236,7 @@ export default function ChatWindow({
           }}
           onEnd={(wrote, ended) => {
             setShowOffline(false);
-            /* 1.7.39：左上角那颗「返回」**只是把这一页收起来**（回线上看记录），这一场还开着：
+            /* 左上角那颗「返回」**只是把这一页收起来**（回线上看记录），这一场还开着：
                总闸不动，线上那一格仍旧是「回到这一场」，发不了消息。只有「结束这一场」
                才算收场，把总闸放平、线上解锁。 */
             if (!ended) return;
@@ -7482,7 +7245,7 @@ export default function ChatWindow({
                线上不该冒出「你们刚见过」。下一轮 requestReply 用掉即清。 */
             if (!wrote) return;
             void applyPatch({ offlineReturnNote: true });
-            /* 收场把这场的零头一并归总（1.7.46）：rounds 传 0＝不看轮数、手里有多少归多少，
+            /* 收场把这场的零头一并归总：rounds 传 0＝不看轮数、手里有多少归多少，
                下一场从零算起。见面这条线自己记账（水位线），不碰线上那本账。
                后台跑，不挡她回线上；失败只进 console。 */
             void (async () => {
@@ -7506,7 +7269,7 @@ export default function ChatWindow({
         />
       ) : null}
 
-      {/* 「查看本轮请求」（1.7.49）：这一轮真发出去的东西，摆出来给她对着看。 */}
+      {/* 「查看本轮请求」：这一轮真发出去的东西，摆出来给她对着看。 */}
       <button
         type="button"
         onClick={() => setShowReq(true)}
@@ -7681,7 +7444,7 @@ function avatarBox({
   avatar: string;
   fallbackChar: string;
   gradient: string;
-  /* 1.5.65：只有聊天里 TA 那枚头像传它（点进「心声档案」）。
+  /* 只有聊天里 TA 那枚头像传它（点进「心声档案」）。
      其余各处（我自己的、流式预览、别的页面）都不传，行为一个字节没变。 */
   onClick?: () => void;
   /* 聊天页消息区才传：角色黑框、我粉框（乙版头像）。不传保持旧粉环。 */
@@ -8073,45 +7836,30 @@ function ImageBubble({
   );
 }
 
-/* ── 语音播放：一点就新建、用完即弃（1.10.5 定案）────────────────────────────
+/* ── 语音播放：一点就新建、用完即弃 ──────────────────────────────────────────
    参考项目 ai-virtual-phone 的聊天语音气泡（components/chat/message-bubble.tsx 的
    VoiceMessageBubble.playSrc）只用媒体元素播、不碰 Web Audio，同一台手机上一直能响。
    它的写法是 `new Audio(src)`（src 就是 data URL）→ 挂 onended/onerror → `play()` →
    播完 `pause() + removeAttribute("src") + load()` **把元素整个丢掉**。
    **不共用、不保活、不设 audioSession、不转 blob。**
 
-   历史（1.10.1～1.10.4 是一段弯路，本版撤销）：
-   · 1.10.1：把 1.9.98～1.10.0 那一整套 Web Audio 全拆掉——方向对。恩熙 2026-10-04：
-     「刚刚前面我们在测试的时候可以的呀，然后突然就不行了……变更的只有我的提示词」
-     ——能响的早期版本（1.9.67 那会儿）根本没碰 AudioContext；是我们后来往播放路径里
-     塞了它才坏。**结论：播放路径里一个 AudioContext 都不许再有。**
-   · 1.10.2：1.10.1 逐字照参考项目用**脱离 DOM** 的 `new Audio(dataUrl)`，实测仍
-     「假播放」（play() 被接受、paused=false、时长也解出来了，可 currentTime 永远钉在
-     0，一点声都没有）。于是改「元素挂进页面 + 源转 blob: + 假播放硬复位重试」——
-     抄错了对象：那是参考项目**通话/自动播报**用的策略（tts-service.ts 的
-     unlockAudioPlayback），不是聊天气泡用的。
-   · 1.10.3：加 ensureAudioSession()（`navigator.audioSession.type = "playback"`）。
-   · 1.10.4：加 unlockVoiceAudio()（首次手势喂 2ms 静音 WAV 解锁）。
-   1.10.2～1.10.4 三版实测**全是同一个「媒体元素假播放（t 恒 0，paused=false）」**，
-   连露出来的原生 <audio controls> 也不响——恰恰说明「挂页面／保活／audioSession／
-   手势解锁」都不是症结。
-   2026-09-16（施工日志第 33 条）已经就这同一处 bug 定过案：改回参考项目 playSrc 的
-   「一点就新建、用完即弃」后，恩熙实测可以播放。本版（1.10.5）**原样恢复第 33 条**，
-   把 1.10.2～1.10.4 加回来的共用元素／保活／audioSession／手势解锁全部撤掉。
-   恩熙 2026-10-04：「别的地方就是都可以正常播放，唯独这个语音条……不是我手机的
-   问题，也不是 API 的问题」——正解就在这，别再往环境上推。 */
+   几条踩过的坑，别重蹈：
+   · 播放路径里**一个 AudioContext 都不许再有**——往播放路径里塞它就会「假播放」。
+   · 「元素挂进页面／保活／audioSession／手势解锁」都**不是**症结：那是参考项目
+     通话/自动播报用的策略（tts-service.ts 的 unlockAudioPlayback），不是聊天气泡用的。
+   · 别往环境上推（手机、API 都没问题，正解就在「一点就新建、用完即弃」这一条）。 */
 
-/* 此刻在响的那一条语音用的元素。1.10.5 起**一点就新建、用完即弃**——不共用、不保活，
-   与参考项目 message-bubble.tsx 的 playSrc 一字不差（见上方大注释、施工日志第 33 条）。 */
+/* 此刻在响的那一条语音用的元素。**一点就新建、用完即弃**——不共用、不保活，
+   与参考项目 message-bubble.tsx 的 playSrc 一字不差。 */
 let voiceEl: HTMLAudioElement | null = null;
 
-/* 1.10.21：这条播放若用了 blob: 源，就把它记在这，收尾时统一 revoke 掉，别漏内存。
+/* 这条播放若用了 blob: 源，就把它记在这，收尾时统一 revoke 掉，别漏内存。
    与 voiceEl 同生共死：stopVoiceEl() 与自然收尾都会清它。 */
 let voiceBlobUrl: string | null = null;
 
-/** 丢掉正在响的语音元素：暂停 → 清源 → load 复位，**整个不再复用**（1.10.5）。
+/** 丢掉正在响的语音元素：暂停 → 清源 → load 复位，**整个不再复用**。
     参考项目 playSrc 的 finalize 就是这三下，只是它把元素丢进闭包、我们顺手清掉引用。
-    1.10.21：顺带把这条用的 blob: 源 revoke 掉。 */
+    顺带把这条用的 blob: 源 revoke 掉。 */
 function stopVoiceEl(): void {
   const el = voiceEl;
   voiceEl = null;
@@ -8125,14 +7873,14 @@ function stopVoiceEl(): void {
   }
 }
 
-/** data URL → blob: URL，**同步**转（1.10.21）。
-    iOS 上媒体元素直接喂大体积 data URL（聊天语音 15～31s、约 300KB+）会「假播放」：
+/** data URL → blob: URL，**同步**转。
+   iOS 上媒体元素直接喂大体积 data URL（聊天语音 15～31s、约 300KB+）会「假播放」：
    play() 被接受、paused=false、时长也解出来了，可 currentTime 恒 0、一点声没有；
    同一台机上把源换成 blob: 就正常——参考项目设置页的语音试听走的正是
    URL.createObjectURL(blob)（components/settings/voice-settings.tsx）。
    **必须同步**：不能 `await fetch(dataUrl)` 之类异步转，跨 await 就离开了点击手势，
-   play() 会被自动播放策略拦掉，又变回假播放——这正是 1.10.2 那次「源转 blob 仍假播放」
-   的真因（那时用的是异步转）。非 base64 的 data URL 转不了，返回 null，调用方退回原串。 */
+   play() 会被自动播放策略拦掉，又变回假播放。非 base64 的 data URL 转不了，
+   返回 null，调用方退回原串。 */
 function dataUrlToBlobUrl(dataUrl: string): string | null {
   const m = /^data:([^;,]*)(;base64)?,([\s\S]*)$/.exec(dataUrl);
   if (!m || !m[2]) return null; /* 不是 base64 data URL（比如直接是 blob:/http:），不用转 */
@@ -8153,8 +7901,8 @@ function isVoiceElPlaying(): boolean {
 }
 
 /** 朗读前洗掉「演给人看、不该念出来」的部分：（）／() 里的动作、心理、场景描写。
-    恩熙那套提示词把「带括号＝不可发声／不带括号＝台词」定死了，可送 TTS 的一直是这条
-    原文，括号里的动作也就被一起念了（她的原话：「他现在会读括号内的动作」）。
+    提示词把「带括号＝不可发声／不带括号＝台词」定死了，可送 TTS 的一直是这条原文，
+    括号里的动作也就被一起念了。
     只洗圆括号——十一 ElevenLabs 的英文方括号标签（[gasp] 之类）是给 TTS 的指令，留着。
     洗空了（整条都是动作）就退回原文，宁可照念也别把语音合成成空的。 */
 function voiceSpokenText(content: string): string {
@@ -8165,12 +7913,11 @@ function voiceSpokenText(content: string): string {
   return cleaned || content.trim();
 }
 
-/** 「转文字」的原文／气泡下那行中文译文，**给人看**时的洗法（1.9.82，恩熙定）：
+/** 「转文字」的原文／气泡下那行中文译文，**给人看**时的洗法：
     剥掉语音台词里的方括号语气标签（[轻笑]、[whispers] 这类 ElevenLabs 记号）。
     跟上面 voiceSpokenText 正好是一对：那个管「送去合成、哪些不该念」（洗圆括号里的动作），
     这个管「给人看、哪些不该露」（洗方括号标签）——标签只喂给合成引擎，不该出现在
-    点开「转文字」看到的原文里，也不该出现在译文行里。
-    恩熙原话：「语音转文字的原文应该不会把我的语气标签打进去才对」，两侧都要干净。
+    点开「转文字」看到的原文里，也不该出现在译文行里，两侧都要干净。
     半角 `[ ]` 与全角 `［ ］` 都认；**只洗显示**，消息 content 里照旧带标签送合成，
     声音的表情一点不受影响。洗空了（整条都是标签）就退回原文，宁可多露也别露白。 */
 function stripVoiceTags(text: string): string {
@@ -8188,62 +7935,45 @@ function iosVersion(): string {
   return m ? `${m[1]}.${m[2]}` : "?";
 }
 
-/* ── 1.10.5：1.10.3／1.10.4 的「会话声明＋手势解锁」整块撤掉 ───────────────────
-   1.10.3 加的 ensureAudioSession()（`navigator.audioSession.type = "playback"`）、
-   1.10.4 加的 unlockVoiceAudio()／voiceSilentWavUrl()／首次手势监听，实测都没能让语音
-   出声——它们抄的是参考项目**通话/自动播报**那套（tts-service.ts 的
-   unlockAudioPlayback），不是聊天气泡用的。聊天气泡用的 playSrc 压根不碰这些。
-   本版按施工日志第 33 条原样恢复 playSrc，故整块删除，一行不留。
-   ───────────────────────────────────────────────────────────────────── */
-
-/* ── 1.10.22：把本页的音频会话声明成「媒体播放」 ─────────────────────────────
+/* ── 把本页的音频会话声明成「媒体播放」 ───────────────────────────────────────
    iOS 18 主屏 PWA（standalone）里，网页/媒体音频会被系统整体掐掉，而页面自己完全看不出
-   来：元素 paused=false、时长也解出来、事件也照走，就是 currentTime 恒 0、一点声没有。
+   来：元素 paused=false、时长也解出来了、事件也照走，就是 currentTime 恒 0、一点声没有。
    WebKit 官方对这类症状给的解药就一条——`navigator.audioSession.type = "playback"`
    （Bug 251532 / 237322），它管的是**整个页面**的音频会话。
-   为什么现在才加回来：1.10.3 曾试过同一行，但当时和「共用元素／挂 DOM／手势解锁」捆在一起，
-   变量分不清、实测无效就整块撤了（1.10.5）。本轮已分离变量——设置页那条最朴素的
-   <audio controls> 与聊天原生兜底条**双双不响**，说明跟播放代码、音频数据都无关，就是这个
-   页面没跟系统声明会话类型。故这次**单独、干净**地只加这一行。
+   设置页那条最朴素的 <audio controls> 与聊天原生兜底条**双双不响**，说明跟播放代码、
+   音频数据都无关，就是这个页面没跟系统声明会话类型。
    实现放在 src/lib/audio-session.ts，与设置页试听共用同一份（同一文档、页级生效）。 */
 
-/* ── 播放唯一的一条路（1.10.1 起播放路径里不许出现 AudioContext；1.10.5 起只此一版）── */
+/* ── 播放唯一的一条路（播放路径里不许出现 AudioContext）────────────────────── */
 
-/** 播一条语音（dataUrl）——**唯一的一条路**（1.10.1 起，播放路径里不许再出现
-    AudioContext）。1.10.5 起**原样对照参考项目 message-bubble.tsx 的 playSrc**：
-      · `new Audio(dataUrl)` —— 就地新建，src 直接喂 data URL，**不转 blob**；
+/** 播一条语音（dataUrl）——**唯一的一条路**（播放路径里不许再出现 AudioContext）。
+   原样对照参考项目 message-bubble.tsx 的 playSrc：
+      · `new Audio(src)` —— 就地新建，src 优先喂 blob: URL（见 dataUrlToBlobUrl），
+        退不回才用 data URL；
       · 挂 onended／onerror → `play()`；
       · 播完（或出错）`pause() + removeAttribute("src") + load()`，元素**整个丢掉**。
-    **不共用、不保活、不设 audioSession、不挂 DOM、不设循环。** 这就是施工日志第 33 条
-    记的那套——2026-09-16 用它改完恩熙实测能放；1.10.2～1.10.4 把「共用/挂页面/blob/
-    audioSession/手势解锁」加回来的那段弯路，本版全部撤销。
-    1.10.9：**撤掉 1.10.5 起那条 1.5 秒探针**。它虽名为「只读」，实则到点就 finalize()
-    →`load()`，会 ① 掐死 iOS 上「起播慢」的正常播放（音频 rout 起振常 >1.5s）——这正是
-    「有时能响、有时不能」的来由；② 顺手打断这条 pending 的 play()，抛出的 AbortError
-    又把真正的错因盖掉（catch 里原本没有 settled 守卫，见下）。参考项目 playSrc 压根没有
-    探针，故本版对齐它：**只留 onerror 报真错**。返回 null（兼容旧签名）。
-
-    1.10.10：实测仍「播不出、且什么都不显示」——`play()` 既不 reject、`onerror` 也不触发，
-    就是元素自称在播却不出声。静态分析到此为止，改挂一条**纯只读诊断**（见下）：记下元素
-    收到的事件序列与起播 1.6 秒后的真实状态（rs/ns/paused/t/dur/err/evt/sess），报给点开
-    气泡的人看。**只看不碰**，不像 1.10.5 那条探针会 load() 掐死播放。
-    1.10.21：恩熙确认**连露出来的原生 <audio controls>（同样喂 data URL）也不出声**——
-    这把症结从「我们的播放代码」推到**音频数据本身**：大体积 data URL 喂媒体元素在 iOS 上
-    会「假播放」（设置页那条能响的试听，恰恰是**很短**的 data URL）。故改喂 **blob: URL**
-    （同步转，见 dataUrlToBlobUrl），抄参考项目设置页试听的 URL.createObjectURL(blob) 那条路。 */
+    **不共用、不保活、不挂 DOM、不设循环。**
+   两个坑：
+      · **别加「探针」**。曾有条 1.5 秒探针，虽名为「只读」，到点就 finalize()→`load()`，
+        会 ① 掐死 iOS 上「起播慢」的正常播放（音频起振常 >1.5s，这就是「有时能响、有时
+        不能」的来由）；② 顺手打断这条 pending 的 play()，抛出的 AbortError 又把真正的
+        错因盖掉。参考项目 playSrc 压根没有探针，**只留 onerror 报真错**。
+      · play() 既不 reject、onerror 也不触发（元素自称在播却不出声）时，靠下面那条
+        **纯只读诊断**（只看不碰，绝不 pause/load/finalize）把事件序列与真实状态报出来。
+    返回 null（兼容旧签名）。 */
 function playVoiceViaElement(
   dataUrl: string,
   onEnded: () => void,
   onDiag?: (why: string) => void,
 ): Promise<string | null> {
   stopVoiceEl(); /* 上一条先丢掉 */
-  ensurePlaybackSession(); /* 1.10.22：在手势里同步声明本页音频会话＝媒体播放，再起播 */
-  /* 1.10.21：**在这一刻同步**把 data URL 转成 blob: URL 再喂给元素（见 dataUrlToBlobUrl
+  ensurePlaybackSession(); /* 在手势里同步声明本页音频会话＝媒体播放，再起播 */
+  /* **在这一刻同步**把 data URL 转成 blob: URL 再喂给元素（见 dataUrlToBlobUrl
      的说明）。转不了（非 base64）就退回原串。blob: 源记到 voiceBlobUrl，收尾统一 revoke。 */
   const blobUrl = dataUrlToBlobUrl(dataUrl);
   voiceBlobUrl = blobUrl;
   const src = blobUrl ?? dataUrl;
-  const el = new Audio(src); /* 就地新建；1.10.21 起优先喂 blob:，退不回才用 data URL */
+  const el = new Audio(src); /* 就地新建；优先喂 blob:，退不回才用 data URL */
   el.setAttribute("playsinline", "");
   el.preload = "auto";
   voiceEl = el;
@@ -8269,10 +7999,9 @@ function playVoiceViaElement(
     if (onDiag) onDiag(why);
     finalize();
   };
-  /* 1.10.10 只读诊断（**只看、不碰**）：把元素这一辈子收到的关键事件按序记下来，起播 1.6 秒
-     后连同实时状态报给诊断灰字。1.10.5 那条「探针」正是因为到点就 load()，把 iOS 上起播
-     稍慢的正常播放掐死，才成了「有时能响、有时不能」——所以这条绝不 pause/load/finalize，
-     只负责让失败看得见。 */
+  /* 只读诊断（**只看、不碰**）：把元素这一辈子收到的关键事件按序记下来，起播 1.6 秒
+     后连同实时状态报给诊断灰字。绝不 pause/load/finalize，只负责让失败看得见——一旦
+     到点就 load()，就会把 iOS 上起播稍慢的正常播放掐死，成了「有时能响、有时不能」。 */
   const trail: string[] = [];
   const mark = (n: string) => { if (trail.length < 14) trail.push(n); };
   el.addEventListener("loadstart", () => mark("lst"));
@@ -8298,9 +8027,9 @@ function playVoiceViaElement(
   /* play() 不 await（参考项目也不 await）：被拒时 catch 里记一行，别让它变成未处理的
      rejection。手势里同步调 play，才最有机会真的出声。 */
   el.play().catch((err) => {
-    /* 只报「这条元素仍是此刻在响的那条」的错（1.10.9）。用户点同一气泡停止播放、或立刻
-       点了下一条语音时，stopVoiceEl() 会 load() 打断这条 pending 的 play()，抛一个
-       AbortError——那不是故障，是被我们自己掐掉的，既别报给用户，也别覆盖真正的错因。 */
+    /* 只报「这条元素仍是此刻在响的那条」的错。用户点同一气泡停止播放、或立刻点了下一条
+       语音时，stopVoiceEl() 会 load() 打断这条 pending 的 play()，抛一个 AbortError——
+       那不是故障，是被我们自己掐掉的，既别报给用户，也别覆盖真正的错因。 */
     if (settled || voiceEl !== el) return;
     const e = err as { name?: string; message?: string } | null;
     console.warn("[语音] play 被拒", e?.name, e?.message);
@@ -8426,7 +8155,7 @@ const modalConfirmBtnStyle: CSSProperties = {
   cursor: "pointer",
 };
 
-/* ---------- 语音消息弹窗（1.10.20，1.10.23 解耦录音/转写） ---------- */
+/* ---------- 语音消息弹窗 ---------- */
 /* 加号面板「语音消息」进来的那一页。右上角一枚「Aa ⇄ 麦克风」在两路输入间切换：
    · 文字模式：打什么就是什么，发出去是**空气泡**（无音频、点不出声；他那边拿到这段文字）；
    · 录音模式：开麦录下我的声音 → 发一条能回听的语音条。
@@ -8456,7 +8185,7 @@ function VoiceRecordModal({
   const [manualText, setManualText] = useState("");
   const [audio, setAudio] = useState<{ dataUrl: string; seconds: number } | null>(null);
   const [hint, setHint] = useState("");
-  /* 1.10.23：这台设备拿不拿得到浏览器语音识别。false＝拿不到（iPhone 主屏 PWA 就是），
+  /* 这台设备拿不拿得到浏览器语音识别。false＝拿不到（iPhone 主屏 PWA 就是），
      那就纯录音、发音频条，不转文字。 */
   const [noStt, setNoStt] = useState(false);
   const sttRef = useRef<STTSession | null>(null);
@@ -8466,7 +8195,7 @@ function VoiceRecordModal({
   const gotFinalRef = useRef(false);
   const startedAtRef = useRef(0);
 
-  /* 1.10.24：环境诊断——「麦克风为什么不可用」一眼看清，显示在这页底部（灰字）。
+  /* 环境诊断——「麦克风为什么不可用」一眼看清，显示在这页底部（灰字）。
      起因：iPhone 上麦克风 API 与语音识别都只在**安全上下文**（https／localhost）里给，
      用 http 局域网地址打开时两个一起消失，光看「不支持」分不清是没走 https 还是手机不支持。 */
   const envDiag = useMemo(() => {
@@ -8550,7 +8279,7 @@ function VoiceRecordModal({
       "zh-CN",
     );
 
-    /* 1.10.23：录音与转写**解耦**——
+    /* 录音与转写**解耦**——
        苹果「加到主屏的 PWA」里，浏览器把语音识别接口整个拿掉了（WebKit Bug 225298：
        SpeechRecognition「not available in … web apps added to Home Screen」）。
        老写法一探到不支持就退回文字，等于在 iPhone 主屏上永远发不出语音。
@@ -8559,10 +8288,10 @@ function VoiceRecordModal({
     const sttOk = stt.isSupported;
     setNoStt(!sttOk);
 
-    /* 1.10.24：先分辨「是不是没走安全上下文」——
+    /* 先分辨「是不是没走安全上下文」——
        麦克风 API 只在 https／localhost 里给。iPhone 上用 http 局域网地址打开时，
        navigator.mediaDevices 整个是 undefined，不是权限被拒、也不是手机不支持。
-       分开报，提示才对得上号（以前一律说「无法访问麦克风」，把方向带偏了）。 */
+       分开报，提示才对得上号（别一律说「无法访问麦克风」，那会把方向带偏）。 */
     if (typeof window !== "undefined" && !window.isSecureContext) {
       fallbackToText("要用 https 打开才能用麦克风（现在不是安全环境），改用文字输入吧");
       return;
@@ -8580,9 +8309,9 @@ function VoiceRecordModal({
     }
     streamRef.current = stream;
 
-    /* 1.10.23：编码按「设备真说支持哪个」挑——
+    /* 编码按「设备真说支持哪个」挑——
        安卓/桌面走 opus(webm)，**iOS 只有 audio/mp4（AAC）**，老写法只给 webm，
-       在 iPhone 上 new MediaRecorder 直接抛错（这也是之前「不支持录音」的来源之一）。 */
+       在 iPhone 上 new MediaRecorder 直接抛错（这也是「不支持录音」的来源之一）。 */
     let recorder: MediaRecorder;
     let recorderMime = "";
     try {
@@ -8668,8 +8397,7 @@ function VoiceRecordModal({
     }
   };
 
-  /* 1.10.23：录音模式不再「必须有转写才能发」——
-     有识别就发「音频＋文字」，没识别（iPhone 主屏 PWA）就发纯音频语音条。 */
+  /* 录音模式的发送条件——有识别就发「音频＋文字」，没识别（iPhone 主屏 PWA）就发纯音频语音条。 */
   const canSend =
     mode === "text"
       ? !!manualText.trim()
@@ -8819,7 +8547,7 @@ function VoiceRecordModal({
             {finalText}
           </div>
         ) : (
-          /* 1.10.23：纯录音（拿不到识别）——给一句「已录好」的回执，不当空白。 */
+          /* 纯录音（拿不到识别）——给一句「已录好」的回执，不当空白。 */
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
             <Mic size={22} strokeWidth={1.6} color={T.pink} />
             <span style={{ fontSize: 13, color: T.ink2, letterSpacing: ".04em" }}>
@@ -8882,7 +8610,7 @@ function VoiceRecordModal({
   );
 }
 
-/* 1.4.88 转账详情那张票里的按钮：方角（跟票一个脾气，不跟外面圆角弹窗走）。
+/* 转账详情那张票里的按钮：方角（跟票一个脾气，不跟外面圆角弹窗走）。
    灰的那枚＝「退还／好」——次要动作与收尾，落在纸上不抢；粉的那枚＝「收下」，
    整张票里唯一还能动的动作（落定＝褪色、安静下来，粉只留给还没落定的钱）。 */
 const ticketQuietBtnStyle: CSSProperties = {
@@ -8911,15 +8639,14 @@ const ticketMainBtnStyle: CSSProperties = {
   cursor: "pointer",
 };
 
-/* 1.4.88：转账／回执点开看的详情——**那张票的放大版**（组件由 ChatWindow 里的
-   openMoney 分支调用：红包 1.4.89 起走 RedPacketModal，不走这套）。卡片从 1.4.80 起是一张
-   存根票根，点开却还是一枚白圆角小弹窗，两张东西不像一家人 ⇒ 详情整张换成票：
-   同一张暖纸、同一排右沿撕口齿、同一套五段（宋体抬头＋右上同一个号／付款方
-   收款方／金额／附言／落款），字号各放大一档；比卡片多给的一行是「时间」——
+/* 转账／回执点开看的详情——**那张票的放大版**（组件由 ChatWindow 里的 openMoney 分支调用：
+   红包走 RedPacketModal，不走这套）。卡片是一张存根票根，点开若还是白圆角小弹窗，两张东西
+   不像一家人 ⇒ 详情整张换成票：同一张暖纸、同一排右沿撕口齿、同一套五段（宋体抬头＋右上
+   同一个号／付款方收款方／金额／附言／落款），字号各放大一档；比卡片多给的一行是「时间」——
    转账＝转账那一刻，回执＝原转账那一刻（payAt，跟两联同一个号是同一条时间）。
-   落定／回执档的颜色跟 renderBody 里 transfer／receipt 两个 case 的配方一字
-   不差（改那边时这里要跟着一起改）。按钮收进票里、方角：只有「TA 发给我、
-   还没落定的转账」有「收下（粉）／退还（灰）」；其余只有一枚灰的「好」。 */
+   落定／回执档的颜色跟 renderBody 里 transfer／receipt 两个 case 的配方一字不差
+   （改那边时这里要跟着一起改）。按钮收进票里、方角：只有「TA 发给我、还没落定的转账」
+   有「收下（粉）／退还（灰）」；其余只有一枚灰的「好」。 */
 function TicketMoneyModal({
   m,
   charName,
@@ -8935,10 +8662,10 @@ function TicketMoneyModal({
   onClaim: (m: ChatMessage) => void;
   onRefund: (m: ChatMessage) => void;
 }) {
-  /* 回执一出生就是落定的（1.4.85）；转账看收下／退还。 */
+  /* 回执一出生就是落定的；转账看收下／退还。 */
   const isRec = m.type === "receipt";
   const refunded = m.moneyRefunded === true;
-  /* 过期（1.5.12）：我发出去、他一直没表态，走过上下文那么多条就作废退回（见 expireStaleMoney）。 */
+  /* 过期：我发出去、他一直没表态，走过上下文那么多条就作废退回（见 expireStaleMoney）。 */
   const expired = m.moneyExpired === true;
   const recRefunded = isRec && (m.content || "已收款") === "已退还";
   const done = isRec || m.moneyClaimed === true || refunded || expired;
@@ -8966,7 +8693,7 @@ function TicketMoneyModal({
     : m.role === "user"
       ? charName
       : myName;
-  /* 编号跟卡片上那个是同一个号：回执取 payAt（原转账那条的时间戳，1.4.84），
+  /* 编号跟卡片上那个是同一个号：回执取 payAt（原转账那条的时间戳），
      转账取自己的时间戳——都是末四位。 */
   const timeIso = isRec ? (m.payAt ?? m.createdAt) : m.createdAt;
   const noMs = Date.parse(timeIso);
@@ -9250,12 +8977,11 @@ function TicketMoneyModal({
   );
 }
 
-/* ── 红包那套（1.4.89）：聊天里的卡＋点开的开红包页 ─────────────────────
-   恩熙：「红包不能跟转账是同样的模式，参考微信红包的样式那种感觉——有封面、
-   封面可以自定义，按下开之后有开红包的动画。」转账是纸票据、红包是红纸封，两个世界：
-   预设封面是纯 CSS 渐层（redpacket.ts），自定义封面是媒体仓库里的图（useMediaSrc
-   解地址，消息里只存引用串）；领过（他没领也一样）整张洗成淡色。动画的 keyframes
-   （rp-burst-a/b/c）在 globals.css；封套与开完那两张脸的形状在 RedPacketCards.tsx。 */
+/* ── 红包那套：聊天里的卡＋点开的开红包页 ─────────────────────
+   转账是纸票据、红包是红纸封，两个世界：预设封面是纯 CSS 渐层（redpacket.ts），
+   自定义封面是媒体仓库里的图（useMediaSrc 解地址，消息里只存引用串）；领过（他没领也一样）
+   整张洗成淡色。动画的 keyframes（rp-burst-a/b/c）在 globals.css；
+   封套与开完那两张脸的形状在 RedPacketCards.tsx。 */
 
 /** 开红包时迸出来的那把金屑：三组方向（rp-burst-a/b/c）＋大小／颜色／延迟错开，
  *  看着像一把，不必每颗一条 keyframes。 */
@@ -9270,26 +8996,18 @@ const RP_BURST: { n: string; s: number; c: string; r: string; d: number }[] = [
   { n: "rp-burst-b", s: 4, c: "#FFD27E", r: "50%", d: 0.14 },
 ];
 
-/** 聊天里那张红包卡：横条一封——左边一枚圆底图标（lucide 的礼盒，白细线），
- *  右边两行字：上面留言、下面「星绥红包」。这就是微信聊天里那张卡的摆法。
+/** 聊天里那张红包卡：横条一封——左边一枚圆底图标（红包图标，白细线），
+ *  右边两行字：上面留言、下面「From 角色名／我的名字」。这就是微信聊天里那张卡的摆法。
  *  必须是独立组件（不在 renderBody 里写）：自定义封面要挂 useMediaSrc 读仓库，
  *  switch 里挂 hook 就乱了。
- *  【1.4.92：换摆法】1.4.89～1.4.91 一直是竖着的红纸封套（正中「福」、下面祝福语、
- *  底沿状态字）。恩熙连否几轮，最后点明两件事：一是**排版**不对、二是「不要用这个
- *  红包图标了」——那枚信封是我自己拿几根线描的，线条又硬又呆。这一版不再雕封套：
- *  卡压成横条、图标换成现成图标库里已画好的礼盒，状态不再另占一行（没落定的第二行
- *  就是「星绥红包」，落定了才换成状态字，状态不丢）。
- *  【1.4.94：领完之后不再洗灰】1.4.91～1.4.93 是给整张卡挂 `filter: grayscale(.72)`
- *  ——恩熙：「点击领取之后，它不会是整个变黑的，而是一个渐变的感觉……不会让整张图
- *  都变成灰掉了那种感觉」。这一版红封套**原样不动**，done 之后上面淡进一层浅色
- *  渐层（`RED_COVER_CLAIMED_VEIL`），字与图标跟着翻成深色，过渡走 opacity/color
- *  的 transition——红退成微信那种「已领取」的浅卡，而不是一张灰纸。
- *  【1.9.78：换成「柔和野兽派」】恩熙从四套里挑了第四套，卡面整个翻新：平灰底
- *  ＋2px 近黑描边＋4px 平推硬投影；纹样（顶边一道粉、右几颗柔色圆点、左下一条羽化
- *  紫斜条）挂 `RED_COVER_TONE.glow`，排在 veil 之前（领过之后被遮罩压淡）；圆标粉底
- *  黑边，里头换成红包图标；字走衬线斜体，第二行改报来头「From 角色名／我的名字」
- *  （落定才换回状态字）。照片封面不压纹样，改用一道深色 scrim 压底、字翻白加暗投影；
- *  领过之后压同色系浅灰 veil、整块字降一档透明度，不洗灰。 */
+ *  卡面是「柔和野兽派」一套：平灰底＋2px 近黑描边＋4px 平推硬投影；纹样（顶边一道粉、
+ *  右几颗柔色圆点、左下一条羽化紫斜条）挂 `RED_COVER_TONE.glow`，排在 veil 之前
+ *  （领过之后被遮罩压淡）；圆标粉底黑边，里头是红包图标；字走衬线斜体。
+ *  领过之后**不洗灰**（旧做法给整张卡挂 grayscale，会把整张图变黑、太死）：红封套原样
+ *  不动，上面淡进一层浅色渐层 `RED_COVER_CLAIMED_VEIL`，字与图标跟着翻成深色，过渡走
+ *  opacity/color 的 transition——红退成微信那种「已领取」的浅卡。
+ *  照片封面不压纹样，改用一道深色 scrim 压底、字翻白加暗投影；领过之后压同色系浅灰
+ *  veil、整块字降一档透明度，同样不洗灰。 */
 function RedPacketCard({
   m,
   charName,
@@ -9305,8 +9023,8 @@ function RedPacketCard({
 }) {
   const atMe = m.role === "assistant";
   const refunded = m.moneyRefunded === true;
-  /* 过期（1.5.12）：我发出去、他一直没领，走过上下文那么多条就作废、钱退回我口袋
-     （见 expireStaleMoney）。旧数据里我发的红包可能带着 moneyRefunded（1.5.12 之前
+  /* 过期：我发出去、他一直没领，走过上下文那么多条就作废、钱退回我口袋
+     （见 expireStaleMoney）。旧数据里我发的红包可能带着 moneyRefunded（那是早年
      「不领＝退还」那套口径）：那种钱其实也回了口袋，照「已过期」展示——
      界面上不再出现「未领取」这个词。 */
   const expired = m.moneyExpired === true || (!atMe && refunded);
@@ -9368,7 +9086,7 @@ function RedPacketCard({
           }}
         />
       ) : null}
-      {/* 纹样（1.9.78）：顶边一条粉＋右下三颗柔色圆点＋左下一条羽化紫斜条。
+      {/* 纹样：顶边一条粉＋右下三颗柔色圆点＋左下一条羽化紫斜条。
           排在 veil 之前，领过之后被那层浅灰遮罩压淡；照片封面不压。 */}
       {!customSrc ? (
         <div
@@ -9380,7 +9098,7 @@ function RedPacketCard({
           }}
         />
       ) : null}
-      {/* 领过之后淡上来的浅灰遮罩（1.4.94）：卡退成「已领取」的浅样子。
+      {/* 领过之后淡上来的浅灰遮罩：卡退成「已领取」的浅样子。
           自定义图不压满——低一档，图还看得见，且**不走去色**。 */}
       <div
         style={{
@@ -9392,7 +9110,7 @@ function RedPacketCard({
           transition: "opacity .4s ease",
         }}
       />
-      {/* 左边那枚圆标：粉底黑边，里头是红包图标（1.9.78 起不再是礼盒）。 */}
+      {/* 左边那枚圆标：粉底黑边，里头是红包图标。 */}
       <span
         style={{
           position: "relative",
@@ -9489,7 +9207,7 @@ function RedPacketModal({
   const atMe = m.role === "assistant";
   const refunded = m.moneyRefunded === true;
   const claimed = m.moneyClaimed === true;
-  /* 过期（1.5.12，跟红包卡 RedPacketCard 同一套口径）：我发的、他一直没领，
+  /* 过期（跟红包卡 RedPacketCard 同一套口径）：我发的、他一直没领，
      走过上下文那么多条就作废退回。旧数据里我发的红包带 moneyRefunded 的也照过期说。 */
   const expired = m.moneyExpired === true || (!atMe && refunded);
   const canOpen = atMe && !claimed && !refunded && !expired;
@@ -9526,7 +9244,7 @@ function RedPacketModal({
       window.setTimeout(() => setPhase(ok ? "revealed" : "cover"), ok ? 850 : 400);
     });
   };
-  /* 详情页（1.4.93）：从揭晓那一屏点「查看领取详情」进来。微信的「领取详情」
+  /* 详情页：从揭晓那一屏点「查看领取详情」进来。微信的「领取详情」
      是一整页浅底的清单，不是盖在聊天上的一块弹层——所以这里整页换掉，
      不是再叠一层。钱早在点「開」那一下就已经动过了，这一页只读。 */
   if (phase === "detail") {
@@ -9656,12 +9374,11 @@ function RedPacketModal({
   );
 }
 
-/** 红包详情页（1.4.93）：恩熙要「开了之后有一个详情页」，照微信那张「领取详情」
- *  的次序摆——整页浅底（跟聊天一个底色，不是盖在聊天上的弹层），最上面是这块
- *  红包的封面（自定义图原样铺；预设就在封面上压一枚圆底礼盒和一句「谁发出的
- *  红包」），封面下来一行头像＋「{sender} 发出的红包」和祝福语，再一条
- *  「1 个红包共 ¥xx」＋发出来的时间，然后一列领取记录（谁、领没领、多少钱），
- *  底沿一枚小字。左上角一枚返回，退回揭晓那一屏。
+/** 红包详情页：照微信那张「领取详情」的次序摆——整页浅底（跟聊天一个底色，
+ *  不是盖在聊天上的弹层），最上面是这块红包的封面（自定义图原样铺；预设就在封面上
+ *  压一枚圆底礼盒和一句「谁发出的红包」），封面下来一行头像＋「{sender} 发出的红包」
+ *  和祝福语，再一条「1 个红包共 ¥xx」＋发出来的时间，然后一列领取记录
+ *  （谁、领没领、多少钱），底沿一枚小字。左上角一枚返回，退回揭晓那一屏。
  *  只读：钱在点「開」那一下就已经动过了（claimMoney），这一页不碰任何数据。
  *  记录里那行小字写的是状态而不是「领取时间」——消息上压根没存领取时间
  *  （钱一动只落一个 moneyClaimed），不编一个时间出来。 */

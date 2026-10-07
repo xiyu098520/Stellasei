@@ -15,14 +15,11 @@ import type { ArchiveEntry } from "@/types/contact";
 import { TRANSLATE_LANGS, type Conversation, type TranslateSetting } from "@/types/chat";
 
 /** 外语聊天的出厂值：两个开关都关着，语言默认日语，翻译走便宜的副接口。
- *  「显示中文那一行」默认开——开翻译却看不见中文，等于白开。
- *  inner（心声页双语）默认关：关着时心声、环境、心情那几栏就写简体中文（纯中文、
- *  也不挂那枚「译／原」小键）；开着才一次写两种语言，页里原文一行、中文一行。（1.9.83） */
+ *  「显示中文那一行」默认开——开翻译却看不见中文，等于白开。 */
 const DEFAULT_TRANSLATE: TranslateSetting = {
   out: { on: false, lang: "日语", show: true },
   in: { on: false, lang: "日语", show: true },
   api: "sub",
-  inner: false,
 };
 
 /* =======================================================================
@@ -755,21 +752,6 @@ export default function ChatSettingsPanel({
                     onClick={() =>
                       void onUpdate({ translate: { ...tr, out: { ...tr.out, show: !tr.out.show } } })
                     }
-                  />
-                }
-              />
-              {/* 1.9.80 建、1.9.83 改口径（恩熙定）：开着时他一轮回复最前面那段 <think>
-                  里一次写「原文|中文」两半，心声页里原文一行、中文一行一起显；关着时
-                  这几栏直接写简体中文，页里纯中文、也不挂那枚「译／原」小键。
-                  只在外语这个开关开着时才有意义，所以收在里面。 */}
-              <SettingRow
-                title="心声页显示两种语言"
-                desc="打开后心声、环境、心情那几栏原文一行、中文一行一起显；关闭则只写中文、不挂翻译小键"
-                showArrow={false}
-                right={
-                  <Switch
-                    on={tr.inner}
-                    onClick={() => void onUpdate({ translate: { ...tr, inner: !tr.inner } })}
                   />
                 }
               />

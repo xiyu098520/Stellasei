@@ -637,14 +637,11 @@ export interface OfflineScene {
  * - `api`：翻译交给哪套文本接口；`sub`＝副接口（便宜、够用），留空／没配会自动退回主接口。
  *   1.9.80 起他说话改成**一次就写「原文|中文」两半**（不再事后发第二次请求），
  *   这一套只当**兜底**：哪句漏写了竖线，才用它补翻。
- * - `inner`：心声页双语（1.9.80）。`: true` 时回复最前面那段 <think> 里的每一行也照
- *   「原文|中文」一次写完，心声页进去就显中文、不用点；关着则只写外语、照旧点一下才翻。
  */
 export interface TranslateSetting {
   out: { on: boolean; lang: string; show: boolean };
   in: { on: boolean; lang: string; show: boolean };
   api: "main" | "sub";
-  inner: boolean;
 }
 
 /** 语言一览：给设置页的下拉用（存的是这几个值，翻译提示词照它写）。 */
@@ -680,9 +677,8 @@ export interface Conversation {
   /** 外语聊天（1.9.48）：他说外语、我说中文，气泡下方各挂一行中文。见 TranslateSetting。 */
   translate?: TranslateSetting;
   /** 外语聊天（1.9.50）：「点一下才翻」的那些字的**中文译文缓存**——键＝源文（外语）逐字，
-   *  值＝中文。签名、心声页里的心声／日记／环境／心情／欲望／怯念／细处都存这儿。
-   *  翻过一次就记着：再点瞬间切中文、也不再多花钱。签名在会话载入时提前翻好存进来
-   *  （就一行、很少变），点的那一下零等待（恩熙：「会不会有延迟」）。 */
+   *  值＝中文。目前就是 TA 的签名：在会话载入时提前翻好存进来（就一行、很少变），
+   *  点的那一下零等待（恩熙：「会不会有延迟」）。 */
   transCache?: Record<string, string>;
   /** 气泡条数：开着一轮回复最多 bubbleMax 条气泡（未设＝默认开，见 chat.ts 的 bubbleCapOf）。 */
   bubbleLimit?: boolean;

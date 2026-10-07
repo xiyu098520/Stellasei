@@ -4,7 +4,6 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "dev:https": "next dev -H 0.0.0.0 --experimental-https-key certificates/stellasei-server.key --experimental-https-cert certificates/stellasei-server.crt",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
