@@ -446,42 +446,43 @@ async function runCommentJob(
 
   const conv = convs.find((c) => c.id === convId(viewerId, maskId));
   if (!conv) return;
-  const text = await generateMomentComment(viewer, conv, userName, {
+  const texts = await generateMomentComment(viewer, conv, userName, {
     authorName: ref.authorName,
     isSelfAuthor: ref.owner === "self",
     content,
   });
   /* 接口没配／失败／空产出：这轮算不动就作罢，不硬凑一句假评论。 */
-  if (!text) return;
+  if (!texts || texts.length === 0) return;
 
-  const comment: MomentComment = {
+  const at = new Date().toISOString();
+  const fresh: MomentComment[] = texts.map((content) => ({
     id: uuid(),
     byId: viewerId,
     byName: peerName(viewer),
     ...(viewer.data.photo ? { byAvatar: viewer.data.photo } : {}),
-    content: text,
-    at: new Date().toISOString(),
-  };
-  const next = [...comments, comment];
+    content,
+    at,
+  }));
+  const next = [...comments, ...fresh];
   if (ref.owner === "char") {
     await setMomentComments(ref.convId, ref.momentId, next);
   } else {
     await setSelfMomentComments(maskId, ref.momentId, next);
   }
 
-  /* 评的是**我的**动态 → 往通知栏投一条（角色评角色不算我的通知）。 */
+  /* 评的是**我的**动态 → 往通知栏投（角色评角色不算我的通知）。 */
   if (ref.owner === "self") {
-    await pushMomentNotices([
-      {
-        id: `${refUid(ref)}::comment::${viewerId}`,
-        kind: "comment",
-        fromName: comment.byName,
-        ...(comment.byAvatar ? { fromAvatar: comment.byAvatar } : {}),
+    await pushMomentNotices(
+      fresh.map((c) => ({
+        id: `${refUid(ref)}::comment::${viewerId}::${c.id}`,
+        kind: "comment" as const,
+        fromName: c.byName,
+        ...(c.byAvatar ? { fromAvatar: c.byAvatar } : {}),
         convId: convId(viewerId, maskId),
-        excerpt: comment.content,
-        createdAt: comment.at,
-      },
-    ]);
+        excerpt: c.content,
+        createdAt: c.at,
+      })),
+    );
   }
 
   if (typeof window !== "undefined") {

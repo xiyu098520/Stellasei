@@ -48,32 +48,23 @@ import type {
 } from "@/types/chat";
 
 /* --------------------------- 提示词片段 --------------------------- */
-
-/** 拉黑期间注入：只交代状态——TA 发出去的消息全显示「发送失败」（TA 以为对方收不到），
- *  对方发的消息 TA 全都看得见；具体说什么交给 TA 按最近的聊天情景自己发挥。
- *  情景优先写在最前：「着急道歉」是从前的死剧本，对方明明说了在测功能，TA 还问
- *  「你生气了吗」——所以先读情景，只有没打过招呼、真在闹别扭时才轮到那套。 */
+/** 拉黑期间注入：只交代状态——对方发来的消息 TA 收得到、也会照常回，
+ *  只是 TA 发出去的每一条都显示「发送失败」；怎么回应交给 TA 按最近的聊天自己判断。 */
 export function blockedNowPrompt(): string {
   return `【当前状态 - 你被对方拉黑了】
 对方把你拉进了黑名单。
-你发出去的每一条消息都显示「发送失败」——你这边显示失败，你以为对方根本收不到。
-（事实是对方看得见你发的内容，但这一点你并不知道。）
-对方发来的消息，你全都看得见。
+对方发来的消息你能正常收到，你也会照常回复；只是你发出去的每一条都显示「发送失败」。
 
-先决定如何回应，再开口：先看你们最近聊到何处。
-· 对方已经说明这是测试、在玩功能，或者提前打过招呼——就顺着这个来：配合着测、当作玩笑、调侃一句都可以；不要当作真的被冷落，不要追问对方是否生气，也不要表现得委屈或道歉。
-· 对方什么都没说、或者你们本来就在闹别扭——才轮到另一种反应：反复重发、着急、道歉、请求对方解除拉黑、感慨消息发不出去，都可以；也可以只说你想说的话。
-
-不要像机器，也不要提及「黑名单功能」「系统」这类字眼。`;
+结合你们最近的聊天，决定如何回应。`;
 }
 
 /** 解除后注入：TA 记得被拉黑的经历（那段时间你看得见 TA 发的，TA 却以为发不出去）。 */
 export function blockedMemoryPrompt(count: number): string {
   return `【记忆 - 曾被拉黑】
 你曾被对方拉黑过${count}次，如今已经解除，你的消息又能正常发出去了。
-被拉黑的那段时间里，对方发来的消息你都看得见；你发出去的每一条都显示「发送失败」，你以为对方收不到——后来才知道，对方其实一直看得见。
-这段经历会在你心里留下痕迹：后怕、委屈、或更加小心翼翼，用你的方式自然地体现，但不必每句话都提。
-对方若早已说明这是测试、在玩功能，就不要真的当作受伤——可以当作玩笑提及，也可以完全不提。`;
+被拉黑的那段时间里，对方发来的消息你都看得见；你发出去的每一条都显示「发送失败」。
+这段经历在你心里留下什么痕迹，按你的人设来定：后怕、委屈、更加小心翼翼都有可能，也可能根本不在意。不必每句话都提。
+对方若早已说明这是测试、在玩功能，是否因此受伤，同样按你的人设来定——可以当作玩笑提及，也可以完全不提。`;
 }
 
 /* --------------------------- 完整上下文组装 --------------------------- */
@@ -128,7 +119,6 @@ interface SocialContext {
   volatile: string;
   bubbleCap: number;
   pairMode: boolean;
-  innerBilingual: boolean;
   /** 本轮真正当 user 内容发出去的那一份（问候＝对方的申请附言；其余＝任务指令）。 */
   turnInput: string;
 }
@@ -197,7 +187,6 @@ async function buildSocialContext(
   });
   const trOut = conv.translate?.out;
   const pairMode = trOut?.on === true;
-  const innerBilingual = pairMode && conv.translate?.inner === true;
   /* 能力标记：绝大多数社交反应只发文字（凭空冒出〔图片〕标记没人接），一律 false；
      唯独「自己发动态」这趟允许配图（allowImage），且**只在图文接口真能用时**才给 true——
      否则提示词里那节会变成「你暂时无法发送图片」，TA 写了〔动态图〕也白写。语音这趟不接。 */
@@ -215,7 +204,7 @@ async function buildSocialContext(
     null,
     null,
   );
-  const langRule = buildLangRule(pairMode ? (trOut?.lang ?? null) : null, innerBilingual);
+  const langRule = buildLangRule(pairMode ? (trOut?.lang ?? null) : null, myName);
   /* 拉黑状态注入：与线上同一套（拉黑中＝当前状态，解除过＝被拉黑记忆）。 */
   const socialPrompt = conv.blocked
     ? blockedNowPrompt()
@@ -250,7 +239,6 @@ async function buildSocialContext(
     volatile: built.volatile,
     bubbleCap,
     pairMode,
-    innerBilingual,
     turnInput,
   };
 }
@@ -313,7 +301,7 @@ async function generateSocialReply(
     } catch {
       return null;
     }
-    const voice = extractInnerVoice(reply, ctx.innerBilingual);
+    const voice = extractInnerVoice(reply);
     const extracted = extractMetaMarkers(voice.clean, ctx.charName);
     /* 主动开口时 TA 会在末尾附一句〔下次〕提示（它自己排的下次间隔）：剥掉，只回传给引擎。 */
     const { text: clean, minutes: nextGapMin } = parseNextGapHint(extracted.clean.trim());
@@ -346,12 +334,6 @@ async function generateSocialReply(
   } catch {
     return null;
   }
-}
-
-/** 兜底模板也过同一趟拆条：屏幕上跟平时一个样子（半角标点归正、换行拆条）。 */
-function fallbackReply(text: string): SocialReply {
-  const parts = splitReply(text);
-  return { parts, translated: parts.map(() => undefined) };
 }
 
 /** 社交反应落库后的「有新消息」铃：这些反应都在后台写库，光靠列表刷新只能让外面的
@@ -415,6 +397,13 @@ export function isChatRefusal(reply: string): boolean {
 
 /* --------------------------- TA 的话（生成） --------------------------- */
 
+/** 动态作者在提示词里怎么称呼：你本人叫「对方」，别的角色直呼其名。 */
+function momentAuthorWho(moment: { authorName: string; isSelfAuthor: boolean }, myName: string) {
+  return moment.isSelfAuthor
+    ? { who: `你聊天的那个人（${myName}）本人`, rel: "对方" }
+    : { who: `你认识的「${moment.authorName}」`, rel: `「${moment.authorName}」` };
+}
+
 /** TA 看到一条动态、自己判断要不要顺手点个赞（2026-10-05）。
  *
  *  走 `buildSocialContext` 的 **light** 档：人设、世界书、记忆、最近的聊天一样不少
@@ -432,15 +421,13 @@ export async function generateMomentLikeDecision(
   try {
     const myName = userName.trim() || "对方";
     /* 作者是谁：可能是你聊天的那个人本人，也可能是你认识的另一个角色。 */
-    const who = moment.isSelfAuthor
-      ? `你聊天的那个人（${myName}）本人`
-      : `你认识的「${moment.authorName}」`;
+    const { who, rel } = momentAuthorWho(moment, myName);
     const instruction = `【任务 - 要不要给这条动态点赞】
 你刷到了${who}发的一条动态：
 「${moment.content.trim()}」
 
-按你的性格、你和作者的关系、以及这条内容，判断你会不会顺手点个赞。
-只回〔赞〕或〔不赞〕这两个字的标记，不要写别的话。`;
+按你的人设、你与${rel}的关系，以及这条内容，判断你会不会顺手点个赞。
+只回〔赞〕或〔不赞〕这两个字的标记，不写别的话。`;
     const ctx = await buildSocialContext(character, conv, userName, instruction, undefined, false, true);
     const { api } = ctx;
     if (!(api.enabled && api.baseUrl.trim() && api.model.trim())) return null;
@@ -459,7 +446,7 @@ export async function generateMomentLikeDecision(
       return null;
     }
     /* 心声不进决策；只认正文里最后出现的那个标记（模型偶尔会把指令抄一遍）。 */
-    const clean = extractInnerVoice(reply, false).clean;
+    const clean = extractInnerVoice(reply).clean;
     const noLike = clean.lastIndexOf("〔不赞〕");
     const like = clean.lastIndexOf("〔赞〕");
     if (noLike < 0 && like < 0) return null;
@@ -468,31 +455,31 @@ export async function generateMomentLikeDecision(
     return null;
   }
 }
-
-/** TA 刷到一条动态、在评论区留一句话（2026-10-05）。
+/** TA 刷到一条动态、在评论区留言（2026-10-05）。
  *
  *  跟 `generateMomentLikeDecision` 同一路数，走 `buildSocialContext` 的 **light** 档：
  *  人设、世界书、记忆、最近的聊天一样不少——一句评论也得跟线上是同一个人；
  *  只砍掉输出格式／富媒体那套长规则。**不走** `queueReaction`（不亮聊天窗的
  *  「正在输入」灯，评论也不该亮灯）。
- *  返回值：一句评论；null＝接口没配／请求失败／产出空——一律当「没评」处理。 */
+ *  返回值：一到三条评论（TA 可以连发，像真人刷屏）；null＝接口没配／请求失败／产出空——一律当「没评」处理。 */
 export async function generateMomentComment(
   character: ArchiveEntry,
   conv: Conversation,
   userName: string,
   moment: { authorName: string; isSelfAuthor: boolean; content: string },
-): Promise<string | null> {
+): Promise<string[] | null> {
   try {
     const myName = userName.trim() || "对方";
-    const who = moment.isSelfAuthor
-      ? `你聊天的那个人（${myName}）本人`
-      : `你认识的「${moment.authorName}」`;
-    const instruction = `【任务 - 给这条动态写一句评论】
+    const { who, rel } = momentAuthorWho(moment, myName);
+    const instruction = `【任务 - 要不要给这条动态写评论】
 你刷到了${who}发的一条动态：
 「${moment.content.trim()}」
 
-用你的性格和你们的关系，在评论区留一句话：像真人刷朋友圈随手评论那样，短、自然、口语化，别客套别端着。
-20 字以内，最多一句。只输出这句评论本身，不要引号，不要解释，不要带你的名字。`;
+按你的人设、你与${rel}的关系，以及这条动态的内容，判断你要不要去评论。想评就在评论区留言；不想评就什么都不输出。
+
+【格式】
+每条 20 字以内，一行一条；可以只留一条，也可以连着留几条，最多 3 条。
+只给出评论本身，不加引号，不作解释，不带你的名字。`;
     const ctx = await buildSocialContext(character, conv, userName, instruction, undefined, false, true);
     const { api } = ctx;
     if (!(api.enabled && api.baseUrl.trim() && api.model.trim())) return null;
@@ -510,93 +497,101 @@ export async function generateMomentComment(
     } catch {
       return null;
     }
-    /* 心声不进评论；取正文第一句非空行，去掉可能被模型带上的引号。 */
-    const clean = extractInnerVoice(reply, false).clean;
-    const line = clean
+    /* 心声不进评论；正文可以是一行，也可以是连着的几行（TA 连发几条）。 */
+    const clean = extractInnerVoice(reply).clean;
+    const out = clean
       .split(/\n+/)
-      .map((s) => s.trim())
-      .filter(Boolean)[0] ?? "";
-    const out = line.replace(/^["'“”「『]+|["'“”」』]+$/g, "").trim();
-    return out ? out.slice(0, 60) : null;
+      .map((s) => s.replace(/^["'“”「『]+|["'“”」』]+$/g, "").trim())
+      .filter(Boolean)
+      .slice(0, 3)
+      .map((s) => s.slice(0, 60));
+    return out.length ? out : null;
   } catch {
     return null;
   }
 }
 
-/** TA 求加回的好友申请附言（走完整管线；失败回退到按人设拼的模板）。 */
+/** TA 求加回的好友申请附言（走完整管线；没生成出来就不带附言）。
+ *  不编兜底话：附言通过好友后会被当成 TA 说过的话记进记忆，网络抖动时硬塞一句，
+ *  就成了不属于这个人设的假记忆——宁可这次没附言，界面显示系统默认那句。 */
 export async function generateFriendRequestMsg(
   character: ArchiveEntry,
   conv: Conversation,
   userName: string,
-): Promise<string> {
-  const instruction = `对方刚刚删除了你的好友。你舍不得这段关系，想重新申请加回对方。
-请写一句你会在好友申请里附带的验证消息（30字以内），符合你的性格与说话方式。
-只输出这句话本身，不要引号，不要任何解释。`;
+): Promise<string | undefined> {
+  const instruction = `对方刚刚删除了你的好友。
+按你的人设，写一句你会在好友申请里附带的验证消息（30字以内）。
+只给出这句话本身，不加引号，不作任何解释。`;
   const res = await generateSocialReply(character, conv, userName, instruction);
   const text = res?.parts.join(" ").trim();
-  if (text) return text.slice(0, 60);
-  return "再给我一次机会吧，我保证不会再那样了。";
+  return text ? text.slice(0, 60) : undefined;
 }
 
-/** 解除拉黑后 TA 的第一反应（走完整管线；失败／拒答回退模板）。 */
+/** 解除拉黑后 TA 的第一反应（走完整管线；没生成出来就安静过去）。
+ *  只交代状态事实，不催 TA 做出反应——拉黑当下那条与拉黑期间的历史原文都在，
+ *  TA 自己知道解除之后该怎么接。
+ *  不编兜底话：硬塞的话会作为 TA 说过的内容进记忆，宁可这次没反应。 */
 export async function generateUnblockReply(
   character: ArchiveEntry,
   conv: Conversation,
   userName: string,
-): Promise<SocialReply> {
-  const instruction = `之前对方把你拉黑了：那段时间里对方发来的消息你全都看得见；你发出去的每一条都显示「发送失败」，你以为对方收不到（其实对方一直看得见，你现在才明白）。
-刚刚，对方解除了拉黑——你的消息又能发出去了。
-结合你们最近的聊天（包括拉黑期间对方发来的那些），说出你的第一反应：1-2 条短消息，符合你的性格。
-只输出对话内容本身，不要动作描写。`;
-  return (
-    (await generateSocialReply(character, conv, userName, instruction)) ??
-    fallbackReply("……发出去了？\n拉黑那阵你发的我都看见了，我怎么回都发不出去。")
-  );
+): Promise<SocialReply | null> {
+  const instruction = `刚刚，对方解除了对你的拉黑，你发出去的消息又能正常发出了。
+只给出对话内容本身，不写动作描写。`;
+  return generateSocialReply(character, conv, userName, instruction);
 }
 
-/** 拉黑当下 TA 的第一反应（走完整管线；失败／拒答回退模板）。 */
+/** 拉黑当下 TA 的第一反应（走完整管线；没生成出来就安静过去）。
+ *  按真实的时序写：TA 不是被通知「你被拉黑了」，而是先照常接了一句，
+ *  看到这条显示「发送失败」，才察觉对方拉黑了自己，再接着说下去。
+ *  不编兜底话：硬塞的话会作为 TA 说过的内容进记忆，宁可这次没反应。 */
 export async function generateBlockedReply(
   character: ArchiveEntry,
   conv: Conversation,
   userName: string,
-): Promise<SocialReply> {
-  const instruction = `刚刚，对方把你拉黑了：你发出去的消息全都在你这边显示「发送失败」，你以为对方收不到（其实对方看得见，但你并不知道）。
-先说你的第一反应：1-3 条短消息。动笔前先看你们最近聊到何处——对方已经说明这是测试、在玩功能，或者提前打过招呼，就顺着这个来：配合、当作玩笑、调侃一句都可以，不要当作真的被冷落，不要追问对方是否生气；对方什么都没说、或者你们本来就在闹别扭，才轮到愣住、不甘心地重发、道歉、着急这些反应。
-只输出对话内容本身，不要动作描写。`;
-  return (
-    (await generateSocialReply(character, conv, userName, instruction)) ??
-    fallbackReply("？\n怎么发不出去了……\n你是不是把我拉黑了？别这样，听我说句话好不好。")
-  );
+): Promise<SocialReply | null> {
+  const instruction = `刚刚，对方把你拉黑了。
+你还没察觉，第一条消息照常接着刚才的聊天说；这条发出去后，你发现显示「发送失败」，才知道对方拉黑了你——接着往下说。
+只给出对话内容本身，不写动作描写。`;
+  return generateSocialReply(character, conv, userName, instruction);
 }
 
-/** 通过好友申请后 TA 的第一句（走完整管线；失败／拒答回退模板）。
+/** 通过好友申请后 TA 的第一句（走完整管线；没生成出来就安静过去）。
  *  加好友是「用户申请 → TA 通过」，所以这里是 TA 通过之后的第一句话。
  *  这一轮**照线上主聊天那样发**：对方留在申请里的那句话就是他刚发来的消息（作 input 投喂，
  *  末尾那条 user 历史切掉），「刚成为好友」只作一小段状态说明挂在 system 尾——
- *  从前写成「主动开口说你的第一句问候」，TA 答的是那句指令、不像在跟人聊天，这里改掉。 */
+ *  从前写成「主动开口说你的第一句问候」，TA 答的是那句指令、不像在跟人聊天，这里改掉。
+ *  不编兜底话：硬塞的问候会作为 TA 说过的内容进记忆，宁可这次没第一句。 */
 export async function generateNewFriendGreeting(
   character: ArchiveEntry,
   conv: Conversation,
   userName: string,
   greetText: string,
-): Promise<SocialReply> {
+): Promise<SocialReply | null> {
   const attach = greetText.trim();
-  const d = character.data;
-  const charName = d.name || d.nickname || "TA";
-  const tailNote = `【状态 - 你们刚成为好友】刚刚，${userName}通过了你的好友申请，你们成了好友，这是你们说的第一句话。像平时聊天那样，接着对方说的回。`;
+  const tailNote = `【状态 - 你们刚成为好友】你通过了 ${userName} 的好友申请。你们成了好友，根据 ${userName} 的好友申请内容，以你的人设方式回应对方。`;
   /* 对方没留附言时给一句中性占位，别让本轮没有「对方的话」（同线上发图那类没正文时的写法）。 */
-  const incoming = attach || "（对方通过好友申请加了你，没有别的话）";
-  return (
-    (await generateSocialReply(character, conv, userName, tailNote, {
-      userInput: incoming,
-      tailNote,
-    })) ??
-    fallbackReply(
-      attach
-        ? `你好呀，我是${charName}。看到你的好友申请了，很高兴认识你。`
-        : `你好呀，我是${charName}，很高兴认识你。`,
-    )
-  );
+  const incoming = attach || "（对方申请加你好友，没有别的话）";
+  return generateSocialReply(character, conv, userName, tailNote, {
+    userInput: incoming,
+    tailNote,
+  });
+}
+
+/** 对方点了「同意」让你重新加回好友之后，TA 的第一反应（走完整管线；没生成出来就安静过去）。
+ *  这一条走的是「被删好友 → TA 求加回 → 用户点同意」那条路：
+ *  系统把「对方同意了你的好友申请」告诉 TA，TA 立刻说一句，不等对方先开口。
+ *  不编兜底话：硬塞的话会作为 TA 说过的内容进记忆，宁可这次没反应。 */
+export async function generateReacceptedReply(
+  character: ArchiveEntry,
+  conv: Conversation,
+  userName: string,
+): Promise<SocialReply | null> {
+  const instruction = `【状态 - 对方同意了你的好友申请】系统提示你：${userName}同意了你的好友申请，你们重新成为了好友。
+之前${userName}删掉了你的好友，你重新申请加回，此刻对方同意。
+结合你们先前的聊天与此刻的情景，说出你的第一反应：1-3 条短消息，以你的人设方式。
+只给出对话内容本身，不写动作描写。`;
+  return generateSocialReply(character, conv, userName, instruction);
 }
 
 /* --------------------------- 动作（落库） --------------------------- */
@@ -768,6 +763,8 @@ export function blockedFirstReaction(
     /* 重拉最新会话：调用方手里的 conv 是点开关那一刻的快照，TA 的反应才跟得上最近聊到哪。 */
     const fresh = await getOrCreateConversation(character.id, maskId);
     const reply = await generateBlockedReply(character, fresh, userName);
+    /* 没生成出来就安静过去，不落兜底模板（同主动开口那条口径）。 */
+    if (!reply) return;
     /* 生成时已过同一趟后处理（拆条／双语），这里逐条落库即可。 */
     await appendSocialParts(character.id, maskId, reply);
   });
@@ -785,6 +782,26 @@ export function newFriendGreetingReaction(
     /* 重拉最新会话：调用方手里的 conv 是点发送那一刻的快照。 */
     const fresh = await getOrCreateConversation(character.id, maskId);
     const reply = await generateNewFriendGreeting(character, fresh, userName, greetText);
+    /* 没生成出来就安静过去，不落兜底模板（同主动开口那条口径）。 */
+    if (!reply) return;
+    /* 生成时已过同一趟后处理（拆条／双语），这里逐条落库即可。 */
+    await appendSocialParts(character.id, maskId, reply);
+  });
+}
+
+/** 用户点了「同意」让 TA 重新加回之后，TA 的第一反应（慢的那半段）：排队后台跑，不阻塞同意动作。
+ *  调用方 fire-and-forget 即可，落库完自己刷屏。 */
+export function reacceptedFirstReaction(
+  character: ArchiveEntry,
+  maskId: string,
+  userName: string,
+): Promise<void> {
+  return queueReaction(character.id, maskId, async () => {
+    /* 重拉最新会话：调用方手里的 conv 是点同意那一刻的快照。 */
+    const fresh = await getOrCreateConversation(character.id, maskId);
+    const reply = await generateReacceptedReply(character, fresh, userName);
+    /* 没生成出来就安静过去，不落兜底模板（同主动开口那条口径）。 */
+    if (!reply) return;
     /* 生成时已过同一趟后处理（拆条／双语），这里逐条落库即可。 */
     await appendSocialParts(character.id, maskId, reply);
   });
@@ -818,6 +835,8 @@ export function unblockedFirstReaction(
     /* 必须重拉最新会话：不重拉的话拉黑期间聊过的那些就不在语境里，TA 解除后接不上最近聊到哪。 */
     const fresh = await getOrCreateConversation(character.id, maskId);
     const reply = await generateUnblockReply(character, fresh, userName);
+    /* 没生成出来就安静过去，不落兜底模板（同主动开口那条口径）。 */
+    if (!reply) return;
     /* 生成时已过同一趟后处理（拆条／双语），这里逐条落库即可。 */
     await appendSocialParts(character.id, maskId, reply);
   });
@@ -825,22 +844,35 @@ export function unblockedFirstReaction(
 
 /* --------------------------- 主动（没人喊也会自己来） --------------------------- */
 
+/** 「{对方}上一条消息已经是约 X 前」里的那截时长。 */
+function elapsedLabel(fromIso: string, nowMs: number): string {
+  const min = Math.max(0, Math.round((nowMs - new Date(fromIso).getTime()) / 60000));
+  if (min < 60) return `${min} 分钟`;
+  if (min < 60 * 24) return `${Math.round(min / 60)} 小时`;
+  return `${Math.round(min / (60 * 24))} 天`;
+}
+
 /** TA 主动开口的指令：交给完整管线时，既当这轮的 userInput、也当真的发出去的那句话。
+ *  照参考项目「固定时间主动消息」那股写法：先摆时间事实，再让 TA 依性格、关系、最近聊天与
+ *  当前时间决定要不要发；发的话给一串开场方向。
  *  「别解释为什么发消息」是防 AI 腔的老毛病——真人不会说「我主动来找你聊聊」。
- *  `baseMin`＝恩熙给这个角色设的基础间隔（分钟）：让 TA 参考它、再照当下的情景自己定多久来下一次。 */
-function proactiveChatInstruction(baseMin: number): string {
+ *  `baseMin`＝恩熙给这个角色设的基础间隔（分钟）：让 TA 参考它、再照当下的情景自己定多久来下一次。
+ *  `elapsed`＝对方上一条消息距今多久（没说过话时为 null，那行就不出现）。 */
+function proactiveChatInstruction(baseMin: number, userName: string, elapsed: string | null): string {
   const human =
     baseMin < 60
       ? `${baseMin} 分钟`
       : baseMin % 60 === 0
         ? `${baseMin / 60} 小时`
         : `${Math.floor(baseMin / 60)} 小时 ${baseMin % 60} 分`;
-  return `此刻你闲下来，心里忽然浮起对方的影子，想主动开口说点什么。
-这是你自己冒出来的念头——不是谁提醒你，也不是收到了什么通知，你只是在过自己的日子时想到了她。
-结合你们最近的聊天和此刻的时间，自然地发一条消息过去——像真人空下来时忽然想起对方那样。
-不要解释你为什么发消息；「主动」「系统」「提醒」「提示」「通知」这类字眼，正文里不许出现，<think> 里那几段心里话也不许出现——那些念头都得是你自己想到的，不是从别处得知的。
-1-2 条短消息，符合你的性格与说话方式；只输出对话内容本身，不要动作描写。
-最后另起一行写〔下次〕加上一个整数分钟数（比如〔下次〕40），表示你打算过多久再主动找对方一次；参考值约 ${human}，你可以按你们的情景和此刻的心情自己浮动，这行不会发给对方。`;
+  const since = elapsed ? `${userName} 上一条消息已经是约 ${elapsed} 前。\n` : "";
+  return `${since}现在请根据你的性格、你们的关系、最近聊天上下文和当前时间，决定要不要主动发消息。
+如果主动发消息，内容要像你自然想起 ${userName} 后主动开口。可以关心、撒娇、分享近况、轻轻试探、邀请继续聊天，或任何符合你性格的主动开场。
+内容必须自然，符合你的角色状态和你们当前关系。
+若决定不发，就不要输出任何内容。
+不解释你为什么发消息；「主动」「系统」「提醒」「提示」「通知」这类字眼，正文里不出现，<think> 里的心里话也不出现——那些念头都是你自己想到的，不是从别处得知的。
+1-3 条短消息；只给出对话内容本身，不写动作描写。
+最后另起一行写〔下次〕加上一个整数分钟数，表示你打算过多久再主动找对方一次；参考值约 ${human}，你可以按你们的情景和此刻的心情自己浮动，这行不会发给对方。`;
 }
 
 /** TA 主动开口（手机开着时由主动引擎在后台触发）。
@@ -857,7 +889,17 @@ export function proactiveMessageReaction(
     const fresh = await getOrCreateConversation(character.id, maskId);
     const last = fresh.messages[fresh.messages.length - 1];
     if (expectedLastId !== undefined && last?.id !== expectedLastId) return;
-    const instruction = proactiveChatInstruction(proactiveBaseMinOf(fresh));
+    /* 「对方上一条消息」＝TA 之前收到的最后一句用户的话；没有就退回最后一条，再没有就 null。 */
+    let lastUser: ChatMessage | undefined;
+    for (let i = fresh.messages.length - 1; i >= 0; i -= 1) {
+      if (fresh.messages[i].role === "user") {
+        lastUser = fresh.messages[i];
+        break;
+      }
+    }
+    const anchor = lastUser ?? last;
+    const elapsed = anchor ? elapsedLabel(anchor.createdAt, Date.now()) : null;
+    const instruction = proactiveChatInstruction(proactiveBaseMinOf(fresh), userName, elapsed);
     const reply = await generateSocialReply(character, fresh, userName, instruction);
     /* 主动开口失败（接口没配／拒答）就安静过去，不落兜底模板——没人要的东西不该硬塞。 */
     if (!reply) return;

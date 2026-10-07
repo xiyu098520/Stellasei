@@ -26,6 +26,7 @@ import {
   blockedFirstReaction,
   hardDeleteFriend,
   newFriendGreetingReaction,
+  reacceptedFirstReaction,
   rejectFriendRequest,
   removeFriend,
   restoreFriend,
@@ -312,14 +313,15 @@ export default function ContactList({
     [maskName, onDataChange, showToast],
   );
 
-  /** 同意好友申请：恢复好友，附言成为 TA 回到聊天的第一句话。 */
+  /** 同意好友申请：恢复好友，附言成为 TA 回到聊天的第一句话；随后 TA 知道「对方同意了」，立刻回应一句。 */
   const doAccept = useCallback(
-    async (conv: Conversation) => {
+    async (archive: ArchiveEntry, conv: Conversation) => {
       await acceptFriendRequest(conv);
       onDataChange();
       showToast("已同意，你们重新成为了好友");
+      void reacceptedFirstReaction(archive, maskId, maskName).finally(() => onDataChange());
     },
-    [onDataChange, showToast],
+    [maskId, maskName, onDataChange, showToast],
   );
 
   /** 拒绝申请：TA 消失在申请列表里，下次打开页面还会再来求。 */
@@ -1203,7 +1205,7 @@ export default function ContactList({
                       </button>
                       <button
                         type="button"
-                        onClick={() => void doAccept(conv)}
+                        onClick={() => void doAccept(archive, conv)}
                         style={reqSolidBtnStyle}
                       >
                         同意
