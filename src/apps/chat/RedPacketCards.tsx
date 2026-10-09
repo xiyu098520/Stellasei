@@ -99,15 +99,24 @@ const COVER_LIP = "0 7px 13px -8px rgba(0,0,0,.22)";
 /** 白纸上的金额色（1.9.78 起跟「柔和野兽派」走墨色，不再是暖金）。 */
 const AMOUNT_INK = RED_COVER_TONE.ink;
 
+/** 单色一档（1.12.20）：他的手机走黑白灰，封套上那枚「開」的圆标与纹样里那几点
+ *  彩一并收成灰（恩熙：「跟我们的样式一样，只是改成黑白灰」）。
+ *  预设封面、墨字、硬投影本来就是灰的，不在这儿动。默认 false＝一个字都不改。 */
+const MONO_TONE = {
+  ...RED_COVER_TONE,
+  chipBg: "#FFFFFF",
+  glow: "none",
+} as const;
+
 /** 预设封套上那道纸柔光（自定义照片不压——照片自己就有光影，再压一道只会脏）。 */
-function SoftLight() {
+function SoftLight({ glow }: { glow: string }) {
   return (
     <div
       style={{
         position: "absolute",
         inset: 0,
         pointerEvents: "none",
-        background: RED_COVER_TONE.glow,
+        background: glow,
       }}
     />
   );
@@ -125,6 +134,7 @@ export function RedEnvelopeCard({
   onOpen,
   opening = false,
   burst,
+  mono = false,
 }: {
   /** 封面的底（渐层或 `url(...)`）。 */
   coverBg: string;
@@ -138,7 +148,10 @@ export function RedEnvelopeCard({
   /** 正在开：金圆印缩一档淡出去。 */
   opening?: boolean;
   burst?: ReactNode;
+  /** 走黑白灰一档（他的手机用）：圆标与纹样收成灰。默认 false＝原样。 */
+  mono?: boolean;
 }) {
+  const tone = mono ? MONO_TONE : RED_COVER_TONE;
   return (
     <div
       style={{
@@ -149,8 +162,8 @@ export function RedEnvelopeCard({
         borderRadius: 16,
         overflow: "hidden",
         background: "#FFFFFF",
-        border: `2px solid ${RED_COVER_TONE.chipBorder}`,
-        boxShadow: RED_COVER_TONE.shadow,
+        border: `2px solid ${tone.chipBorder}`,
+        boxShadow: tone.shadow,
       }}
     >
       {/* 底下那条带：一条纯矩形，从弧的两侧一直包到底；中间那一截一会儿被照片盖掉 */}
@@ -181,7 +194,7 @@ export function RedEnvelopeCard({
           boxShadow: COVER_LIP,
         }}
       >
-        {!customSrc ? <SoftLight /> : null}
+        {!customSrc ? <SoftLight glow={tone.glow} /> : null}
       </div>
       {/* 封面上那两行：上轻下重，跟封套上的压印一个口气 */}
       <div
@@ -201,7 +214,7 @@ export function RedEnvelopeCard({
             fontStyle: "italic",
             fontSize: 11.5,
             fontWeight: 500,
-            color: RED_COVER_TONE.inkSoft,
+            color: tone.inkSoft,
             letterSpacing: ".1em",
           }}
         >
@@ -215,7 +228,7 @@ export function RedEnvelopeCard({
             fontSize: 18,
             fontWeight: 600,
             lineHeight: 1.5,
-            color: RED_COVER_TONE.ink,
+            color: tone.ink,
             letterSpacing: ".08em",
             display: "-webkit-box",
             WebkitLineClamp: 2,
@@ -244,15 +257,15 @@ export function RedEnvelopeCard({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: RED_COVER_TONE.chipBg,
-          border: `2px solid ${RED_COVER_TONE.chipBorder}`,
-          color: RED_COVER_TONE.chipInk,
+          background: tone.chipBg,
+          border: `2px solid ${tone.chipBorder}`,
+          color: tone.chipInk,
           fontFamily: SEAL_FONT,
           fontSize: 34,
           fontWeight: 600,
           lineHeight: 1,
           cursor: onOpen ? "pointer" : "default",
-          boxShadow: RED_COVER_TONE.shadow,
+          boxShadow: tone.shadow,
           opacity: opening ? 0 : 1,
           transform: opening ? "scale(.72)" : "scale(1)",
           transition: "opacity .3s, transform .3s",
@@ -287,6 +300,7 @@ export function RedOpenedCard({
   statusLine,
   footLine,
   onDetail,
+  mono = false,
 }: {
   coverBg: string;
   customSrc?: string;
@@ -297,7 +311,10 @@ export function RedOpenedCard({
   /** 再底下那行落款（时间 · 谁的红包）。 */
   footLine: string;
   onDetail?: () => void;
+  /** 走黑白灰一档（他的手机用）：纹样收成灰、「查看领取详情」转墨灰。默认 false＝原样。 */
+  mono?: boolean;
 }) {
+  const tone = mono ? MONO_TONE : RED_COVER_TONE;
   return (
     <div
       style={{
@@ -307,8 +324,8 @@ export function RedOpenedCard({
         borderRadius: 16,
         overflow: "hidden",
         background: "#FFFFFF",
-        border: `2px solid ${RED_COVER_TONE.chipBorder}`,
-        boxShadow: RED_COVER_TONE.shadow,
+        border: `2px solid ${tone.chipBorder}`,
+        boxShadow: tone.shadow,
       }}
     >
       {/* 封面那块：与没开那张同一块封面、同一条往下圆的弧。
@@ -323,7 +340,7 @@ export function RedOpenedCard({
           overflow: "hidden",
         }}
       >
-        {!customSrc ? <SoftLight /> : null}
+        {!customSrc ? <SoftLight glow={tone.glow} /> : null}
       </div>
       {/* 纸上的内容 */}
       <div
@@ -366,7 +383,7 @@ export function RedOpenedCard({
             fontStyle: "italic",
             fontWeight: 500,
             fontSize: 13,
-            color: RED_COVER_TONE.inkSoft,
+            color: tone.inkSoft,
             letterSpacing: ".04em",
           }}
         >
@@ -379,7 +396,7 @@ export function RedOpenedCard({
             fontStyle: "italic",
             fontWeight: 500,
             fontSize: 10.5,
-            color: RED_COVER_TONE.inkSoft,
+            color: tone.inkSoft,
             letterSpacing: ".06em",
             opacity: 0.8,
           }}
@@ -407,7 +424,7 @@ export function RedOpenedCard({
             display: "flex",
             alignItems: "center",
             gap: 2,
-            color: T.pink,
+            color: mono ? "#5B5B5B" : T.pink,
             fontSize: 13,
             letterSpacing: ".06em",
             fontFamily: SERIF,

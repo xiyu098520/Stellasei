@@ -2011,6 +2011,49 @@ export default function MemoryApp() {
                     </div>
                   </div>
 
+                  {/* 系统状态：距下次整理（攒满归总）＋手动归总＋清空 */}
+                  <div className={css.status}>
+                    <div className={css.statusHd}>
+                      <span className={css.statusT}>记忆系统</span>
+                      <em className={css.statusEn}>memory system</em>
+                      <span className={css.statusLead} />
+                      <span className={css.statusDot} />
+                    </div>
+                    <div className={css.meter}>
+                      <span className={css.meterLb}>距下次整理</span>
+                      <span className={css.meterCt}>
+                        {String(detail.newCount).padStart(2, "0")} / {detail.contextLimit}
+                      </span>
+                    </div>
+                    {/* 刻度条：二十格，攒满即整批浓缩，像打表。 */}
+                    <div className={css.meterBar} aria-hidden>
+                      {Array.from({ length: 20 }).map((_, i) => (
+                        <span
+                          key={i}
+                          className={
+                            i < Math.round(Math.min(1, detail.newCount / detail.contextLimit) * 20)
+                              ? `${css.meterSeg} ${css.on}`
+                              : css.meterSeg
+                          }
+                        />
+                      ))}
+                    </div>
+                    <p className={css.meterNote}>攒满后整批浓缩成短期记忆，进度从头再算（这不是上下文条数）</p>
+                    <div className={css.acts}>
+                      <button
+                        type="button"
+                        className={css.primary}
+                        onClick={() => void runCondense()}
+                        disabled={busy}
+                      >
+                        {busy ? "归总中…" : "手动归总"}
+                      </button>
+                      <button type="button" className={css.danger} onClick={() => setConfirmWipe(true)}>
+                        清空
+                      </button>
+                    </div>
+                  </div>
+
                   {detail.items.length > 0 ? (
                     <div className={css.tabs}>
                       {(
