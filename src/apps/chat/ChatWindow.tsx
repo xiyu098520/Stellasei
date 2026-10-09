@@ -70,11 +70,13 @@ import {
   buildLangRule,
   buildOfflineStylePrompt,
   buildStylePrompt,
+  buildVoiceOnlyRule,
   extractBubbleQuotes,
   extractInnerVoice,
   extractMetaMarkers,
   fetchAIReply,
   fetchAIStreamReply,
+  type CacheUsage,
   generateImage,
   guessUseCharRef,
   isRejectedBeforeWork,
@@ -92,6 +94,10 @@ import {
 import { applyRegexRules, loadRegexRules } from "@/lib/chat/regexRules";
 /* 我发的语音条：真录音走浏览器语音识别转文字，封装在 stt.ts。 */
 import { createSTTSession, type STTSession } from "@/lib/chat/stt";
+/* iOS 18 主屏 PWA 的「假播放」解药：首触解锁本页音频会话（静音 WAV 点亮）。
+   参考项目（同机唯一能响的那套）靠它让程序化 play() 不再假播放；星绥此前完全缺这一环
+   （audioSession 那条已证伪，见施工日志 1.12.30）。 */
+import { ensureVoiceUnlocked } from "@/lib/audio-session";
 /* TA 那本账的「开户」：第一次跟他说话（或第一次翻他手机）时，
    按人设给他开一本有来历的账——否则他手上一分钱没有，发红包／转账都无从谈起。 */
 import { openContactAccountIfEmpty } from "@/lib/chat/contactAccount";
@@ -109,6 +115,7 @@ import {
   getPayCode,
   getPayPassword,
   listCards,
+  listEntries,
   parseYuan,
   payOutToContact,
   takeBackToPocket,
@@ -151,8 +158,6 @@ import {
 /* 清空的收尾：断链的图（这一趟清掉的、以及历年攒下的孤儿）一并从仓库收走。 */
 import { sweepOrphanMedia } from "@/lib/chat/media-sweep";
 import { readQrNote } from "@/lib/chat/qr-read";
-import { APP_VERSION } from "@/lib/version";
-import { ensurePlaybackSession } from "@/lib/audio-session";
 import {
   AVATAR_GRADIENT,
   CHAT_BG_DEFAULT,
@@ -318,32 +323,6 @@ const PLUS_OFFLINE_ACTION = { name: "去见他", icon: User } as const;
 const RETELL_FALLBACK_HINT = "换个说法，把这一句重新回一遍，别和上次一个样。";
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-/**
- * 翻一句，翻不动再试一次。
- *
- * 译文是每条单独打一次翻译接口换来的，网络／限流抽一下，那一条就永久空着（还找补不回来）。
- * 这里给它两次机会：接口报错、返回空、或者把原话原样吐回来（说明它根本没干活），都当翻
- * 不动，隔半秒再来一遍；两次都不行才返回 undefined（那一条就不露译文，不拖累别的）。
- */
-async function translateWithRetry(
-  api: ChatApiSettings,
-  text: string,
-  toLang: string,
-): Promise<string | undefined> {
-  const src = text.trim();
-  if (!src) return undefined;
-  for (let i = 0; i < 2; i++) {
-    try {
-      const t = (await translateText(api, text, toLang)).trim();
-      if (t && t !== src) return t;
-    } catch {
-      /* 抽风了，隔半秒再试一次 */
-    }
-    if (i === 0) await delay(500);
-  }
-  return undefined;
-}
 
 /* 每条气泡的出场间隔（流式预览的节拍，与非流式逐条落库共用同一档）。 */
 const STREAM_REVEAL_INTERVAL_MS = 700;
@@ -559,6 +538,8 @@ interface LastRequest {
   diff: string;
   /** 完整正文：与网关收到的逐字一致。 */
   full: string;
+  /** 本轮真实用量：读取／新建／原价输入／输出（1.11.68，等站子回包后补上）。 */
+  usage?: CacheUsage;
 }
 
 export default function ChatWindow({
@@ -630,24 +611,12 @@ export default function ChatWindow({
   const [showSheet, setShowSheet] = useState(false);
   /* 语音／转文字 */
   const [playingVoice, setPlayingVoice] = useState<string | null>(null);
+  /* 语音**没出声**的那条 id（1.12.27）：只读探针抓到 iOS「假播放」（元素自称在播、
+     却一点声没有、也不报错）时亮起，在气泡上出一句可见的失败提示。点一下即清、重试。 */
+  const [voiceSilent, setVoiceSilent] = useState<string | null>(null);
   /* 「转文字」可**多开**：点开的各自留着，互不顶掉，再点同一条才收起。
      不设单个 id（单个会点第二条就把第一条顶掉），用一组 id。 */
   const [showTrans, setShowTrans] = useState<Set<string>>(() => new Set());
-  /* 语音播放诊断：**只在播失败时**在气泡下露一行小字（原因 + App 版本 + iOS 版本），
-     成功时绝不显。临时用来把她那边到底卡在哪一步带回来，排掉就删。 */
-  const [voiceDiag, setVoiceDiag] = useState<{ id: string; text: string } | null>(null);
-  /* 播失败时兜底露出的原生播放器，源要用 blob:（data URL 在 iOS 上放不出，见
-     playVoiceViaElement 上方注释）。这存着当前那条兜底音频的 blob URL；换一条或卸载时回收。 */
-  const [voiceFallback, setVoiceFallback] = useState<{ id: string; url: string } | null>(null);
-  /* 兜底 blob URL 的回收：换一条或组件卸载时 revoke 旧的，别把 blob 一直挂在内存里。 */
-  useEffect(() => {
-    const url = voiceFallback?.url;
-    return () => {
-      if (url) {
-        try { URL.revokeObjectURL(url); } catch { /* ignore */ }
-      }
-    };
-  }, [voiceFallback]);
   /* 弹窗 */
   const [showViewer, setShowViewer] = useState(false);
   const [viewerCap, setViewerCap] = useState("");
@@ -760,6 +729,16 @@ export default function ChatWindow({
           : `❌ 与上一轮在第 ${at} 个字处就不一样了（上一轮共 ${prev.length} 字）——从这儿往后每轮都要重写。`;
       setLastReq({ ...r, at: Date.now(), diff });
     },
+    [],
+  );
+
+  /**
+   * 本轮用量回来就补进留档（1.11.68）：面板顶上那一行「读取·新建·原价输入·输出」。
+   * 走回调而不是全局，是因为只有真正发聊天这一轮才传它——记忆浓缩、朋友圈那些
+   * 也走 fetchAIReply，别让它们的用量窜上来。
+   */
+  const captureUsage = useCallback(
+    (u: CacheUsage) => setLastReq((prev) => (prev ? { ...prev, usage: u } : prev)),
     [],
   );
 
@@ -1217,15 +1196,13 @@ export default function ChatWindow({
              「文字锁脸」模式下不送参考图：长相全靠人设文字，表情角度完全自由。
              外貌文字不再由这里拼：性别标签与人设切片统一交给 generateImage 拼
              （miya 式），参考图只是定脸的一份材料。 */
-          /* 带不带参考图：TA 在标记里**写明**的照它写（use／none）；没写（absent，或老数据）
-             再按画面描述兜底认人——认人时把**角色名**一起算进去，否则「砂金半侧过身靠着扶手」
-             这种（提示词要求它用角色名、不许写「自己」）会被判成「画面里没人」。 */
-          const useCharRef =
-            m.refMark === "none"
-              ? false
-              : m.refMark === "use"
-                ? true
-                : guessUseCharRef(m.content, charName);
+          /* 带不带参考图（1.12.8）：**画面里认得出他本人 → 一律带**。
+             恩熙：「图片有本人的时候，一定要带参考图，写的必须」——所以 TA 自己写的
+             「不使用参考图」不再能把它免掉。认人靠 `guessUseCharRef`（画面描述 ＋ 角色名）；
+             只有描述里确实没认出他（后置景物那类）才不带。
+             「文字锁脸」模式下仍不送参考图（那是设置里她自己定的，长相全靠人设文字）。 */
+          const inFrame = guessUseCharRef(m.content, charName);
+          const useCharRef = inFrame || m.refMark === "use";
           const textFaceLock = imageExtras.faceLockMode === "text";
           /* 参考图已经搬进图片仓库（会话里只剩一句引用串），而生图接口只认 data URL，
              所以这里得把原图读回来再送出去；老数据本来就是 data URL，原样传回。
@@ -1241,11 +1218,7 @@ export default function ChatWindow({
             : textFaceLock
               ? "设置里的锁脸方式是「文字锁脸」，本来就不送参考图"
               : !useCharRef
-                ? m.refMark === "none"
-                  ? "TA 在标记里写明的是「不使用参考图」（它自己判的画面里没有它本人）"
-                  : m.refMark === "use"
-                    ? "标记写了「使用参考图」，但这次没带上（参考图那一段没读出来）"
-                    : "标记里**没写**「使用／不使用」，是按画面描述判断的——描述里没认出它本人"
+                ? "画面描述里认不出它本人在场（后置景物那类），本来就不该送参考图"
                 : !conv?.charRefImage
                   ? "这个角色还没传参考图"
                   : "参考图存在本机，但读不出数据（仓库那份丢了或被清过）";
@@ -1347,7 +1320,11 @@ export default function ChatWindow({
             voiceSpokenText(readVoiceContent(m.content).tts),
             effVoiceExtras,
           );
-          const done: ChatMessage = { ...working, pending: false, audioUrl: res.audio };
+          /* 1.11.75：合成完量一次真实秒数，写回这条气泡——别一直挂着「字数估」的假秒数。
+             量不出（超时）回 0，退回老估计。 */
+          const realDur = await measureAudioDuration(res.audio);
+          const durSec = realDur > 0 ? realDur : Math.max(1, Math.round(readVoiceContent(m.content).display.length / 3.5));
+          const done: ChatMessage = { ...working, pending: false, audioUrl: res.audio, duration: durSec };
           await updateMessage(character.id, maskId, done);
           setMessages((prev) => prev.map((x) => (x.id === m.id ? done : x)));
         } catch (err) {
@@ -1559,17 +1536,29 @@ export default function ChatWindow({
       setStreamStamps([]);
       setFrozenTail(null);
       try {
-        /* TA 手头有多少零钱也一起取：他要在读人设之外知道「本钱」有多少，
-           发红包／转账才不至于凭空乱写。只挂易变区一行（见 promptBuilder 的零钱行）。
+        /* TA 手头有多少零钱、最近花过什么，一起取回来（1.12.4）：这是**他自己在用的
+           手机**，账上的余额与流水他本人当然知道，所以余额与最近三笔常驻在他眼前
+           （见 promptBuilder 的 buildWalletLine），不再等「聊到钱」才说。
            这里顺带保证他那本账**开过**——第一次跟他说话就按人设开户（她已经翻过他手机的话，
            这一步什么也不做、只是把余额读出来）。开户本身出岔子（写库失败）不该连累聊天：
            出错就当读不到余额，照常往下聊。 */
-        const [books, prefs, taWallet] = await Promise.all([
+        const taAccount = openContactAccountIfEmpty({
+          ownerId: character.id,
+          profile: character.data,
+        });
+        const taBalance = taAccount
+          .then((r) => r.balance)
+          .catch(() => getBalance(character.id, "contact"));
+        /* 流水排在他那本账**开过之后**再读：头一轮若刚开户，先读会读到空账。 */
+        const taRecent = taAccount
+          .catch(() => null)
+          .then(() => listEntries(character.id, "contact"))
+          .catch(() => []);
+        const [books, prefs, taWallet, taWalletRecent] = await Promise.all([
           getWorldBooks(),
           getChatPrefs(),
-          openContactAccountIfEmpty({ ownerId: character.id, profile: character.data })
-            .then((r) => r.balance)
-            .catch(() => getBalance(character.id, "contact")),
+          taBalance,
+          taRecent,
         ]);
         /* 气泡条数上限：**每聊天设定**（这个角色归这个角色，别的角色不受影响），
            没设过＝默认开、5 条。关了就是 0＝不限，提示词那句也不加，与从前逐字一致；
@@ -1596,10 +1585,13 @@ export default function ChatWindow({
           userName: myName,
           userMask: mask,
           currentSignature: conv?.signature,
-          /* 用户签名（「我」页面）：只挂易变区一行，TA 改不了它、只是看得见。 */
+          /* 用户签名（「我」页面）：1.11.70 起与 TA 签名同一条规矩——只在改过、
+             新值还没说过时说一嘴，挂最末段；TA 改不了它、只是看得见。 */
           userSignature,
-          /* TA 的零钱：他自己发红包／转账的花销从这本账出。 */
+          /* TA 的零钱与最近几笔：他自己发红包／转账的花销从这本账出；账上剩多少、
+             这周花过什么，他本人也知道（1.12.4）。 */
           walletBalance: taWallet,
+          walletRecent: taWalletRecent,
           memoryBlock,
           /* 我发的朋友圈里他有权看的那几条：可见范围在这儿真的生效——
              仅自己可见、或部分可见里没点到他，这一格就是空的。 */
@@ -1608,7 +1600,7 @@ export default function ChatWindow({
           /* 会话标识：概率条目的骰子结果按它固定，同一场对话里不每轮重掷。 */
           sessionKey: `${character.id}::${maskId}`,
           /* 时间感知：设置里的开关（见 getChatPrefs）。打开时把「此刻」挂在本轮尾巴上，
-             分钟级、每轮都变，所以走易变区；关掉就整段不注入。 */
+             分钟级、每轮都变，所以走瞬时区（见 promptBuilder）；关掉就整段不注入。 */
           timeAware: prefs.timeAware,
         });
         /* 能力标记：图文／语音 API 配好并启用，TA 才知道自己能发图／发语音。 */
@@ -1648,8 +1640,16 @@ export default function ChatWindow({
            不挑合成引擎；角色自己改过的规矩同样照注入——那是她要的说话方式。 */
         const voicePromptRule = vpText.trim() !== "" ? vpText : null;
         /* 外语聊天：语音的双语格式要「用户提示词压不掉」，所以在 buildStylePrompt
-           里就带上目标语言（见那边的 voiceLang 参数）。取在调用之前，下面两处都要用。 */
+           里就带上目标语言（见那边的 voiceLang 参数）。取在调用之前，下面两处都要用。
+           1.11.87：语音可以**单独**说外语——「语音单独说外语」开着＝语音用它的语言，
+           正文照旧中文不受影响；没开＝跟随「他说的外语」。 */
         const trOut = conv?.translate?.out;
+        const voiceOn = conv?.translate?.voice?.on === true;
+        const voiceLangNow = voiceOn
+          ? conv?.translate?.voice?.lang ?? trOut?.lang ?? "日语"
+          : trOut?.on
+            ? trOut.lang
+            : null;
         const { head: stylePrompt, tail: styleRules } = buildStylePrompt(
           charName,
           myName,
@@ -1667,8 +1667,9 @@ export default function ChatWindow({
              开关开着且正文非空才注入；否则传 null，稳定区逐字不变（不吃缓存重建）。 */
           voicePromptRule,
           /* 语音的目标外语：开着「他说的外语」＝传该语言，语音固定写成「原文|中文」，
-             压过用户自定义的语音规矩，语音永远自带中文。 */
-          trOut?.on ? trOut.lang : null,
+             压过用户自定义的语音规矩，语音永远自带中文；「语音单独说外语」开着时优先用
+             它的语言（正文中文也可以），没开再跟随「他说的外语」。 */
+          voiceLangNow,
         );
         /* system 只放稳定段（最前：【心声】＋沉浸指令 → 对方档案／常驻世界书／人设／
            记忆碎片 → 末尾：消息格式／富媒体／【行为守则】／测试模式）
@@ -1688,16 +1689,28 @@ export default function ChatWindow({
            外语的口径（母语身份、按母语者的用词语气说话、偶尔自然蹦中文）与各语言样板句
            统一收在 buildLangRule，线下社交反应生成也用同一份。 */
         const langRule = buildLangRule(trOut?.on ? trOut.lang : null, myName);
-        const systemStable = stylePrompt + "\n\n" + built.stable + "\n\n" + styleRules + langRule;
+        /* 语音单独说外语（1.11.88）：正文中文、只有语音用外语时，buildLangRule 不来
+           （正文不改语言），但要在稳定区点明「语音必须用外语双语」——免得模型被整体
+           中文带跑、语音也写成中文（恩熙报：「他没有斜杠」）。正文外语已开时这段不
+           需要（langRule 已覆盖语音）。 */
+        const voiceOnlyRule = voiceOn && !trOut?.on ? buildVoiceOnlyRule(voiceLangNow) : "";
+        const systemStable =
+          stylePrompt + "\n\n" + built.stable + "\n\n" + styleRules + langRule + voiceOnlyRule;
         /* 拉黑状态是「会变的状态」（拉／解除各换一份），所以不占稳定段——走 system 的
-           第二段 tail（缓存断点之后）：稳定段照旧逐字不变、缓存不受影响，
+           最后一段 tail（缓存断点之后）：稳定段照旧逐字不变、缓存不受影响，
            状态说明又落在整条 system 的最末尾、离本轮对话最近，TA 更听得进去。 */
         const systemTail = socialPrompt;
-        /* 易变尾巴（签名取值／当前状态／关键词世界书／对话后世界书）挂在本轮 user 消息末尾，
-           不进 system——它每轮都会变，一进 system 就把断点之后的整段作废。
-           「当前状态」（分钟级时间）由 buildPrompt 的易变区带着（`input.timeAware` 为真时，
-           见 promptBuilder 末尾那段）；ChatWindow 传的是设置里的「时间感知」开关，默认开。
-           所以 TA 是看得见「现在是几点」的，也看得见「距上一条消息已经过了多久」（见 idleGapLine）。 */
+        /* 1.11.69：偶尔才变的那一截（朋友圈／关键词世界书）搬进 system 的第二段
+           cache、挂它自己的缓存断点——它多数轮不变，下一轮连同它一起读回来（0.1×），
+           不再像从前挂在 user 链尾那样每轮 100% 全价重付。它一旦变了，作废的只是
+           它自己与 tail，前面 stable 那截照旧命中。
+           1.11.70：签名／用户签名／零钱三行从这一格里挪去了最末段（瞬时区）——
+           它们「改了才说／聊到才说」，挂链尾会随这轮 user 原文进 apiText、等于进聊天原文。 */
+        const systemCache = built.volatile;
+        /* 留在 user 消息末尾的只剩瞬时区（此刻时间＋那三行取值，见 promptBuilder）：
+           此刻时间分钟级、每轮都变；三行取值只在改过／聊到钱时出现——都贴在链尾，
+           随这轮 user 原文记进 apiText，回喂一字不差。
+           所以 TA 照样看得见「现在是几点」，也看得见「距上一条消息已经过了多久」（见 idleGapLine）。 */
         /* 本轮要用的正则规则（每轮发送现取——设置里刚建／刚改的规则立刻生效）；
            顺手刷一遍显示缓存，旧消息的「仅显示」气泡也跟着换新规则。 */
         const rules = await loadRegexRules();
@@ -1724,7 +1737,7 @@ export default function ChatWindow({
         const input =
           (opts?.quote ? `【引用】${opts.quote}\n${userTextForModel}` : userTextForModel) +
           (offlineNote ? `\n\n${offlineNote}` : "") +
-          (built.volatile ? `\n\n${built.volatile}` : "");
+          (built.ephemeral ? `\n\n${built.ephemeral}` : "");
         /* 用掉即清：这一轮带上了，就把它落回 false——下一轮不再重复。
            （这里不走 applyPatch——它在下面才定义，deps 里引用会踩 TDZ；
            清一个布尔也不必惊动列表，直接落库改 conv 就够。） */
@@ -1738,12 +1751,12 @@ export default function ChatWindow({
            重写（1.25×）——这就是「♻几乎不动、✎一直在涨」的成因。
            没带尾巴（input 与原文一致）时不写：那种消息走原有的回喂逻辑就字面一致。 */
         const curUser = [...history].reverse().find((m) => m.role === "user");
-        /* 这截易变尾巴单独记一份：红包／转账回喂时正文要按当时状态重算
+        /* 这截瞬时尾巴（此刻时间）单独记一份：红包／转账回喂时正文要按当时状态重算
            （见 chatApi 的 money 分支），不能再整条照抄 apiText——但重算完得把这截
            接回去，否则前缀从尾巴那儿整段断开、每轮重写。普通文本用不着它。 */
         const tailPart =
           (offlineNote ? `\n\n${offlineNote}` : "") +
-          (built.volatile ? `\n\n${built.volatile}` : "");
+          (built.ephemeral ? `\n\n${built.ephemeral}` : "");
         if (
           curUser &&
           input !== curUser.content &&
@@ -1812,7 +1825,11 @@ export default function ChatWindow({
             title: a.entry.title,
             by: a.by,
           })),
-          full: outgoingContents({ stable: systemStable, tail: systemTail }, apiHistory, input),
+          full: outgoingContents(
+            { stable: systemStable, cache: systemCache, tail: systemTail },
+            apiHistory,
+            input,
+          ),
         });
         let reply = "";
         let stopped = false;
@@ -1855,7 +1872,7 @@ export default function ChatWindow({
           useStream
             ? fetchAIStreamReply(
                 effTextApi,
-                { stable: systemStable, tail: systemTail },
+                { stable: systemStable, cache: systemCache, tail: systemTail },
                 apiHistory,
                 input,
                 onStreamDelta,
@@ -1866,13 +1883,14 @@ export default function ChatWindow({
                     reasoningRef.current = r;
                   },
                   userImage: image,
+                  onUsage: captureUsage,
                 },
               )
             : /* 中间三个 undefined 走默认值（历史不限条数／maxTokens／temperature），
                  只为把 signal 递进去；再往后把思考过程接住（非流式一次整段到）。 */
               fetchAIReply(
                 effTextApi,
-                { stable: systemStable, tail: systemTail },
+                { stable: systemStable, cache: systemCache, tail: systemTail },
                 apiHistory,
                 input,
                 undefined,
@@ -1883,6 +1901,8 @@ export default function ChatWindow({
                   reasoningRef.current = r;
                 },
                 image,
+                undefined,
+                captureUsage,
               );
         try {
           try {
@@ -1974,21 +1994,19 @@ export default function ChatWindow({
           onDataChange();
           return conv;
         };
-        /* 外语聊天：他说的外语 → 中文，逐条翻好挂到译文行上。
-           译文**优先用模型自己写的那半**（inlineTrans，随回复一次到齐）；只有哪一条漏写了
-           竖线，才用（副）翻译接口兜底补翻那一条——接口抽风最多让那一条没译文，不再全场空白。
+        /* 外语聊天：他说的外语 → 中文，逐条挂到译文行上。
+           译文**只用模型自己写的那半**（inlineTrans，随回复一次到齐）——翻译已经
+           交给主接口的模型直接写，不再另请翻译接口兜底补翻（1.11.88，恩熙：
+           「已经取消了翻译的功能，让主 API 的模型直接写译文」——翻译接口一分钱
+           都不该再花）。哪条漏写了竖线就只留原文、不挂译文。
            只翻**说出口的话**（气泡正文），签名／心声／思考一概不碰；半途停止不翻。 */
         const trSetNow = conv?.translate;
         const wantTrans = trSetNow?.out.on === true && !stopped && parts.length > 0;
         const partTrans: (string | undefined)[] = wantTrans
-          ? await Promise.all(
-              parts.map(
-                async (p, i) => inlineTrans[i] ?? (await translateWithRetry(translateApi, p, "中文")),
-              ),
-            )
+          ? await Promise.all(parts.map(async (_, i) => inlineTrans[i]))
           : [];
-        /* 他偶尔整句说中文时那条没有竖线，兜底翻（中文→中文）会把原文原样吐回，
-           译文行就跟气泡一字不差——那行小字纯属重复，抹掉，别在气泡下再挂一遍同样的话。 */
+        /* 他偶尔整句说中文时自己会写「中文|中文」两半相同，译文行就跟气泡一字不差——
+           那行小字纯属重复，抹掉，别在气泡下再挂一遍同样的话。 */
         for (let i = 0; i < partTrans.length; i++) {
           if (partTrans[i] && partTrans[i]!.trim() === parts[i].trim()) partTrans[i] = undefined;
         }
@@ -2034,19 +2052,24 @@ export default function ChatWindow({
           moneys.forEach((_, i) => events.push({ t: "money", i }));
         }
         /* 外语语音跟气泡正文同一门语言，照样挂一行中文译文。
-           台词本身也是「原文|中文」：**TTS 只念左半边原文**，右半边进译文行；
-           漏写竖线的那条才用（副）接口兜底补翻。 */
-        const voicePairs = pairMode ? voices.map((v) => splitBilingual(v)) : [];
+           台词本身也是「原文|中文」：**TTS 只念左半边原文**，右半边进译文行。
+           译文**只用模型自己写的那半**（跟正文同一个口径，1.11.88：翻译已交给
+           主接口模型直接写，不再另请翻译接口兜底补翻）——哪条漏写了竖线就只留
+           原文、不挂译文，也不花翻译接口一分钱。
+           1.11.87：正文没开外语、只开了「语音单独说外语」时，语音照旧按「外语|中文」劈。 */
+        const voiceBilingual = pairMode || voiceOn;
+        const voicePairs = voiceBilingual ? voices.map((v) => splitBilingual(v)) : [];
         const voiceTrans =
-          trSetNow?.out.on === true && !stopped
-            ? await Promise.all(
-                voices.map(
-                  async (v, i) =>
-                    voicePairs[i]?.zh ??
-                    (await translateWithRetry(translateApi, readVoiceContent(v).display, "中文")),
-                ),
-              )
+          voiceBilingual && !stopped
+            ? await Promise.all(voices.map(async (_, i) => voicePairs[i]?.zh))
             : [];
+        /* 他整句说中文、写了「中文|中文」的那条，译文行跟原文一字不差——纯属重复，
+           抹掉（跟正文那一手同源，见上文 partTrans 的去重）。抹成空串，渲染处按假值跳过。 */
+        for (let i = 0; i < voiceTrans.length; i++) {
+          const orig = (voicePairs[i]?.src ?? readVoiceContent(voices[i]).display).trim();
+          const cur = voiceTrans[i]?.trim();
+          if (cur && cur === orig) voiceTrans[i] = "";
+        }
         /* 图/语音占位与钱的落库收口：穿插模式在事件位置调用，末尾兜底同款。 */
         const imagePlaceholders: ChatMessage[] = [];
         const voicePlaceholders: ChatMessage[] = [];
@@ -2070,9 +2093,10 @@ export default function ChatWindow({
             role: "assistant",
             type: "image",
             content: desc,
-            /* 记下 TA 声明的锁脸开关：生成与重试都按它决定带不带参考图。
-               `refMark` 另存它**到底写没写**——诊断面板要说得出「是它写的」还是「我们猜的」。 */
-            useCharRef: imageRefs[i] ?? guessUseCharRef(desc, charName),
+            /* 记下这一张到底带不带参考图（1.12.8）：**画面里认得出他本人就一律带**，
+               TA 写的「不使用参考图」不再能免掉它（见 regenerateMedia 里那段）。
+               `refMark` 另存它**到底写没写**——诊断面板要说得出「是它写的」还是「我们改判的」。 */
+            useCharRef: guessUseCharRef(desc, charName) || imageRefs[i] === true,
             refMark: imageRefMarks[i],
             /* pending 一直 true：awaitGen 那一支（描述＋生成按钮）也挂在 pending 下。 */
             pending: true,
@@ -3534,9 +3558,14 @@ export default function ChatWindow({
         beats.length > 0
           ? `【进度】上面历史里，每段末尾那行「【本轮】××」就是那一轮已经演过的：不要再回到上面任何一件事上，不要重复那些台词，也不要把同一个态度换着法儿再表一遍。接着往下写新的一件。\n\n`
           : "";
-      /* 易变尾巴（此刻时间／签名取值／关键词世界书）照线上那个口径挂在**她这一轮的话后面**：
-         它每轮都变，进 system 会把整段作废；挂着不动的那半截才站得住。 */
-      /* 字数上限：这一句必须放在整条请求的最末、与易变尾巴做伴。
+      /* 易变尾巴（朋友圈／关键词世界书，即 built.volatile）＋瞬时尾巴（此刻时间＋
+         签名／用户签名／零钱那三行取值，即 built.ephemeral）照线上那个口径挂在
+         **她这一轮的话后面**：它们会变，进 system 会把整段作废；挂着不动的那半截才站得住。
+         1.11.69：线上把易变那截搬进了 system 缓存槽，线下这条链暂不动（沿用旧字节），
+         所以这儿仍按老样子把 volatile 与 ephemeral 依次挂在末尾。
+         1.11.70：签名／用户签名／零钱三行从 volatile 挪进了 ephemeral（最末段）——
+         线下这条链照旧「先 volatile 再 ephemeral」，那三行的注入位置自动跟到最末。 */
+      /* 字数上限：这一句必须放在整条请求的最末、与尾巴做伴。
          它是她随时能改的东西（线下设置里的字数 ±），若插在风格提示词中间，
          一改，后面全部作废、站子整篇重算（账单「读≈0、写满 33K」就是这么来的）。
          放最末后，它再怎么变，前面一个字都不动。 */
@@ -3549,6 +3578,7 @@ export default function ChatWindow({
         beatsHint +
         spoken +
         (built.volatile ? `\n\n${built.volatile}` : "") +
+        (built.ephemeral ? `\n\n${built.ephemeral}` : "") +
         wordsRule;
       /* 发出去＝存下来＝回喂：把这一轮**真发出去的那一整份**（她那句话＋【场景】／
          【进度】那句命令／此刻那串易变尾巴）交回线下页，记在她这条记录上（见 OfflineEntry.apiText）。
@@ -3581,7 +3611,7 @@ export default function ChatWindow({
           apiHistory,
           sceneInput,
           onDelta,
-          { signal, maxTokens },
+          { signal, maxTokens, onUsage: captureUsage },
         );
       }
       return fetchAIReply(
@@ -3593,6 +3623,10 @@ export default function ChatWindow({
         maxTokens,
         undefined,
         signal,
+        undefined,
+        undefined,
+        undefined,
+        captureUsage,
       );
     },
     [
@@ -3608,6 +3642,7 @@ export default function ChatWindow({
       userSignature,
       memory,
       recordRequest,
+      captureUsage,
     ],
   );
 
@@ -4143,9 +4178,12 @@ export default function ChatWindow({
         const isPlaying = playingVoice === m.id;
         /* 真语音（语音 API 合成）：点播放键放真音频，播完自动回弹。
            **只走媒体元素这一条**——一点就 `new Audio(dataUrl)` 新建、播完丢掉，
-           跟参考项目 message-bubble.tsx 的 playSrc 一致；播放路径里绝不建 AudioContext，
-           也不做会话声明／手势解锁（那两套已被证伪，整块撤掉）。
-           来因与修法见文件下方「语音播放」那段大注释、施工日志第 33 条。 */
+           **逐行对照参考项目 message-bubble.tsx 的 playSrc**（1.11.79，它是这台 iPhone
+           上唯一被证实能响的写法）：直接喂原始 data URL、不转 blob、不设 audioSession。
+           1.12.27 补一条**只读探针**（不 pause/load、不碰元素）：起播 2.5s 后仍没声音
+           就在气泡上出一句可见的失败提示——回应「可以点、没声音、也不显示失败」。
+           播放路径里绝不建 AudioContext——参考项目注释明确「iOS 静音拨键会掐掉 Web Audio
+           的输出（表现为全线无声），媒体元素不受影响」。 */
         const togglePlay = () => {
           /* 没音频：TA 那条（等生成／没配接口）点一下＝去合成——配了接口就这时候才合，
              没配就弹「先去配 API」（regenerateMedia 里现成）。我自己的空气泡照旧啥也不做。 */
@@ -4160,15 +4198,18 @@ export default function ChatWindow({
             setPlayingVoice(null);
             return;
           }
+          if (voiceSilent === m.id) setVoiceSilent(null); /* 重试：先擦掉上次的失败提示 */
+          /* 起播前先确认本页音频已解锁（须在点击手势里、同步调）；首触那下通常已解过，
+             这里是兜底。参考项目靠这条「首触解锁」让程序化 play() 不再假播放——星绥
+             此前完全缺这一环（见 @/lib/audio-session、施工日志 1.12.32）。 */
+          ensureVoiceUnlocked();
           setPlayingVoice(m.id);
-          setVoiceDiag(null);
           const end = () => setPlayingVoice(null);
-          const diag = (why: string) => {
-            setVoiceDiag({ id: m.id, text: `${why} · v${APP_VERSION} · iOS ${iosVersion()}` });
-            const url = dataUrlToBlobUrl(audioUrl);
-            if (url) setVoiceFallback({ id: m.id, url });
+          const failed = () => {
+            setPlayingVoice(null);
+            setVoiceSilent(m.id);
           };
-          void playVoiceViaElement(audioUrl, end, diag);
+          void playVoiceViaElement(audioUrl, end, failed);
         };
         return (
           <div>
@@ -4232,30 +4273,19 @@ export default function ChatWindow({
                 {durSec}″
               </span>
             </div>
-            {voiceDiag && voiceDiag.id === m.id ? (
+            {/* 播放没出声的可见提示（1.12.27）：只读探针抓到「假播放」或元素报错时才亮，
+                别让它默默转着圈却一点声没有——点一下这条即重试。 */}
+            {voiceSilent === m.id ? (
               <div
                 style={{
                   marginTop: 6,
-                  fontSize: 10,
+                  fontSize: 11,
+                  color: "#c0392b",
                   lineHeight: 1.5,
-                  color: T.ink3,
-                  letterSpacing: ".02em",
-                  wordBreak: "break-all",
                 }}
               >
-                {voiceDiag.text}
+                播放失败，没出声 · 点一下重试
               </div>
-            ) : null}
-            {/* 保底：程序播放失败（诊断灰字出来了）就露一个原生 <audio controls>。
-                源喂 **blob:**（data URL 在 iOS 上放不出声，连它自己也不响；故跟主播放
-                路径一样走 URL.createObjectURL）。 */}
-            {voiceFallback && voiceDiag && voiceDiag.id === m.id && voiceFallback.id === m.id ? (
-              <audio
-                src={voiceFallback.url}
-                controls
-                preload="auto"
-                style={{ marginTop: 6, width: "100%", height: 32 }}
-              />
             ) : null}
             {showTrans.has(m.id) ? (
               <div
@@ -7161,12 +7191,6 @@ export default function ChatWindow({
             myName={myName}
             maskAvatar={mask?.avatar ?? ""}
             blocked={conv.blocked === true}
-            subReady={
-              !!subApi &&
-              subApi.enabled &&
-              subApi.baseUrl.trim() !== "" &&
-              subApi.model.trim() !== ""
-            }
             onBack={() => setShowChatSettings(false)}
             onUpdate={applyPatch}
             onClearMessages={clearMessages}
@@ -7346,6 +7370,31 @@ export default function ChatWindow({
                 >
                   {`${lastReq.mode === "online" ? "线上" : "线下"} · ${new Date(lastReq.at).toLocaleTimeString()} · ${lastReq.model || "（模型空）"} · ${lastReq.stream ? "流式" : "非流式"} · 全文 ${lastReq.full.length} 字\n${lastReq.diff}`}
                 </div>
+                {lastReq.usage ? (
+                  <div
+                    style={{
+                      fontSize: 11,
+                      lineHeight: 1.7,
+                      marginTop: 6,
+                      color: T.ink,
+                      fontWeight: 600,
+                    }}
+                  >
+                    {`本轮用量 · 读取缓存 ${lastReq.usage.read ?? "—"} · 新建缓存 ${lastReq.usage.created ?? "—"} · 原价输入 ${lastReq.usage.fresh ?? "—"} · 输出 ${lastReq.usage.output ?? "—"}`}
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      fontSize: 11,
+                      lineHeight: 1.7,
+                      marginTop: 6,
+                      color: T.ink,
+                      opacity: 0.7,
+                    }}
+                  >
+                    本轮用量还没回来（站子没给，或这一轮还没发出去）。
+                  </div>
+                )}
                 <div style={{ height: 1, background: T.lineSoft, margin: "8px 0" }} />
                 <div style={{ fontSize: 11, lineHeight: 1.8, color: T.ink, fontWeight: 600 }}>
                   {lastReq.activated.length > 0
@@ -7841,58 +7890,58 @@ function ImageBubble({
    VoiceMessageBubble.playSrc）只用媒体元素播、不碰 Web Audio，同一台手机上一直能响。
    它的写法是 `new Audio(src)`（src 就是 data URL）→ 挂 onended/onerror → `play()` →
    播完 `pause() + removeAttribute("src") + load()` **把元素整个丢掉**。
-   **不共用、不保活、不设 audioSession、不转 blob。**
+   **播放元素不共用、不保活、不转 blob。**
 
-   几条踩过的坑，别重蹈：
-   · 播放路径里**一个 AudioContext 都不许再有**——往播放路径里塞它就会「假播放」。
-   · 「元素挂进页面／保活／audioSession／手势解锁」都**不是**症结：那是参考项目
-     通话/自动播报用的策略（tts-service.ts 的 unlockAudioPlayback），不是聊天气泡用的。
-   · 别往环境上推（手机、API 都没问题，正解就在「一点就新建、用完即弃」这一条）。 */
+   1.12.32 补：参考项目能响还有**另一条**——模块加载即装的「首触解锁」（用一段静音 WAV
+   把本页音频会话点亮，见 @/lib/audio-session 的 ensureVoiceUnlocked）。它用的是**另建的
+   一次性元素**，**不参与、不接管任何语音播放**，与上面「播放元素不共用」不冲突。
+
+   一条踩过的坑，别重蹈：播放路径里**一个 AudioContext 都不许再有**、别往环境上推
+   （手机、API 都没问题）；也别再给播放元素设 audioSession（1.12.30 已证伪）。 */
 
 /* 此刻在响的那一条语音用的元素。**一点就新建、用完即弃**——不共用、不保活，
    与参考项目 message-bubble.tsx 的 playSrc 一字不差。 */
 let voiceEl: HTMLAudioElement | null = null;
 
-/* 这条播放若用了 blob: 源，就把它记在这，收尾时统一 revoke 掉，别漏内存。
-   与 voiceEl 同生共死：stopVoiceEl() 与自然收尾都会清它。 */
-let voiceBlobUrl: string | null = null;
-
 /** 丢掉正在响的语音元素：暂停 → 清源 → load 复位，**整个不再复用**。
-    参考项目 playSrc 的 finalize 就是这三下，只是它把元素丢进闭包、我们顺手清掉引用。
-    顺带把这条用的 blob: 源 revoke 掉。 */
+    参考项目 playSrc 的 finalize 就是这三下，只是它把元素丢进闭包、我们顺手清掉引用。 */
 function stopVoiceEl(): void {
   const el = voiceEl;
   voiceEl = null;
   if (el) {
     try { el.onended = null; el.onerror = null; } catch { /* ignore */ }
     try { el.pause(); el.removeAttribute("src"); el.load(); } catch { /* 已经没了 */ }
-  }
-  if (voiceBlobUrl) {
-    try { URL.revokeObjectURL(voiceBlobUrl); } catch { /* ignore */ }
-    voiceBlobUrl = null;
+    try { el.remove(); } catch { /* 没挂进 DOM 也无妨 */ }
   }
 }
 
-/** data URL → blob: URL，**同步**转。
-   iOS 上媒体元素直接喂大体积 data URL（聊天语音 15～31s、约 300KB+）会「假播放」：
-   play() 被接受、paused=false、时长也解出来了，可 currentTime 恒 0、一点声没有；
-   同一台机上把源换成 blob: 就正常——参考项目设置页的语音试听走的正是
-   URL.createObjectURL(blob)（components/settings/voice-settings.tsx）。
-   **必须同步**：不能 `await fetch(dataUrl)` 之类异步转，跨 await 就离开了点击手势，
-   play() 会被自动播放策略拦掉，又变回假播放。非 base64 的 data URL 转不了，
-   返回 null，调用方退回原串。 */
-function dataUrlToBlobUrl(dataUrl: string): string | null {
-  const m = /^data:([^;,]*)(;base64)?,([\s\S]*)$/.exec(dataUrl);
-  if (!m || !m[2]) return null; /* 不是 base64 data URL（比如直接是 blob:/http:），不用转 */
-  try {
-    const bin = atob(m[3]);
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
-    const blob = new Blob([bytes], { type: m[1] || "audio/mpeg" });
-    return URL.createObjectURL(blob);
-  } catch {
-    return null; /* 解码失败就退回原串，交给元素自己碰运气 */
-  }
+/** 量一条语音的**真实时长**（1.11.75）：把音频塞进一个不出声的 <audio> 元素读元数据,
+    拿到毫秒转整秒返回；拿不到（超时／读不出）回 0，调用方退回老的字数估计。
+    不会出声——只是 preload="metadata" 读时长，不是播放，也不依赖点击手势。 */
+function measureAudioDuration(audioUrl: string, timeoutMs = 6000): Promise<number> {
+  return new Promise<number>((resolve) => {
+    const el = new Audio();
+    let timer: ReturnType<typeof setTimeout> = 0 as unknown as ReturnType<typeof setTimeout>;
+    let settled = false;
+    const done = (v: number) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      el.remove();
+      resolve(v);
+    };
+    el.preload = "metadata";
+    const grab = () => {
+      const d = el.duration;
+      if (Number.isFinite(d) && d > 0) done(Math.round(d));
+    };
+    el.addEventListener("loadedmetadata", grab);
+    el.addEventListener("durationchange", grab);
+    /* iOS 的 duration 常先报 Infinity，要靠 durationchange 补真数；本地 data URL 全量在手，
+       元数据一般能读出。兜底：timeoutMs 没拿到就回 0，外层再用老的字数估计。 */
+    timer = setTimeout(() => done(0), timeoutMs);
+    el.src = audioUrl;
+  });
 }
 
 /** 语音此刻在响吗——不看界面上的标记，那玩意会卡住骗人。 */
@@ -7928,55 +7977,126 @@ function stripVoiceTags(text: string): string {
   return cleaned || text.trim();
 }
 
-/** 系统版本，只给诊断行报数用。 */
-function iosVersion(): string {
-  if (typeof navigator === "undefined") return "?";
-  const m = /OS (\d+)[._](\d+)/.exec(navigator.userAgent);
-  return m ? `${m[1]}.${m[2]}` : "?";
-}
-
-/* ── 把本页的音频会话声明成「媒体播放」 ───────────────────────────────────────
-   iOS 18 主屏 PWA（standalone）里，网页/媒体音频会被系统整体掐掉，而页面自己完全看不出
-   来：元素 paused=false、时长也解出来了、事件也照走，就是 currentTime 恒 0、一点声没有。
-   WebKit 官方对这类症状给的解药就一条——`navigator.audioSession.type = "playback"`
-   （Bug 251532 / 237322），它管的是**整个页面**的音频会话。
-   设置页那条最朴素的 <audio controls> 与聊天原生兜底条**双双不响**，说明跟播放代码、
-   音频数据都无关，就是这个页面没跟系统声明会话类型。
-   实现放在 src/lib/audio-session.ts，与设置页试听共用同一份（同一文档、页级生效）。 */
-
 /* ── 播放唯一的一条路（播放路径里不许出现 AudioContext）────────────────────── */
 
-/** 播一条语音（dataUrl）——**唯一的一条路**（播放路径里不许再出现 AudioContext）。
-   原样对照参考项目 message-bubble.tsx 的 playSrc：
-      · `new Audio(src)` —— 就地新建，src 优先喂 blob: URL（见 dataUrlToBlobUrl），
-        退不回才用 data URL；
-      · 挂 onended／onerror → `play()`；
-      · 播完（或出错）`pause() + removeAttribute("src") + load()`，元素**整个丢掉**。
-    **不共用、不保活、不挂 DOM、不设循环。**
-   两个坑：
-      · **别加「探针」**。曾有条 1.5 秒探针，虽名为「只读」，到点就 finalize()→`load()`，
-        会 ① 掐死 iOS 上「起播慢」的正常播放（音频起振常 >1.5s，这就是「有时能响、有时
-        不能」的来由）；② 顺手打断这条 pending 的 play()，抛出的 AbortError 又把真正的
-        错因盖掉。参考项目 playSrc 压根没有探针，**只留 onerror 报真错**。
-      · play() 既不 reject、onerror 也不触发（元素自称在播却不出声）时，靠下面那条
-        **纯只读诊断**（只看不碰，绝不 pause/load/finalize）把事件序列与真实状态报出来。
-    返回 null（兼容旧签名）。 */
+/** 播一条语音（dataUrl）——**唯一的一条路**。
+   1.11.79 **逐行扳回参考项目 message-bubble.tsx 的 playSrc 原样**——它是这台 iPhone 上
+   唯一被证实能响的写法（参考项目【语音播放】注释原文：「必须用 <audio> 元素：iOS 静音拨键
+   会掐掉 Web Audio 的输出（表现为全线无声），媒体元素不受影响」）。
+   只保留参考项目 playSrc 字字对应的三下：
+      `new Audio(src)` → 挂 onended／onerror → `play()`；播完（或出错）
+      `pause() + removeAttribute("src") + load()` 把元素**整个丢掉**。
+   **直接喂原始 data URL，不转 blob、不加任何计时器诊断**——复检
+   探针那类是我们排查时加的、参考项目没有的东西，只会碍事。
+   1.12.27：把**没有落进参考项目**的 `playsinline` / `preload="auto"` 两处也删掉，恢复
+   与参考项目字字对应的最简形态（第 33 条／1.10.5／1.11.79 三次验证过：只有这个朴素的
+   「一点就新建、用完即弃」在这台机上能响，谁往上加东西谁把它搅哑）。
+   1.12.31（调试中，单变量实验）：上述写法在**主屏 PWA** 上仍是「假播放」，故改为按
+   Apple 开发者论坛 adv22945 的建议——元素先建好、**挂进 DOM**、此刻不设 src，再设 src
+   并立刻 play；用完 finalize 时 `el.remove()` 摘出 DOM。**仅此一处行为改动**，
+   目的是对齐本 App 内唯一能响的设置页试听（DOM 里的 `<audio controls>`）。
+   第三个参数 `onFailed`：播放**确实失败**（元素报错、被拒，或只读探针抓到「假播放」）
+   时回调一次，让界面能出一句可见提示（回应「可以点、没声音、也不显示失败」）。
+   返回 null（兼容旧签名）。 */
+/* #region debug-point voice-playback-silent */
+/* 运行时插桩（TRAE-debugger）：把播放全链路证据回传到本机 Debug Server。
+   **只上报、不改任何业务行为**；定位完即整段删除。 */
+const DBG_VOICE_URL = "http://192.168.1.2:7777/event";
+const DBG_VOICE_RUN = "post-fix-2";
+function dbgVoice(
+  point: string,
+  hypothesisId: string,
+  data: Record<string, unknown>,
+): void {
+  try {
+    void fetch(DBG_VOICE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId: "voice-playback-silent",
+        runId: DBG_VOICE_RUN,
+        hypothesisId,
+        location: "ChatWindow.playVoiceViaElement." + point,
+        data,
+        ts: Date.now(),
+      }),
+    }).catch(() => { /* ignore */ });
+  } catch { /* ignore */ }
+}
+function dbgVoiceSnap(el: HTMLAudioElement): Record<string, unknown> {
+  let errCode = 0;
+  let errMsg = "";
+  try {
+    const e = el.error;
+    if (e) { errCode = e.code; errMsg = String(e.message ?? ""); }
+  } catch { /* ignore */ }
+  return {
+    readyState: el.readyState,
+    networkState: el.networkState,
+    paused: el.paused,
+    ended: el.ended,
+    currentTime: Number(el.currentTime.toFixed(3)),
+    duration: Number.isFinite(el.duration) ? Number(el.duration.toFixed(3)) : String(el.duration),
+    volume: el.volume,
+    muted: el.muted,
+    isConnected: el.isConnected,
+    errCode,
+    errMsg,
+  };
+}
+function dbgVoiceEnv(): Record<string, unknown> {
+  const nav = navigator as unknown as {
+    audioSession?: { type?: string };
+    standalone?: boolean;
+  };
+  const hasAudioSession = !!nav.audioSession;
+  let sessionType = "n/a";
+  if (hasAudioSession) { try { sessionType = String(nav.audioSession?.type ?? ""); } catch { /* ignore */ } }
+  let standaloneMedia: boolean | null = null;
+  try { standaloneMedia = window.matchMedia("(display-mode: standalone)").matches; } catch { /* ignore */ }
+  return {
+    hasAudioSession,
+    sessionType,
+    isSecureContext: window.isSecureContext,
+    protocol: location.protocol,
+    host: location.host,
+    standaloneMedia,
+    navigatorStandalone: !!nav.standalone,
+    visibility: document.visibilityState,
+    ua: navigator.userAgent,
+  };
+}
+/* #endregion debug-point voice-playback-silent */
 function playVoiceViaElement(
   dataUrl: string,
   onEnded: () => void,
-  onDiag?: (why: string) => void,
+  onFailed?: () => void,
 ): Promise<string | null> {
   stopVoiceEl(); /* 上一条先丢掉 */
-  ensurePlaybackSession(); /* 在手势里同步声明本页音频会话＝媒体播放，再起播 */
-  /* **在这一刻同步**把 data URL 转成 blob: URL 再喂给元素（见 dataUrlToBlobUrl
-     的说明）。转不了（非 base64）就退回原串。blob: 源记到 voiceBlobUrl，收尾统一 revoke。 */
-  const blobUrl = dataUrlToBlobUrl(dataUrl);
-  voiceBlobUrl = blobUrl;
-  const src = blobUrl ?? dataUrl;
-  const el = new Audio(src); /* 就地新建；优先喂 blob:，退不回才用 data URL */
-  el.setAttribute("playsinline", "");
-  el.preload = "auto";
+  /* 1.12.32：退回参考项目 playSrc 的最简形态——`new Audio(dataUrl)` **脱离 DOM**、
+     不设 playsinline／不设隐藏样式、不 appendChild。（1.12.31 试过「先挂进 DOM 再设源」
+     那条 Apple adv22945 的路，已证伪。）参考项目正是脱离 DOM，且在这台 iPhone 上是
+     唯一被证实能响的写法；它缺的另一半是「首触解锁」，这轮补在 @/lib/audio-session。 */
+  const el = new Audio();
   voiceEl = el;
+  /* #region debug-point voice-playback-silent */
+  dbgVoice("entry", "A", {
+    len: dataUrl.length,
+    head: dataUrl.slice(0, 48),
+    isAudioDataUrl: dataUrl.startsWith("data:audio"),
+    isBlobUrl: dataUrl.startsWith("blob:"),
+    isHttp: dataUrl.startsWith("http"),
+    hasBase64: dataUrl.includes(";base64,"),
+    ...dbgVoiceEnv(),
+  });
+  if (!dataUrl.startsWith("data:audio") && !dataUrl.startsWith("blob:") && !dataUrl.startsWith("http")) {
+    dbgVoice("entry-weird-format", "B", { head: dataUrl.slice(0, 64) });
+  }
+  (["loadedmetadata", "canplay", "playing", "ended", "stalled", "suspend", "durationchange"] as const)
+    .forEach((evt) => {
+      el.addEventListener(evt, () => dbgVoice("evt:" + evt, "C", dbgVoiceSnap(el)));
+    });
+  /* #endregion debug-point voice-playback-silent */
   let settled = false;
   const finalize = () => {
     if (settled) return;
@@ -7984,58 +8104,66 @@ function playVoiceViaElement(
     if (voiceEl === el) voiceEl = null;
     try { el.onended = null; el.onerror = null; } catch { /* ignore */ }
     try { el.pause(); el.removeAttribute("src"); el.load(); } catch { /* 已经没了 */ }
-    if (blobUrl) {
-      if (voiceBlobUrl === blobUrl) voiceBlobUrl = null;
-      try { URL.revokeObjectURL(blobUrl); } catch { /* ignore */ }
-    }
+    try { el.remove(); } catch { /* ignore */ }
     onEnded();
   };
-  el.onended = finalize;
-  el.onerror = () => {
-    if (settled) return; /* 已经收尾（播完／已报错）就不再重复报 */
-    const me = el.error;
-    const why = me ? `音频播不出（MediaError ${me.code}）` : "音频播不出（元素报错，无 code）";
-    console.warn("[语音] 元素报错", why, { srcLen: dataUrl.length, rs: el.readyState, ns: el.networkState });
-    if (onDiag) onDiag(why);
+  el.onended = () => {
+    /* #region debug-point voice-playback-silent */
+    dbgVoice("onended", "D", dbgVoiceSnap(el));
+    /* #endregion debug-point voice-playback-silent */
     finalize();
   };
-  /* 只读诊断（**只看、不碰**）：把元素这一辈子收到的关键事件按序记下来，起播 1.6 秒
-     后连同实时状态报给诊断灰字。绝不 pause/load/finalize，只负责让失败看得见——一旦
-     到点就 load()，就会把 iOS 上起播稍慢的正常播放掐死，成了「有时能响、有时不能」。 */
-  const trail: string[] = [];
-  const mark = (n: string) => { if (trail.length < 14) trail.push(n); };
-  el.addEventListener("loadstart", () => mark("lst"));
-  el.addEventListener("loadedmetadata", () => mark("meta"));
-  el.addEventListener("canplay", () => mark("can"));
-  el.addEventListener("playing", () => mark("playing"));
-  el.addEventListener("waiting", () => mark("wait"));
-  el.addEventListener("stalled", () => mark("stall"));
-  el.addEventListener("suspend", () => mark("susp"));
-  el.addEventListener("pause", () => mark("pause"));
-  window.setTimeout(() => {
-    if (settled || !onDiag) return;
-    if (!el.paused && el.currentTime > 0.1) return; /* 明显在放，不打扰 */
-    const e = el.error;
-    const nav = navigator as unknown as { standalone?: boolean; audioSession?: { type?: string } };
-    const env = `${nav.standalone ? "standalone" : "tab"}/sess=${nav.audioSession?.type ?? "?"}`;
-    onDiag(
-      `元素 rs=${el.readyState} ns=${el.networkState} paused=${el.paused}`
-      + ` t=${el.currentTime.toFixed(2)} dur=${Number.isFinite(el.duration) ? el.duration.toFixed(1) : "-"}`
-      + ` err=${e ? e.code : "-"} evt=${trail.join(">") || "无"} ${env}`,
-    );
-  }, 1600);
-  /* play() 不 await（参考项目也不 await）：被拒时 catch 里记一行，别让它变成未处理的
-     rejection。手势里同步调 play，才最有机会真的出声。 */
-  el.play().catch((err) => {
-    /* 只报「这条元素仍是此刻在响的那条」的错。用户点同一气泡停止播放、或立刻点了下一条
-       语音时，stopVoiceEl() 会 load() 打断这条 pending 的 play()，抛一个 AbortError——
-       那不是故障，是被我们自己掐掉的，既别报给用户，也别覆盖真正的错因。 */
-    if (settled || voiceEl !== el) return;
-    const e = err as { name?: string; message?: string } | null;
-    console.warn("[语音] play 被拒", e?.name, e?.message);
-    if (onDiag) onDiag(`媒体元素 play 被拒（${e?.name ?? "?"}）`);
+  el.onerror = () => {
+    /* #region debug-point voice-playback-silent */
+    dbgVoice("onerror", "A", dbgVoiceSnap(el));
+    /* #endregion debug-point voice-playback-silent */
+    if (settled) return; /* 已经收尾（播完／已报错）就不再重复报 */
+    onFailed?.();
     finalize();
-  });
+  };
+  /* 参考项目 playSrc 结尾：play() 不 await（手势里同步调，最有机会出声）；被拒时 catch 里
+     记一次失败＋finalize 收尾，别让它变成未处理的 rejection。 */
+  el.src = dataUrl; /* 元素已挂 DOM，此刻才设源，紧接着 play（Apple adv22945）*/
+  /* #region debug-point voice-playback-silent */
+  dbgVoice("src-set", "E", dbgVoiceSnap(el));
+  /* #endregion debug-point voice-playback-silent */
+  el.play().then(
+    () => {
+      /* #region debug-point voice-playback-silent */
+      dbgVoice("play-resolved", "C", dbgVoiceSnap(el));
+      /* #endregion debug-point voice-playback-silent */
+    },
+    (e: unknown) => {
+      /* #region debug-point voice-playback-silent */
+      const errObj = e as { name?: string; message?: string };
+      dbgVoice("play-rejected", "C", {
+        errName: String(errObj?.name ?? ""),
+        errMessage: String(errObj?.message ?? e),
+        ...dbgVoiceSnap(el),
+      });
+      /* #endregion debug-point voice-playback-silent */
+      if (settled || voiceEl !== el) return;
+      onFailed?.();
+      finalize();
+    },
+  );
+  /* 只读探针（沿用 1.10.5 的思路）：起播 2.5s 后若元素**自称在播**（paused=false）
+     却 currentTime 仍钉在 0，就是 iOS 主屏 PWA 的「假播放」——一点声没有、也不报错，
+     界面全看不出来。这时只**报一声失败**让气泡出可见提示，**绝不动元素**
+     （不 pause/load），免得误掐 iOS 起播慢的正常播放（1.11.80 的明确告诫）。 */
+  window.setTimeout(() => {
+    /* #region debug-point voice-playback-silent */
+    const dbgSettled = settled || voiceEl !== el;
+    const dbgSilent = !el.paused && el.currentTime <= 0.05;
+    dbgVoice(dbgSilent ? "probe-2500-silent" : "probe-2500-ok", dbgSilent ? "C" : "D", {
+      settled: dbgSettled,
+      ...dbgVoiceSnap(el),
+    });
+    /* #endregion debug-point voice-playback-silent */
+    if (settled || voiceEl !== el) return; /* 已收尾／已换下一条，不误报 */
+    if (el.paused || el.currentTime > 0.05) return; /* 秒数在走＝正常起播 */
+    onFailed?.();
+  }, 2500);
   return Promise.resolve(null);
 }
 

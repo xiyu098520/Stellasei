@@ -46,12 +46,15 @@ interface ApiMessage {
 }
 
 /* 缓存断点开关：给 system 的稳定段与最近几条历史挂 Claude 缓存标记。 ｜ 详细见 docs/施工日志.md
- *  1.9.87：用户要求「去掉現在的斷點」→ 置 false。请求体里不再出现任何 cache_control，
+ *  1.9.87：恩熙要求「去掉現在的斷點」→ 曾置 false。请求体里不再出现任何 cache_control，
  *  system 退回「稳定段／易变段各自平铺」那条老路（见下面 !CACHE_CONTROL_ENABLED 分支），
  *  前缀缓存交给中转站自己按逐字比对去做。
+ *  1.11.68：恩熙点头翻回 true——配「查看本轮请求」面板新加的「读取／新建／原价输入／输出」那一行，
+ *  试一轮好拿数据对账。
  *  怎么判断要不要留着：看下一笔中转站日志的「缓存」列——若还有几十K，说明站子自己也缓存，
- *  成了；若「缓存」归零、↓ 冲到 3 万+，说明站子不吃这套，把这一行改回 true 即可（只动这一行）。 */
-const CACHE_CONTROL_ENABLED: boolean = false;
+ *  成了；若「缓存」归零、↓ 冲到 3 万+，说明站子不吃这套，把这一行改回 false 即可（只动这一行）。
+ *  （1.11.68 之前她的数据是「缓存↓ 4 万+」，按上面这条本该保持 false；这次是她主动要试。） */
+const CACHE_CONTROL_ENABLED: boolean = true;
 
 /** 历史里挂缓存断点的「用户消息」条数。
  *  为什么挑用户消息、不挑末尾那几条：微信体一轮里助手会拆成 3–5 条气泡，
@@ -67,17 +70,30 @@ const CACHE_CONTROL_ENABLED: boolean = false;
  *  必然找不到，于是整份前缀当场重写。**末尾不能挂断点，这条不是理论、是账单。** */
 const HISTORY_BREAKPOINTS = 3;
 
+/** Claude 系前缀缓存的断点总额度（一个请求最多挂 4 个 cache_control）。
+ *  1.11.69：system 现在最多用掉两根（stable／cache 各一），历史那几根据此自动收窄
+ *  （见 buildApiMessages），保证总数恒 ≤ 4——宁可少几根历史断点，也不能超限报 400。 */
+const MAX_CACHE_BREAKPOINTS = 4;
+
 /**
- * system 的两段。
+ * system 的三段。
  * Claude 前缀缓存是**整条链的哈希**：从第一个字符逐块比到断点，断点之前只要
  * 有一个字符变，其后全部作废重写。所以跨轮不变的静态内容（stable）与每轮会变
- * 的内容（tail：记忆碎片／关键词世界书／最新消息等）必须拆开——
+ * 的内容（tail：拉黑状态等）必须拆开——
  * 断点只打 stable 的末尾，tail 排在断点之后、不挂标记。
  * （tail 挂了也是每轮白写一遍，还要多付 25% 的写入价。）
+ *
+ * 1.11.69 起多出中间段 cache（「偶尔才变」的那一截：签名／用户签名／零钱／朋友圈／
+ * 世界书关键词）：它排在 stable 之后、自己再挂一根断点。这样它一变，作废的只是
+ * 它自己与 tail（后面那截），stable 那一段照旧读缓存；它不变（多数轮）时，
+ * 下一轮连同它一起读回来（0.1×），而不是像从前挂在链尾那样每轮 100% 全价重付。
  */
 export interface SystemParts {
   /** 稳定段（跨轮逐字不变），缓存断点打在它的末尾。 */
   stable: string;
+  /** 次稳定段（偶尔才变），也挂一根缓存断点，排在 stable 之后。
+   *  省略／空串＝没有这一段（老调用方与纯字符串 system 不受影响）。 */
+  cache?: string;
   /** 易变段，排在断点之后。 */
   tail: string;
 }
@@ -200,8 +216,9 @@ function buildApiMessages(
   /* 传纯字符串＝不分段（记忆浓缩等任务不需要缓存，随便传）。
      传 SystemParts 才拆：稳定段挂断点，易变段跟在后面。 */
   const sys: SystemParts = typeof system === "string" ? { stable: system, tail: "" } : system;
+  const sysCache = sys.cache ?? "";
   const messages: ApiMessage[] = [];
-  if (sys.stable || sys.tail) {
+  if (sys.stable || sysCache || sys.tail) {
     if (!CACHE_CONTROL_ENABLED) {
       /* 学参考项目：稳定段与易变段拆成两条独立 system 消息，各自纯字符串。
          拼成一条时，易变段每轮一变，整条消息都变，前缀缓存就永远对不上。
@@ -209,20 +226,21 @@ function buildApiMessages(
          见 ChatWindow 的 systemTail；真正每轮都变的易变尾巴（签名／零钱／
          此刻／世界书关键词）在调用方就挂在本轮 user 消息末尾了，不到这儿。） */
       if (sys.stable) messages.push({ role: "system", content: sys.stable });
+      if (sysCache) messages.push({ role: "system", content: sysCache });
       if (sys.tail) messages.push({ role: "system", content: sys.tail });
     } else {
-      /* 稳定段挂缓存断点，易变段紧跟其后、不挂标记——两者仍是一条 system 消息里的
-         两个 text block。拆成两条独立 system 消息时，中转站反而读不到缓存，
-         所以保持一条。签名已不在 stable 里（见 promptBuilder），stable 跨轮逐字稳定。 */
-      messages.push({
-        role: "system",
-        content: sys.tail
-          ? [
-              { type: "text", text: sys.stable, cache_control: { type: "ephemeral" } },
-              { type: "text", text: sys.tail },
-            ]
-          : cacheBlock(sys.stable),
-      });
+      /* stable／cache 各挂一根缓存断点，tail 紧跟其后、不挂标记——三者仍是一条 system
+         消息里的 text block 串。拆成多条独立 system 消息时，中转站反而读不到缓存，
+         所以保持一条。cache 变了只作废它自己与 tail，stable 那截照旧读回来。 */
+      const blocks: ApiTextBlock[] = [];
+      if (sys.stable) {
+        blocks.push({ type: "text", text: sys.stable, cache_control: { type: "ephemeral" } });
+      }
+      if (sysCache) {
+        blocks.push({ type: "text", text: sysCache, cache_control: { type: "ephemeral" } });
+      }
+      if (sys.tail) blocks.push({ type: "text", text: sys.tail });
+      messages.push({ role: "system", content: blocks });
     }
   }
   const chatHistory = history.filter((m) => m.role !== "system");
@@ -238,11 +256,17 @@ function buildApiMessages(
      这一截正是「查看本轮请求」里那 9.1K 全价输入的大头：线下小说体的历史原文。 */
   const marked = new Set<number>();
   if (CACHE_CONTROL_ENABLED && HISTORY_BREAKPOINTS > 0) {
-    const userPos: number[] = [];
-    recent.forEach((m, i) => {
-      if (m.role === "user") userPos.push(i);
-    });
-    for (const p of userPos.slice(-HISTORY_BREAKPOINTS)) marked.add(p);
+    /* 断点预算（1.11.69）：system 已占的（stable／cache 各一根）先从总额度里扣，
+       余下的才给历史。cache 段存在时历史自动从 3 收成 2，总数仍恒 ≤ 4、不会超限报 400。 */
+    const systemBp = (sys.stable ? 1 : 0) + (sysCache ? 1 : 0);
+    const histBp = Math.max(0, Math.min(HISTORY_BREAKPOINTS, MAX_CACHE_BREAKPOINTS - systemBp));
+    if (histBp > 0) {
+      const userPos: number[] = [];
+      recent.forEach((m, i) => {
+        if (m.role === "user") userPos.push(i);
+      });
+      for (const p of userPos.slice(-histBp)) marked.add(p);
+    }
   }
   for (let i = 0; i < recent.length; i += 1) {
     const m = recent[i];
@@ -376,8 +400,12 @@ function buildChatRequest(
   const body: Record<string, unknown> = {
     model: api.model,
     messages,
-    max_tokens: maxTokens,
   };
+  /* max_tokens：**传 0（或更小）＝不设上限**（1.12.3，恩熙：「你不要去限制它的输出空间」）。
+     旨在掐断的活都吃过这个亏——开户编账被截半截、聊天接口出图被砍掉 base64 尾巴，
+     而对方（调用方）还当它写完了。传 0 就**干脆不塞这个字段**，让服务商按它自己的
+     默认额度（通常就是该模型的输出上限）来。正数照旧——聊天那种要控长度的仍然限。 */
+  if (maxTokens > 0) body.max_tokens = maxTokens;
   /* 温度优先序（设定面板 → 调用方 → 内置 0.8）：
      面板明确关掉（null）＝这个接口不吃温度，一律不发；
      否则调用方显式传的值优先（记忆整理传 0.3 要稳定输出，别被面板的聊天温度盖掉）；
@@ -415,25 +443,36 @@ interface ApiUsage {
   /** DeepSeek 口径。 */
   prompt_cache_hit_tokens?: number;
   prompt_cache_miss_tokens?: number;
+  /** 输出票数（Anthropic 口径）。 */
+  output_tokens?: number;
+  /** 输出票数（OpenAI 口径）。 */
+  completion_tokens?: number;
 }
 
 /**
- * 把这次请求的缓存用量在控制台报一行（1.7.65，恩熙 2026-09-29 要的）：
- * 她正在换站子做对比，不想每次跑去站子后台翻数字。
- *
- * 各家把「缓存」拆成的格子不一样，这里统一成三个数来报——
- * **谁给了就报谁，一个都没给就安静不报**（别每轮刷屏）：
- * - 读取缓存：便宜的那部分，越大越好；
- * - 新建缓存：这次重写进缓存的（按位置算，改动越靠前、重写越多）；
- * - 原价输入：既没缓存也没新建的零星输入。
+ * 一次请求的用量摘要（1.11.68）：三格缓存＋输出。
+ * 归一化后交给调用方，摆到「查看本轮请求」面板顶上那一行。
+ */
+export interface CacheUsage {
+  /** 读取缓存：命中了的、按 1 折算的那部分，越大越好。 */
+  read?: number;
+  /** 新建缓存：这一轮重新写进缓存的，按 1.25 倍算。 */
+  created?: number;
+  /** 原价输入：既没命中也没新建的，按 1 倍算。 */
+  fresh?: number;
+  /** 输出。 */
+  output?: number;
+}
+
+/**
+ * 把各家五花八门的用量字段归一成四个数（1.7.65 起，1.11.68 加输出）。
  *
  * 判一个站子认不认缓存，只看一件事：**「读取缓存」那格有没有数。**
  * 三格的名字和大小都别管——两套账本就叫法不同（站子二把「新建」也塞进「输入」里）。
- *
- * 纯日志：读不到就什么也不做，绝不因为解析用量影响一次聊天。
+ * 一个数都没给就返回 undefined：这时安静不报，别每轮刷屏。
  */
-function logCacheUsage(usage: ApiUsage | undefined, tag: string) {
-  if (!usage) return;
+function summarizeUsage(usage: ApiUsage | undefined): CacheUsage | undefined {
+  if (!usage) return undefined;
   const read =
     usage.cache_read_input_tokens ??
     usage.prompt_cache_hit_tokens ??
@@ -446,12 +485,48 @@ function logCacheUsage(usage: ApiUsage | undefined, tag: string) {
     (usage.prompt_tokens !== undefined && read !== undefined
       ? usage.prompt_tokens - read
       : undefined);
+  const output = usage.output_tokens ?? usage.completion_tokens;
+  if (
+    read === undefined &&
+    created === undefined &&
+    fresh === undefined &&
+    output === undefined
+  ) {
+    return undefined;
+  }
+  return { read, created, fresh, output };
+}
+
+/**
+ * 把这次请求的缓存用量在控制台报一行（1.7.65，恩熙 2026-09-29 要的）：
+ * 她正在换站子做对比，不想每次跑去站子后台翻数字。
+ * 纯日志：读不到就什么也不做，绝不因为解析用量影响一次聊天。
+ */
+function logCacheUsage(s: CacheUsage, tag: string) {
   const parts: string[] = [];
-  if (read !== undefined) parts.push(`读取缓存 ${read}`);
-  if (created !== undefined) parts.push(`新建缓存 ${created}`);
-  if (fresh !== undefined && fresh >= 0) parts.push(`原价输入 ${fresh}`);
+  if (s.read !== undefined) parts.push(`读取缓存 ${s.read}`);
+  if (s.created !== undefined) parts.push(`新建缓存 ${s.created}`);
+  if (s.fresh !== undefined && s.fresh >= 0) parts.push(`原价输入 ${s.fresh}`);
+  if (s.output !== undefined) parts.push(`输出 ${s.output}`);
   if (parts.length === 0) return;
   console.log(`[缓存] ${tag} · ${parts.join(" · ")}`);
+}
+
+/**
+ * 归一化 → 打一行日志 → 顺手交给调用方（1.11.68）。
+ * 拿到用量的三个地方都走它；onUsage 不传就只是打日志，行为跟以前一模一样。
+ * **只有真正发聊天那一轮才传 onUsage**——记忆浓缩、朋友圈那些也走这两个函数，
+ * 别让它们的用量窜到「查看本轮请求」面板上。
+ */
+function reportCacheUsage(
+  usage: ApiUsage | undefined,
+  tag: string,
+  onUsage?: (usage: CacheUsage) => void,
+) {
+  const s = summarizeUsage(usage);
+  if (!s) return;
+  logCacheUsage(s, tag);
+  onUsage?.(s);
 }
 
 /** 非流式响应体里回复字段的形状。 */
@@ -549,9 +624,14 @@ export function buildStylePrompt(
 ${
   canSendImage
     ? `### 发图片
-【格式】〔图片:使用参考图〕画面内容描述　或　〔图片:不使用参考图〕画面内容描述（画面里有你本人时用「使用参考图」，没有你时用「不使用参考图」。）
+【格式】〔图片:使用参考图〕画面内容描述　或　〔图片:不使用参考图〕画面内容描述（**画面里有你本人，就必须写「使用参考图」——这是硬规矩，没有例外**；画面里确实没有你时，才写「不使用参考图」。）
 【重要】描述会交给生图模型生成真实图片，请按生图提示词来写：只写可见画面（主体、动作、环境、光线、构图），要素具体，不写心理、声音、剧情，不用代词指代；有你的脸时补充神态。
 【没有你本人时】画面里没有你本人时，描述末尾必须原样写上「画面中不出现本人」这几个字（这里的「本人」专指你自己，不是说整张图不能有人；画面里另有路人的，照常把路人写进画面描述）。
+【画法视角 · 1.11.76】每次写画面描述，都把这张图是从哪个视角拍的定下来，并把视角写进描述开头（拍的人／我看／无人物这种一句话带出）。三种视角：
+- 前置自拍（默认）：第一视角、前置镜头对着自己拍。**画面里绝不出现手机**；**手臂、手是可以入镜的**（自己举着手机拍，手肘、小臂落进画面很正常），只是手里不能有手机、也别摆出「举着手机对镜头」的姿势——手机本身绝不能露。**描述里也不许出现「手机」「屏幕」「镜头」这些字**：连「手机屏幕的冷光打在脸上」这种写法都不行——一写进去，画出来就真有手机；光直接写成「幽冷的白光打在脸上」。想写手臂就写「一只手臂撑在枕边」这样，别提手里拿着什么。
+- 第二视角：别人帮你拍、拍镜子里的你、或用自拍杆——这一种用的是**后置镜头**（别人从对面替你拍，或对着镜子拍），**不是自己举着手机对自己拍**。只有这种，人物和手机（或自拍杆、镜子）才允许一起同框；角度照旧正常，不出现怪角度。
+- 后置：镜头里没有人物，拍景物、拍食物、拍窗外风景。
+没特别说明时按「前置自拍」处理。
 【示例】
 - 〔图片:使用参考图〕雨夜出租车后座，${characterName}侧脸贴着车窗，车窗玻璃上凝着雨珠，路灯和霓虹在玻璃上晕开红蓝光斑，光从左边斜切进来、车厢里偏暗，眉眼有点倦、视线散在窗外，近景特写
 - 〔图片:不使用参考图〕清晨的餐桌一角，一杯冒热气的咖啡、咬过一半的面包、亮着的电脑屏幕摊在桌上，旁边搭着一件外套，阳光从窗户斜进来打亮桌面，画面中不出现本人`
@@ -570,7 +650,7 @@ ${
       }${
         voiceLang
           ? `
-【语音固定格式 · 不受上面自定义影响】〔语音〕里的话写成两半：「${voiceLang}原文|简体中文」——先写${voiceLang}原文，紧跟一根竖线「|」，再写简体中文。台词内容照「语音里说的话」写，中文那一半一并带上。`
+【语音固定格式 · 不受上面自定义影响】一个〔语音〕气泡只说**一句话**；一句话先写成两半：「${voiceLang}原文|简体中文」——先把这整句${voiceLang}原文一口气写完，紧跟一根竖线「|」，再写整句的简体中文译文。台词内容照「语音里说的话」写，中文那一半一并带上。两半必须是同一句话：先把要说的话想清楚，中文那半就是它的意思，${voiceLang}那半是这句话的母语说法，两边意思必须对得上，说什么翻什么，不许一边写一、一边写二，也不许一边长、一边短。竖线**只写一根、落在整句话的正中间**：左边整半句是${voiceLang}、右边整半句是等义的中文，两半都得写完整。不许只拿开头几个字配一句中文、后半句又接着用${voiceLang}往下写（那样屏幕上会露出一根竖线、两半都对不上）；**竖线左边那一半从第一个字到最后一个字都得是${voiceLang}**——不许翻到一半就换回中文，例如把「今天中午」翻成${voiceLang}、后半句「吃过了吗」却又写成中文，左边就成了半${voiceLang}半中文的怪话；中文只能落在竖线右边那一半，左边最多允许人名、地名这类专有名词照写；**一个气泡里不许塞两句**——想说两句就发两个〔语音〕气泡、各写各的两半，一个气泡里塞两句会冒出两根竖线，程序只按一根切，第一句的竖线就露在屏幕上了；整句本就是中文时，直接写中文、不加竖线。`
           : ""
       }`
     : ""
@@ -620,13 +700,27 @@ ${
   /* **1.10.49：删掉「环境／细处／日记」三行**（恩熙 2026-10-06：「环境以及备忘录，我们得先删除……我想留下的是心声、欲望、怯念」）。账里只剩 心情→欲望→怯念。 ｜ 详细见 docs/施工日志.md */
   /* **1.9.23：整段心声按恩熙「有点乱」理顺**（她说「我觉得现在这个提示词有点乱」）。 ｜ 详细见 docs/施工日志.md */
   /* **1.10.57：人设正文不再插值进【心声】**（与档案区那份重复，恩熙要去重），改成「请严格遵循你的人设」。 ｜ 详细见 docs/施工日志.md */
+  /* **1.12.21：1.11.86 那句「先想再答」改写成「掂量写进『心声』那一行、四行之外不写别的字」**——
+     它原来让 TA 在  thinking 里另写一段**无标签**的盘算，而 parseInnerSnapshot 的规矩是
+     「没写标签的行默认归心声」，于是那段盘算整个并进「心声」，心声变成一大段啰嗦的独白，
+     心情／欲望／怯念那三行反被顶掉、全空（恩熙 2026-10-09 报的「心声十分冗长、心情欲望怯念全空白」）。
+     现在把掂量收进「心声」那一行本身，并明说四行之外不要再写别的字。 ｜ 详细见 docs/施工日志.md */
+  /* **1.12.22：1.12.21 那版还是没压住**——恩熙 2026-10-09 又发来两张截图，心声整段是
+     **编号计划**（「1. 我不会…… 2. 顺着……调侃一下…… 不会：- 秒回后立刻追问……」）和
+     **元分析**（「从时间线推断……这符合我们相识契机的设定……此刻我应该处于『第二阶段』」），
+     而且两段里**一个标签都没有**（sawLabel=false）。病根仍在提示词那句「先在 ＜think＞ 里
+     把消息读懂、掂量清楚该怎么回」——它把「思考块」教成了「写计划」的地方。这一版**收回那句**，
+     并在开头把话钉死：这一格**只放这四行**，计划／步骤／清单／理由／「会·不会」条目／
+     「第几阶段」这类盘算**一律不写**（题面也早写着「不提『设定』这类字眼」，那段元分析本就违规）。
+     ⚠️ 没走「解析侧丢弃首个标签前的无标签行」那条路：截图里**认不出任何标签**，
+     那条防线对这种 case 一步都不生效（真丢下去只会把心声清空），核在提示词。 ｜ 详细见 docs/施工日志.md */
   const innerVoiceRule = `【心声】
 回复之前，先照你的人设，用${characterName}的第一人称写一段 <think>…</think>：四项各写一行，全写在 <think> 与 </think> 中间，不写到标签外面。
 
 - 心声：收到${userName}这则消息后，当下的心理活动，80 字以内，可以与发出去的消息不同。
 - 心情：收到${userName}这则消息后，当下的情绪，可以不止一种，50 字以内。
-- 欲望：收到${userName}这则消息后，对${userName}身体最原始的性欲、性冲动，想触碰${userName}，或者与${userName}发生关系的念头，100 字以内。
-- 怯念：收到${userName}这则消息后，最怕发生、也最怕被${userName}知道的念头，可以阴暗、负面，100 字以内。
+- 欲望：收到${userName}这则消息后，对${userName}身体最原始的性欲、性冲动，想触碰${userName}，或者与${userName}发生关系的念头，80 字以内。
+- 怯念：收到${userName}这则消息后，最怕发生、也最怕被${userName}知道的念头，可以阴暗、负面，80 字以内。
 - 不用顾虑措辞，不受【消息格式】约束；但动作、神态照旧不写，也不写括号里的动作。
 - 不提「AI」「设定」「人设」「提示词」「模型」这类字眼。`;
   /* 【称呼】整段已删：名字和关系本来就在档案里，mask 那边的口径也写着「TA 如何 ｜ 详细见 docs/施工日志.md */
@@ -708,13 +802,35 @@ export function buildLangRule(lang: string | null | undefined, userName: string)
 - 你是${lang}母语者，思维与开口皆用${lang}，说出来的话如母语，不带中文翻译的痕迹。
 - 用词、语气、自称、对${userName}的称呼、口癖、是否使用敬语，皆依${lang}的习惯，不逐字替换中文，不写成生硬的翻译腔。
 - 你听得懂中文，也能用中文回话。平时以${lang}为主；撒娇、着急、逗${userName}，或某个词用中文更贴切时，可夹入一两句中文。
-- 每条消息分两半书写：先写${lang}原文，紧跟一根竖线「|」，再写简体中文；一条一行、成对出现，例如：${langSample}|你好。竖线两边都要写全。
+- 每条消息分两半书写：先把这条消息的${lang}原文一口气写完，紧跟一根竖线「|」，再写整句的简体中文；一条一行、成对出现，例如：${langSample}|你好。竖线两边都要写全。竖线**只写一根、落在整句话的正中间**，不许插在句子中间、只拿前半截配一句中文、后半句又接着用${lang}往下写——那样切不动，屏幕上会露出一根竖线。**一条消息里不许塞两句**——想说两句就发两条消息、各写各的两半；一条里塞两句会冒出两根竖线，程序只按一根切，屏幕上就会露出一根竖线。
+- 两半讲的是**同一句话**：中文那半就是${lang}那半的意思，${lang}那半是这句话的母语说法。先把要说的话想清楚，再一分为二地写出来，两边意思必须一致，说什么翻什么——不许一边写一、一边写二，也不许一边写得长、一边只糊一句。
 - 若整句本就是中文，直接写中文、不加竖线；只有${lang}句子里夹了个中文词，才写成「${lang}原文|中文」。
 - 气泡正文依此格式；〔语音〕中的话依【发语音】一节的固定格式，同为「原文|中文」，自定义的语音规矩也改不掉这一条。
 - 最前面那段 <think>…</think> 里的每一行，心声、心情、欲望、怯念，写简体中文，不写${lang}原文、不加竖线。
 - 中文标签一律保持中文，一字不译：方括号内的标记〔签名〕〔语音〕〔图片〕〔红包〕〔转账〕〔引用〕，以及 <think> 各行的冒号前缀「心情：」「欲望：」「怯念：」「角色心声：」。
 - 〔签名〕等气泡标签后的内容照旧写作「${lang}|中文」，<think> 各行标签后的内容写简体中文。
 - 引用的原话是${userName}所说的中文，原样照抄，不翻译、不加竖线。`;
+}
+
+/**
+ * 语音单独说外语（1.11.88，恩熙定）：正文保持中文、只有〔语音〕用外语双语。
+ *
+ * 为什么单独要这一节：buildLangRule 只在「他说的外语」开着时注入（那一档正文也要
+ * 换外语）；「语音单独说外语」开着时正文仍是中文，buildLangRule 不来——【发语音】
+ * 一节的【语音固定格式】虽然也要求「外语|中文」，但整条 system 没有别的外语指令，
+ * 模型容易被「整体中文」带跑，语音也写成中文、不写竖线（恩熙报：「他没有斜杠」），
+ * 于是译文出不来、还白烧翻译兜底接口。这一节把「正文中文、语音外语」的口径
+ * 单独点明，压过整体中文的惯性。
+ */
+export function buildVoiceOnlyRule(lang: string | null | undefined): string {
+  if (!lang) return "";
+  return `\n\n【语音单独说外语】
+- 正文（普通文字消息）照旧写简体中文，这一节不改正文的语言。
+- 只有〔语音〕标记里那句话用${lang}写，而且写两半：「${lang}原文|简体中文」——先把整句${lang}原文一口气写完，紧跟一根竖线「|」，再写整句的简体中文。
+- 两半是同一句话：${lang}原文与中文译意必须对得上，说什么翻什么；竖线只写一根、落在整句话正中间，不许只拿前半截配一句中文、后半句又接着用${lang}往下写。
+- 竖线左边那一半从第一个字到最后一个字都得是${lang}：不许翻到一半就换回中文（例如「今天中午」已经写成${lang}、后半句「吃过了吗」又写成中文，左边就成了半${lang}半中文的怪话）——中文只能落在竖线右边那一半，${lang}原文里最多允许人名、地名这类专有名词照写。
+- 一个〔语音〕气泡只说一句话，想说两句就发两个〔语音〕气泡。
+- 别因为正文是中文就把语音也写成中文——语音必须用${lang}写。`;
 }
 
 /**
@@ -780,6 +896,8 @@ export async function fetchAIReply(
   onReasoning?: (reasoning: string) => void,
   userImage?: string,
   timeoutMs = REQUEST_TIMEOUT_MS,
+  /* 本轮用量（读取／新建／原价输入／输出）到手时的出口（1.11.68）。 */
+  onUsage?: (usage: CacheUsage) => void,
 ): Promise<string> {
   const { url, body } = buildChatRequest(
     api,
@@ -841,7 +959,7 @@ export async function fetchAIReply(
     // 地址填错时常拿到 200 的 HTML 页面，json 解析会炸——给人话。
     throw new Error("接口返回了无法解析的内容，请检查地址是否填对");
   }
-  logCacheUsage(data.usage, "非流式");
+  reportCacheUsage(data.usage, "非流式", onUsage);
   const parsed = parseCompletionReply(data);
   /* 思考是「正文的伴生品」：兜底（正文空）时 parseCompletionReply 不带思考，这里自然不报。 */
   if (parsed.reasoning) onReasoning?.(parsed.reasoning);
@@ -870,9 +988,12 @@ export async function fetchAIStreamReply(
     onReasoning?: (reasoning: string) => void;
     /** 本轮附图（data URL，1.4.23）：随这一次请求发出去，用完即弃。 */
     userImage?: string;
+    /** 本轮用量（读取／新建／原价输入／输出）到手时的出口（1.11.68）。 */
+    onUsage?: (usage: CacheUsage) => void;
   } = {},
 ): Promise<string> {
-  const { historyLimit, maxTokens = 800, temperature, signal, onReasoning, userImage } = options;
+  const { historyLimit, maxTokens = 800, temperature, signal, onReasoning, userImage, onUsage } =
+    options;
   const { url, body } = buildChatRequest(
     api,
     system,
@@ -929,7 +1050,7 @@ export async function fetchAIStreamReply(
   const reportUsage = () => {
     if (usageLogged) return;
     usageLogged = true;
-    logCacheUsage(streamUsage, "流式");
+    reportCacheUsage(streamUsage, "流式", onUsage);
   };
 
   /** 处理一行 SSE；返回 true 表示读到 [DONE]。 */
@@ -1020,7 +1141,7 @@ export async function fetchAIStreamReply(
       // 有些中转站忽略 stream:true 直接返完整 JSON——按非流式解析，省一轮重发。
       try {
         const whole = JSON.parse(raw) as CompletionPayload;
-        logCacheUsage(whole.usage, "流式（整包返回）");
+        reportCacheUsage(whole.usage, "流式（整包返回）", onUsage);
         const parsed = parseCompletionReply(whole);
         if (parsed.reasoning) onReasoning?.(parsed.reasoning);
         return parsed.reply;
@@ -1075,6 +1196,8 @@ const CJK_RE = /[\u2E80-\u9FFF\uF900-\uFAFF\uFE30-\uFE4F\u3000-\u303F\uFF00-\uFF
  * 这样 `3,000`、`3.5`、`v1.0`、`miya.ai`、`http://x?a=1`、`10:30` 这些都不会被改坏。
  * 顺序不能换：省略号（`...`）必须先折走，否则会被单字符那一步拆成「。。。」
  * ——「…」是模型偶尔写、也允许写的，不许在别处顺手改成「。。。」或删掉。
+ * 另有一处不受「紧挨中文」限制的例外：**连续逗号**（`，，`／`,,`）一律折成「……」
+ * ——那是模型拿逗号表达语塞，干的本来就是省略号的活儿，且多半写在句首、两边不挨字。
  */
 function toFullWidthPunct(text: string): string {
   /** 中文语境判定：符号的前一字或后一字算中文（含中文标点）即算。 */
@@ -1088,6 +1211,11 @@ function toFullWidthPunct(text: string): string {
     if (/[A-Za-z0-9]/.test(prev) || /[A-Za-z0-9]/.test(next)) return m; // 落在英文／数字里（如 `1.0`）
     return "……";
   });
+
+  // 第 1 步（续）：连续逗号 → 全角省略号。模型常拿它表达语塞（`，，`／`,,`），
+  // 一律折成「……」，**不受上面「紧挨中文」那条限制**——它多半出现在句首，两边不挨字，
+  // 真按中文语境判会漏掉。逗号连写本来就不是中文的合法标点，放心折。
+  out = out.replace(/[，,]{2,}/g, "……");
 
   // 第 2 步：单个半角标点。
   const full: Record<string, string> = {
@@ -1157,16 +1285,38 @@ function stripNarrationAsterisks(text: string): string {
 }
 
 /**
+ * 竖线的各种写法（1.11.74）：模型按语言不同会吐出不同的「竖线」——半角 `|`、全角 `｜`、
+ * 制表细竖线 `│`／`┃`、竖排 `︱`／`︲`、数学 `∣`／`∤`、装饰 `❘`／`❙`／`❚`、
+ * 汉字 `丨`、谚文 `ㅣ`、拼音 `ǀ`、断竖线 `¦` 都算。
+ *
+ * 只认 `|`／`｜` 时，认不出的那一根整条**不切**——屏幕上就露出一根竖线、外语半句与
+ * 中文半句还混在同一条里（恩熙 2026-10-08 报的「他说中文时被判成翻译、显示不对」
+ * 就是这种：语音那句话里的竖线是 `│` 一类的变体，切不动，只好原样露出来）。
+ * 这里一次认全；以后再见新变体往这个串里补一个字符即可。
+ */
+const VERTICAL_PIPE = "|｜│┃︱︲∣∤❘❙❚丨ㅣǀ⏐¦";
+const VERTICAL_PIPE_CLS = `[${VERTICAL_PIPE}]`;
+const NO_VERTICAL_PIPE_CLS = `[^${VERTICAL_PIPE}]`;
+/** 按**最后一个**竖线切：右半边不含竖线，故匹配到的就是最后一根。 */
+const BILINGUAL_RE = new RegExp(`^([\\s\\S]*?)${VERTICAL_PIPE_CLS}(${NO_VERTICAL_PIPE_CLS}+)$`);
+
+/**
  * 双语输出（1.9.80）：「外语原文|简体中文」一刀两半。
  *
  * 外语聊天现在让模型**一次就写两半**（见 ChatWindow 的 langRule），不再事后发第二次
  * 翻译请求——从根上免掉「有些它突然不翻」（恩熙 2026-10-03 报的那个）。
- * 按**最后一个**竖线切（半角 `|`／全角 `｜` 都认）；两侧都非空才算数，
+ * 竖线的各种写法见 VERTICAL_PIPE（1.11.74 认全）；两侧都非空才算数，
  * 只写了一侧、或压根没写竖线 → 只当源文，译文留空交给兜底翻。
  */
 export function splitBilingual(text: string): { src: string; zh?: string } {
   const s = text.trim();
-  const m = /^([\s\S]*?)[|｜]([^|｜]+)$/.exec(s);
+  /* 1.11.75 保底：同一条里冒出 2+ 根竖线（模型把两句塞进一个气泡的旧病）——各截本就是
+     空格粘接、没法可靠还原「哪截配哪截」，干脆整条当源文收、把竖线全抹掉，**绝不把竖线
+     露上屏**，译文交给兜底再翻一句。正常的「一条一句、一根竖线」不碰。 */
+  const anyPipe = new RegExp(VERTICAL_PIPE_CLS, "g");
+  const pipeCount = (s.match(anyPipe) ?? []).length;
+  if (pipeCount > 1) return { src: s.replace(anyPipe, "") };
+  const m = BILINGUAL_RE.exec(s);
   if (!m) return { src: s };
   const src = m[1].trim();
   const zh = m[2].trim();

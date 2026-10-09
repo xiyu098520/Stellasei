@@ -23,6 +23,9 @@
  *   不按话题重排，每层固定按事情发生时间新→旧列；分层标题自带清晰度
  *   （「细节已模糊」「只剩模糊印象」），层内不再另写说明（1.4.6 砍掉——
  *   参考项目记忆槽零说明，只留「近期层压倒旧层」一句消歧）。
+ *   1.11.72 起「档案」与「脑子」分开（恩熙 2026-10-08）：近期层照旧一条条列清楚；
+ *   较早层／很久以前不再列清单，改为揉成一段顺着说下来的「回忆」，
+ *   免得抬头写着「模糊」、底下却列得清清楚楚最勾着他照本宣科。
  *   原文（完整对话历史）同时照常全部发送，记忆只是「多一份摘要」，永不顶替原文。
  *
  * 记忆跟着「角色 × 面具」走；存储键 v2（旧 v1 数据自然作废，测试期清零重来）。
@@ -401,8 +404,11 @@ ${accountList(accounts)}
 【三、写法】
 每一条只讲一件事，同一话题的几个来回合并为一条，不同的事分开写。每条长度不超过 80 字，标为 important 的条目不受此限。条数不设上限，有多少件事就写多少条。重复发生的同类事件（反复出现的相处与亲密互动、反复拌嘴又和好）合并为一条，记为你们之间常态性的相处方式，不按次数拆成多条；其中具有节点意义的某一次（第一次、破例、与往常明显不同）单独记一条。只是提到过或想过的事不写成约定或承诺，玩笑不写成认真的承诺，尚未发生的事不写成已经发生。条目以${charName}的第一人称「我」书写，记忆里的${myName}称「你」——这是 TA 自己的记忆，不是旁白；按话题组织，不逐句翻译对话。没有值得记的内容时，返回空数组。
 
+【四、关键词】
+每条记忆另附 tags：3 至 6 个能把这条记忆勾起来的词，取这条记忆里特有的实词（人名、地点、物件、约定、事件、话题），通用泛称与时间词不收。tags 供日后按话题检索使用。
+
 【输出格式】只输出 JSON，没有其他任何文字：
-{"items":[{"category":"us","content":"……","important":false,"secret":false,"grudge":false}],${
+{"items":[{"category":"us","content":"……","tags":["……"],"important":false,"secret":false,"grudge":false}],${
       accounts.length > 0 ? `"reconcile":[{"oldId":"……","action":"fulfilled|resolved|superseded"}],`
     : ""}}`;
 }
@@ -433,7 +439,7 @@ function compressPrompt(
      别把「那次见面」拆成互不相干的零碎印象（见下面【压缩要求】那一条）。 */
   const hasOffline = sources.some((it) => it.offline);
   const fmt = (it: MemoryItem) =>
-    `[${it.id}]（${CATEGORY_LABEL[it.category]}${it.offline ? "·见面" : ""}${it.fulfilledIso ? "·已兑现" : ""}${it.resolvedIso ? "·已解开" : ""}）${it.content}`;
+    `[${it.id}]（${CATEGORY_LABEL[it.category]}${it.offline ? "·见面" : ""}${it.fulfilledIso ? "·已兑现" : ""}${it.resolvedIso ? "·已解开" : ""}）${it.content}${it.tags && it.tags.length > 0 ? `｜关键词：${it.tags.join("、")}` : ""}`;
   /* 8.6 真人化第一刀的同款（恩熙 2026-09-28 点头，跟归总开场一起换）：
      「记忆压缩助手」→ TA 本人。压缩的心境不是「执行压缩任务」，是「记忆在
      新陈代谢」——原有的遗忘曲线比喻本来就留着，正好接得上。回退：换回
@@ -472,9 +478,10 @@ ${requirement}
 - 只合并真正讲同一件事（或同类事）的条目；不同的事件各自保留，宁多勿丢
 ${hasOffline ? "- 这批里有你们**见面**的经历（条目上标着「·见面」）：讲同一段见面的条目并成一条，留住「见了面、一起做了什么」这条线；但只留事件、不复述每一步（1.7.64 起与归总的口径对齐：一条只说清一件事）\n" : ""}- 保留 priority：关系节点(milestone)＞承诺与约定(promise)＞带心结(grudge)标记＞一般条目；只有明显琐碎无后续的才可丢弃
 - category 保持原分类；important 条目不会出现在这里（它们永不压缩）
+- tags 沿用被压缩条目的关键词（原条目行尾「关键词：」之后那几个词）并合并到产出的新条目上；可删去过窄的词，补上新出现的词
 
 【输出格式】只输出 JSON：
-{"items":[{"category":"us","content":"……","fulfilled":false,"resolved":false,"grudge":false}]}`;
+{"items":[{"category":"us","content":"……","tags":["……"],"fulfilled":false,"resolved":false,"grudge":false}]}`;
 }
 
 /* ----------------------------- AI 结果解析 ----------------------------- */
@@ -483,6 +490,7 @@ interface CondenseResult {
   items: {
     category: MemoryCategory;
     content: string;
+    tags?: string[];
     important?: boolean;
     secret?: boolean;
     grudge?: boolean;
@@ -597,6 +605,23 @@ function fixLooseJson(s: string): string {
     out += ch;
   }
   return out;
+}
+
+/**
+ * 清洗模型给出的关键词（tags）：只留非空的短实词，去重、封顶 6 个。
+ * 返回 undefined ＝「这条没有关键词」——调用方据此不写这格，老条目行为不变。
+ */
+function cleanTags(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: string[] = [];
+  for (const t of raw) {
+    if (typeof t !== "string") continue;
+    const s = t.trim();
+    if (!s || s.length > 12) continue;
+    if (!out.includes(s)) out.push(s);
+    if (out.length >= 6) break;
+  }
+  return out.length > 0 ? out : undefined;
 }
 
 /** 判断回复是「被掐断」还是「格式错」——手机端 toast 一眼能念出来。 */
@@ -774,19 +799,24 @@ async function condenseBatch(
   // 线下这趟产出的都带「线下」标。
   const newItems: MemoryItem[] = result.items
     .filter((r) => r.content && r.content.length >= 8 && VALID_CATEGORIES.includes(r.category))
-    .map((r) => ({
-      id: uuid(),
-      tier: (r.important ? "core" : "short") as MemoryItem["tier"],
-      category: r.category,
-      content: r.content.trim(),
-      fromIso,
-      toIso,
-      createdAt: now,
-      important: !!r.important,
-      secret: !!r.secret,
-      grudge: !!r.grudge,
-      ...(offline ? { offline: true } : {}),
-    }));
+    .map((r) => {
+      /* 关键词只存不用（1.11.71）：模型没给、或给的全是废词，就不写这格，行为同从前。 */
+      const tags = cleanTags(r.tags);
+      return {
+        id: uuid(),
+        tier: (r.important ? "core" : "short") as MemoryItem["tier"],
+        category: r.category,
+        content: r.content.trim(),
+        fromIso,
+        toIso,
+        createdAt: now,
+        important: !!r.important,
+        secret: !!r.secret,
+        grudge: !!r.grudge,
+        ...(tags ? { tags } : {}),
+        ...(offline ? { offline: true } : {}),
+      };
+    });
 
   // 对账：旧条目状态流转（pinnedByUser 的重要记忆只许补充不许推翻）。
   let items = memoryIn.items;
@@ -849,9 +879,16 @@ async function runCondense(
     })),
     itemIds: batch.newItems.map((it) => it.id),
   };
+  /* 用进废退（1.11.85）：扫一遍本次聊天的原文，被提起的记忆在今天盖个戳——
+     盖过戳的保鲜期顺延（用则进），从没盖过戳的打对折更快淡出（废则退）。 */
+  const stamped = stampMentioned(
+    batch.items,
+    source.map((m) => m.content).join("\n"),
+    new Date().toISOString(),
+  );
   let next: CharacterMemory = {
     ...memoryIn,
-    items: [...batch.newItems, ...batch.items],
+    items: [...batch.newItems, ...stamped],
     summarizedToIso: toIso,
     newCount: 0,
     rawBatches: [rawBatch, ...(memoryIn.rawBatches ?? [])].slice(0, RAW_BATCH_KEEP),
@@ -982,6 +1019,42 @@ function bucketItems(items: MemoryItem[], tier: MemoryItem["tier"]) {
   return [...buckets.values()];
 }
 
+/** 去掉标点空白、只留字与数字（匹配用，避免「下雨天。」对不上「下雨天」这种标点误伤）。 */
+const wordish = (s: string) => s.replace(/[^\p{L}\p{N}]/gu, "");
+
+/**
+ * **「用进废退」盖戳**（v1.11.85，恩熙 2026-10-09 定：常提的记得牢、久不提的慢慢淡）。
+ *
+ * 每轮浓缩时扫一遍本次聊天的原文，哪条记忆的关键词被聊到了，就给它在今天盖个戳
+ * （`lastMentionedIso` 记日子、`mentionCount` 记次数）。盖过戳的条目，保鲜/熔合/印象化
+ * 三道都会给它顺延——常聊的事一直在「近期的事」里待着、不被糊掉（用则进）；
+ * 从没盖过戳的，保鲜期打对折、更快沉到「较早的事」（废则退，见 pickShort／③／④）。
+ *
+ * 匹配素材：优先用条目存好的关键词（tags）；老条目没有 tags，就退一步拿正文按标点
+ * 切成小块凑合（块够 4 个字才当词去对，太短对什么都会撞）。只扫短期/中期——
+ * 长期本就只剩模糊印象、core 永不遗忘，都不参与。
+ */
+function stampMentioned(items: MemoryItem[], text: string, nowIso: string): MemoryItem[] {
+  const hay = wordish(text);
+  if (!hay) return items;
+  const keywordsOf = (it: MemoryItem): string[] => {
+    const fromTags = (it.tags ?? []).map(wordish).filter((s) => s.length >= 2);
+    if (fromTags.length > 0) return fromTags;
+    return it.content
+      .split(/[，。！？…～、；:;,.!?()（）「」『』"'\s]/)
+      .map(wordish)
+      .filter((s) => s.length >= 4);
+  };
+  let touched = false;
+  const out = items.map((it) => {
+    if (it.tier !== "short" && it.tier !== "mid") return it;
+    if (!keywordsOf(it).some((k) => hay.includes(k))) return it;
+    touched = true;
+    return { ...it, lastMentionedIso: nowIso, mentionCount: (it.mentionCount ?? 0) + 1 };
+  });
+  return touched ? out : items;
+}
+
 /** 短期桶里该进中期的条目：①老于短期保鲜天数；②某天该类堆满当天上限（当天收口）。
  *  按时间旧→新排好：调用方按预算截取时，先压最老的。 */
 function pickShort(
@@ -992,7 +1065,14 @@ function pickShort(
 ): MemoryItem[] {
   const picked = new Set<string>();
   for (const it of items) {
-    if (ageInDays(it.toIso ?? it.createdAt, nowMs) >= freshDays) picked.add(it.id);
+    const age = ageInDays(it.toIso ?? it.createdAt, nowMs);
+    /* 用进废退（1.11.85）：近 freshDays 天内被提起过的＝还在用，保鲜期顺延、当趟不压；
+       从没被提起过的＝废了，保鲜期打对折，更快沉进中期。 */
+    const sinceMention =
+      it.lastMentionedIso === undefined ? Infinity : ageInDays(it.lastMentionedIso, nowMs);
+    if (sinceMention <= freshDays) continue;
+    const freshFor = it.lastMentionedIso ? freshDays : Math.max(1, Math.ceil(freshDays / 2));
+    if (age >= freshFor) picked.add(it.id);
   }
   /* 当天收口：同一天（按覆盖时间的末尾那天）堆满就整天的该类一起收，别按条切一半。 */
   const byDay = new Map<string, MemoryItem[]>();
@@ -1096,8 +1176,16 @@ async function cascadeCompress(
       .filter((it) => {
         const age = ageInDays(it.toIso ?? it.createdAt, nowMs);
         if (age >= cfg.midFreshDays) return false; // 够老了：交给 ④ 一步进长期，别在这里压两趟
-        if (!it.refinedIso && age >= cfg.midRefineDays) return true; // 保鲜期到，该重压
-        return over; // 兜底：某类堆满上限，整桶强制重压（含已压过的骨架，防止无限堆积）
+        if (over) return true; // 兜底：某类堆满上限，整桶强制重压（含已压过的骨架，防止无限堆积）
+        /* 用进废退（1.11.85）：近熔合期内被提起过的＝还在用，别急着压成骨架；
+           从没被提起过的＝废了，熔合期打对折，更快变骨架。 */
+        const sinceMention =
+          it.lastMentionedIso === undefined ? Infinity : ageInDays(it.lastMentionedIso, nowMs);
+        if (sinceMention <= cfg.midRefineDays) return false;
+        const refineFor = it.lastMentionedIso
+          ? cfg.midRefineDays
+          : Math.max(1, Math.ceil(cfg.midRefineDays / 2));
+        return !it.refinedIso && age >= refineFor;
       })
       .sort((a, b) => a.toIso.localeCompare(b.toIso));
     const take = withinBudget(pick);
@@ -1128,7 +1216,18 @@ async function cascadeCompress(
   for (const { cat, offline, items } of bucketItems(next.items, "mid")) {
     if (left <= 0) break;
     const pick = items
-      .filter((it) => ageInDays(it.toIso ?? it.createdAt, nowMs) >= cfg.midFreshDays)
+      .filter((it) => {
+        const age = ageInDays(it.toIso ?? it.createdAt, nowMs);
+        /* 用进废退（1.11.85）：近中期保鲜期内被提起过的＝还在用，印象化顺延；
+           从没被提起过的＝废了，保鲜期打对折，更快只剩模糊印象。 */
+        const sinceMention =
+          it.lastMentionedIso === undefined ? Infinity : ageInDays(it.lastMentionedIso, nowMs);
+        if (sinceMention <= cfg.midFreshDays) return false;
+        const freshFor = it.lastMentionedIso
+          ? cfg.midFreshDays
+          : Math.max(1, Math.ceil(cfg.midFreshDays / 2));
+        return age >= freshFor;
+      })
       .sort((a, b) => a.toIso.localeCompare(b.toIso));
     const take = withinBudget(pick);
     if (take.length === 0) continue;
@@ -1222,7 +1321,7 @@ async function compressTier(args: {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
     const parsed = parseJsonReply<{
-      items: { category: MemoryCategory; content: string; fulfilled?: boolean; resolved?: boolean; grudge?: boolean }[];
+      items: { category: MemoryCategory; content: string; tags?: string[]; fulfilled?: boolean; resolved?: boolean; grudge?: boolean }[];
     }>(reply);
     if (!parsed || !Array.isArray(parsed.items)) {
       // 原文记进 console，方便排查 AI 到底回了什么。
@@ -1236,27 +1335,33 @@ async function compressTier(args: {
     };
     const made: MemoryItem[] = parsed.items
       .filter((r) => r.content && VALID_CATEGORIES.includes(r.category))
-      .map((r) => ({
-        id: uuid(),
-        tier: toTier,
-        category: r.category,
-        content: r.content.trim(),
-        fromIso: range.fromIso,
-        toIso: range.toIso,
-        createdAt: now,
-        important: false,
-        /* 压缩别再把「已兑现/已解开/有疙瘩」这几个状态丢了——否则一条「约定看海」被压进中期后
-           又变回「未兑现」，对账反复问、注入时也不显示已兑现，模型就会误以为还没去看过海。 */
-        ...(r.fulfilled ? { fulfilledIso: now } : {}),
-        ...(r.resolved ? { resolvedIso: now } : {}),
-        ...(r.grudge ? { grudge: true } : {}),
-        /* 分来源压缩（线下那支）：产出的条目依旧算线下，别压着压着变成线上条目。
-           来源不分层——压进中期、长期也还是「那次见面」出来的东西。 */
-        ...(offline ? { offline: true } : {}),
-        /* 重压过的条目记一笔（1.7.66）：不记的话，「它老于 15 天」下次检查依然成立，
-           会被反复重压、越压越干还白花钱。 */
-        ...(mode === "skeleton" ? { refinedIso: now } : {}),
-      }));
+      .map((r) => {
+        /* 关键词（1.11.71）：模型吐的优先；模型没吐或吐废了，就拿这批被压条目的关键词并起来兜底，
+           免得压一道丢一层。两边都没有＝不写这格。 */
+        const tags = cleanTags(r.tags) ?? cleanTags(chunk.flatMap((it) => it.tags ?? []));
+        return {
+          id: uuid(),
+          tier: toTier,
+          category: r.category,
+          content: r.content.trim(),
+          fromIso: range.fromIso,
+          toIso: range.toIso,
+          createdAt: now,
+          important: false,
+          /* 压缩别再把「已兑现/已解开/有疙瘩」这几个状态丢了——否则一条「约定看海」被压进中期后
+             又变回「未兑现」，对账反复问、注入时也不显示已兑现，模型就会误以为还没去看过海。 */
+          ...(r.fulfilled ? { fulfilledIso: now } : {}),
+          ...(r.resolved ? { resolvedIso: now } : {}),
+          ...(r.grudge ? { grudge: true } : {}),
+          ...(tags ? { tags } : {}),
+          /* 分来源压缩（线下那支）：产出的条目依旧算线下，别压着压着变成线上条目。
+             来源不分层——压进中期、长期也还是「那次见面」出来的东西。 */
+          ...(offline ? { offline: true } : {}),
+          /* 重压过的条目记一笔（1.7.66）：不记的话，「它老于 15 天」下次检查依然成立，
+             会被反复重压、越压越干还白花钱。 */
+          ...(mode === "skeleton" ? { refinedIso: now } : {}),
+        };
+      });
     if (made.length === 0) continue; // 这批没产出：手上素材不动，接着下一批
     producedAny = true;
     if (mode === "light") carried = made; // 滚雪球：这批吸并出的中期条目，接着当下一批的素材
@@ -1434,8 +1539,10 @@ export async function buildMemoryBlock(
       t.tier === "short" && memory.shortInjectLimit && memory.shortInjectLimit > 0
         ? visible.slice(0, memory.shortInjectLimit)
         : visible;
-    const list = limited
-      .map((it) => {
+    if (limited.length === 0) continue;
+    if (t.tier === "short") {
+      /* 近期层：照旧一条条列清楚（护栏层，动了当场失忆，一个字不动）。 */
+      const list = limited.map((it) => {
         const status = it.fulfilledIso
           ? "（已兑现）"
           : it.category === "promise"
@@ -1447,11 +1554,31 @@ export async function buildMemoryBlock(
                 : "";
         const secret = it.secret ? "（秘密）" : "";
         /* 见面的那条带「·见面」小标：让他分得清「这是手机上聊出来的」还是「那次见面本身的经过」，
-           讲起来不会把见面的经过说成隔着手机说的。 */
-        return `- [${CATEGORY_LABEL[it.category]}${it.offline ? "·见面" : ""}] ${it.content}${status}${secret}`;
+           讲起来不会把见面的经过说成隔着手机说的。文头挂每条**存好的真实日期**（1.11.76，
+           恩熙定：日期在浓缩那一刻就烙在条目上，这里只读不改，不外算、不锚"今天"）——
+           免得 TA 分不清一件旧事是今天还是好多天前发生、张口就说成「今天早上」。 */
+        const date = localStampOf(it.toIso ?? it.createdAt);
+        return `- [${CATEGORY_LABEL[it.category]}${it.offline ? "·见面" : ""}] ${date} ${it.content}${status}${secret}`;
       });
-    if (list.length > 0) {
       sections.push(`■ ${t.label}\n${list.join("\n")}`);
+    } else {
+      /* 1.11.72 · 第一步（2026-10-08，恩熙点头）：较早层／很久以前不列清单、不标分类，
+         顺着说成一段「回忆」——像人自己想起来的一串旧印象，好让抬头那句
+         「细节已模糊／只剩模糊印象」名副其实。只保留两处影响行为的尾巴：
+         「（秘密）」不许说破、「（还没兑现）」不许当已了；其余状态标记一律不标
+         （那些是"档案"的字段，不是"回忆"的样子）。纯注入侧改动，可随时删回清单式。 */
+      const recalled = limited
+        .map((it) => {
+          const c = it.content.trim();
+          const end = /[。！？…～.!?]$/.test(c) ? "" : "。";
+          const pending =
+            it.category === "promise" && !it.fulfilledIso ? "（还没兑现）" : "";
+          const secret = it.secret ? "（秘密）" : "";
+          /* 1.11.76：这段揉成一串的旧回忆，每句也带它存好的真实日期，一句一桩、看得清是哪天的。 */
+          return `${localStampOf(it.toIso ?? it.createdAt)} ${c}${end}${pending}${secret}`;
+        })
+        .join("");
+      sections.push(`■ ${t.label}\n${recalled}`);
     }
   }
 
@@ -1492,8 +1619,15 @@ export async function buildMemoryBlock(
         她的原话「不要有过多的举例，最好是不要有举例」；
      ③ 位置就在表头（稳定区）：加这一次触发一次缓存重建，之后每轮只读（0.1×）。
      回退：删掉下面这两段，即回到 1.4.6 的「只剩一句消歧」状态。 */
+  /* 1.11.72 · 第二步（2026-10-08，恩熙点头）：表头补一句「眼前的心思别当回忆的引子」。
+     她的原话：他说「好想再去一次海边」，那是在许愿、在往前的打算，不是让你去搜
+     「上次去海边」的旧账——要接的是「想再去，我来安排」，不是回头复述从前。
+     体例仍守三条硬要求：正式声明体、无任何举例、位置就在表头（稳定区）。 */
+  /* 1.11.89（恩熙报「他又在提记忆里没必要提的事，一直说『我还在想早上那件事情』」）：
+     表头再加一道硬规矩——记忆是心里的背景，不是摆在眼前的话题：除非她先提起某件具体的事，
+     否则不主动翻旧事当话题、不反复念叨已经过去的小事。守的仍是那三条：正式声明体、无举例、表头。 */
   return `【你对 ${myName} 的记忆】
-下面这些是你自己经历过、知道的事。每一轮对话时，你可以根据当前的聊天内容、你和${myName}的关系以及此刻的情境，判断是否需要用到其中的内容；需要用到时，就把它作为你自己记得的事，用在当下的回应或行动里。这些是你自己的经历与认知，不是等待对方确认或批准的待办事项，不必逐条复述，也不必就里面的内容向${myName}反复确认。
+下面这些是你自己经历过、知道的事。每一轮对话时，你可以根据当前的聊天内容、你和${myName}的关系以及此刻的情境，判断是否需要用到其中的内容；需要用到时，就把它作为你自己记得的事，用在当下的回应或行动里。这些是你自己的经历与认知，不是等待对方确认或批准的待办事项，不必逐条复述，也不必就里面的内容向${myName}反复确认。当${myName}说起此刻的心情、眼下的打算或以后想做的事时，那是对现在说的话，不是在提示你回忆过去；你只管顺着当下应对，不必因此翻起相关的旧记忆。记忆只是你心里的背景，不是摆在眼前的话题：除非${myName}先提起某件具体的事，否则不要主动翻出旧事当作话题来说，更不要反复念叨、念念不忘已经过去的小事——眼下聊什么就顺着聊什么，别让旧事一直挂在嘴边。
 同一件事，如果近期层和更早层说法不一致，一律以近期层为准——那才是最新状态。${momentNote}
 
 ${sections.join("\n\n")}`;

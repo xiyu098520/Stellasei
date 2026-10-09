@@ -1395,13 +1395,13 @@
   cursor: default;
 }
 .acts button.primary {
-  background: var(--ink);
-  border-color: var(--ink);
+  background: var(--pink-deep);
+  border-color: var(--pink-deep);
   color: var(--paper);
 }
 .acts button.primary:hover {
-  background: var(--pink-deep);
-  border-color: var(--pink-deep);
+  background: #b2577e;
+  border-color: #b2577e;
   color: var(--paper);
 }
 .acts button.danger:hover {
@@ -1422,6 +1422,82 @@
   font-size: 10px;
   letter-spacing: 0.4px;
   color: var(--ink-dim);
+}
+
+/* ---------- 基础记忆：系统状态（距下次整理 / 手动归总 / 清空） ---------- */
+.status {
+  margin-top: 13px;
+  padding: 12px 13px 11px;
+  border: 1px solid var(--line-soft);
+  background: var(--paper);
+}
+.statusHd {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+.statusHd .statusT {
+  font-family: var(--serif);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 2.5px;
+  color: var(--ink);
+}
+.statusHd .statusEn {
+  font-family: var(--mono);
+  font-size: 7px;
+  letter-spacing: 1.2px;
+  color: var(--ink-faint);
+}
+.statusHd .statusLead {
+  flex: 1;
+  align-self: center;
+  border-bottom: 1px dotted rgba(59, 50, 62, 0.26);
+  opacity: 0.42;
+}
+.statusHd .statusDot {
+  flex: 0 0 auto;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--pink-deep);
+}
+.meter {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 10px 0 6px;
+}
+.meter .meterLb {
+  font-family: var(--sans);
+  font-size: 9.5px;
+  letter-spacing: 0.8px;
+  color: var(--ink-dim);
+}
+.meter .meterCt {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  color: var(--ink);
+}
+.meterBar {
+  display: flex;
+  gap: 2px;
+}
+.meterBar .meterSeg {
+  flex: 1;
+  height: 8px;
+  background: rgba(201, 111, 146, 0.13);
+}
+.meterBar .meterSeg.on {
+  background: var(--pink-deep);
+}
+.meterNote {
+  margin-top: 6px;
+  font-family: var(--sans);
+  font-size: 8.5px;
+  letter-spacing: 0.4px;
+  color: var(--ink-faint);
 }
 
 /* ---------- 入场 ---------- */

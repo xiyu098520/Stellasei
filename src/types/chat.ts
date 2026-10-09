@@ -448,6 +448,25 @@ export interface MemoryItem {
    * 老数据没有这格＝没压过，照常参与（行为与加它之前一致，不需要迁移）。
    */
   refinedIso?: string;
+  /**
+   * **勾起这条记忆的关键词**（v1.11.71 备料）。
+   *
+   * 存在意义：日后 mid / long 想改成「对话里提到相关词，才把这条捞出来」，得先有词可对。
+   * 现在**只存不用**——注入仍走全量，行为与加它之前一模一样。
+   * 老条目没有这格＝没有标签，照常参与（整份 JSON 存 IndexedDB，加字段零迁移）。
+   */
+  tags?: string[];
+  /**
+   * **最近一次被提起的时间**（v1.11.85，ISO，「用进废退」）。
+   *
+   * 每轮浓缩时扫一遍本次聊天的原文，哪条记忆的关键词被聊到了，就在今天盖个戳。
+   * 盖过戳＝这条还在用：保鲜/熔合/印象化三道都会给它顺延（用则进）；
+   * 从没盖过戳＝久不被提起：保鲜期打对折，更快沉到「较早的事」（废则退）。
+   * 老条目没有这格＝从没被提过，按「废则退」处理（加字段零迁移）。
+   */
+  lastMentionedIso?: string;
+  /** **被提起过的次数**（v1.11.85，「用进废退」）。没被提过＝没有这格。 */
+  mentionCount?: number;
 }
 
 /**
@@ -641,6 +660,12 @@ export interface OfflineScene {
 export interface TranslateSetting {
   out: { on: boolean; lang: string; show: boolean };
   in: { on: boolean; lang: string; show: boolean };
+  /**
+   * 语音单独说外语（1.11.87，恩熙定）：只在〔语音〕里用这门外语、照样带中文译文，
+   * 气泡正文（文字）不受影响、可以仍是中文。跟 `out` 互不绑定：`out` 关着也能单独开它。
+   * 没设（老会话没有这一格）＝语音跟随 `out`（正文那门语言）。
+   */
+  voice?: { on: boolean; lang: string };
   api: "main" | "sub";
 }
 

@@ -15,10 +15,12 @@ import type { ArchiveEntry } from "@/types/contact";
 import { TRANSLATE_LANGS, type Conversation, type TranslateSetting } from "@/types/chat";
 
 /** 外语聊天的出厂值：两个开关都关着，语言默认日语，翻译走便宜的副接口。
- *  「显示中文那一行」默认开——开翻译却看不见中文，等于白开。 */
+ *  「显示中文那一行」默认开——开翻译却看不见中文，等于白开。
+ *  语音单独说外语也默认关（没设时语音跟随「他说的外语」）。 */
 const DEFAULT_TRANSLATE: TranslateSetting = {
   out: { on: false, lang: "日语", show: true },
   in: { on: false, lang: "日语", show: true },
+  voice: { on: false, lang: "日语" },
   api: "sub",
 };
 
@@ -182,7 +184,6 @@ export default function ChatSettingsPanel({
   myName,
   maskAvatar = "",
   blocked = false,
-  subReady = false,
   onBack,
   onUpdate,
   onClearMessages,
@@ -198,9 +199,6 @@ export default function ChatSettingsPanel({
   maskAvatar?: string;
   /** 拉黑中（危险区开关的当前状态）。 */
   blocked?: boolean;
-  /** 副接口是否真配齐了（启用＋地址＋模型）：翻译那一栏拿它说真话——
-   *  挑的副接口没配齐时会自动退回主接口，不告诉用户的话账单上就对不上。 */
-  subReady?: boolean;
   onBack: () => void;
   onUpdate: (patch: ConversationPatch) => Promise<void>;
   onClearMessages: () => Promise<void>;
@@ -223,6 +221,8 @@ export default function ChatSettingsPanel({
   const fontSize = conv.fontSize ?? 13;
   /* 外语聊天：老会话没有这一格，拿出厂值顶上，改哪一项写哪一项。 */
   const tr: TranslateSetting = conv.translate ?? DEFAULT_TRANSLATE;
+  /* 语音单独说外语（1.11.87）：没设＝关，语言没单独选过＝跟随「他说的外语」。 */
+  const voiceOn = tr.voice?.on === true;
 
   const pickFile = (ref: React.RefObject<HTMLInputElement | null>) => ref.current?.click();
 
@@ -758,6 +758,44 @@ export default function ChatSettingsPanel({
             </>
           ) : null}
 
+          {/* 语音单独说外语（1.11.87，恩熙定）：只有〔语音〕用外语、照样带一行中文，
+              正文照旧。放在「他说的外语」下面但**独立于它**——正文外语没开也能单独开它；
+              语言没单独选过＝默认跟随「他说的外语」。 */}
+          <SettingRow
+            title="语音单独说外语"
+            desc="只有语音用外语，下面照样挂一行中文；正文照旧"
+            showArrow={false}
+            right={
+              <Switch
+                on={voiceOn}
+                onClick={() =>
+                  void onUpdate({
+                    translate: {
+                      ...tr,
+                      voice: { on: !voiceOn, lang: tr.voice?.lang ?? tr.out.lang },
+                    },
+                  })
+                }
+              />
+            }
+          />
+          {voiceOn && tr.voice ? (
+            <SettingRow
+              title="语音的语言"
+              showArrow={false}
+              right={
+                <LangPick
+                  value={tr.voice.lang}
+                  onChange={(v) =>
+                    void onUpdate({
+                      translate: { ...tr, voice: { on: tr.voice!.on, lang: v } },
+                    })
+                  }
+                />
+              }
+            />
+          ) : null}
+
           <SettingRow
             title="我说中文，发出去翻成他的语言"
             desc="输入框里照打中文，气泡下面挂我那句中文本意"
@@ -798,59 +836,13 @@ export default function ChatSettingsPanel({
 
           {tr.out.on || tr.in.on ? (
             <>
-              <SettingRow
-                title="漏翻时用哪套接口补"
-                desc="正文由模型一次写成两种语言；他万一句漏了中文，才用它补翻"
-                showArrow={false}
-                right={
-                  <div style={{ display: "flex", gap: 6 }}>
-                    {([
-                      ["sub", "副接口"],
-                      ["main", "主接口"],
-                    ] as const).map(([v, label]) => (
-                      <button
-                        key={v}
-                        type="button"
-                        onClick={() => void onUpdate({ translate: { ...tr, api: v } })}
-                        style={{
-                          border: `1.5px solid ${T.ink}`,
-                          borderRadius: 999,
-                          padding: "3px 10px",
-                          fontSize: 11.5,
-                          fontFamily: SANS,
-                          background: tr.api === v ? T.pink : "#FFFFFF",
-                          color: tr.api === v ? "#FFFFFF" : T.ink,
-                          cursor: "pointer",
-                        }}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                }
-              />
-              {/* 挑的副接口没配齐时我们**会自动退回主接口**——不写明的话，账单上就对不上
-                  （恩熙：「我用副 API 去查看，没看见翻译的扣费」）。这句直接说此刻实际走哪套。 */}
-              <div
-                style={{
-                  padding: "0 10px 2px",
-                  fontSize: 9.8,
-                  lineHeight: 1.6,
-                  color: tr.api === "sub" && !subReady ? T.pink : T.ink3,
-                }}
-              >
-                {tr.api === "sub"
-                  ? subReady
-                    ? "实际走：副接口。"
-                    : "副接口还没配齐（要「启用」＋地址＋模型），现在实际走的是主接口。"
-                  : "实际走：主接口。"}
-                {" "}它平时不干活——只有他哪句漏写中文时才叫它补一句，用量极小、账单上可能只是一两分钱。
-              </div>
-              {/* 她自己问过「会不会把心声、签名也翻掉」——把口径直接印在这儿，一眼看得到。 */}
+              {/* 她自己问过「会不会把心声、签名也翻掉」——把口径直接印在这儿，一眼看得到。
+                  1.11.88：翻译已交给主接口的模型直接写，不再另请翻译接口兜底补翻。 */}
               <div style={{ padding: "0 10px 12px", fontSize: 9.8, lineHeight: 1.6, color: T.ink3 }}>
-                开着时，他一轮回复就<b>一次写成两种语言</b>：上面是外语原文、下面挂一行中文，
-                不用再发第二次翻译请求，所以不会出现「有些突然不翻」。他写下的字——签名、
-                心声、日记、环境／心情／欲望那些——原本要<b>点一下</b>才显中文（翻过一次就记住）；
+                开着时，他一轮回复就<b>一次写成两种语言</b>：上面是外语原文、下面挂一行中文——
+                中文这半由 TA 直接写出来，不再另外请翻译接口补翻（副接口一分不用花）。
+                他写下的字——签名、心声、日记、环境／心情／欲望那些——原本要<b>点一下</b>才显中文
+                （翻过一次就记住）；
                 把上面那个「心声页也直接显示中文」打开，心声那几栏也会一进页就是中文。
                 至于思考过程和朋友圈，这一版仍保持中文。
               </div>

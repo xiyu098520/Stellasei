@@ -4,7 +4,7 @@
  * 每轮对话把「对方档案＋世界书＋记忆碎片＋当前状态＋对话历史＋角色档案」
  * 拼成一份完整 prompt。**角色档案与末尾的规则块压在最后**（学 miya 的倒置注入）：
  *
- * 输出分成**稳定区**与**易变区**两段（见 BuiltPrompt.stable／volatile），顺序为：
+ * 输出分成**三段**（见 BuiltPrompt.stable／volatile／ephemeral），顺序为：
  *
  *   ── 稳定区（跨轮逐字不变，挂在缓存断点之前）──
  *   [对方档案]（使用中的面具：TA 眼中的你；我方身份前置）
@@ -14,16 +14,19 @@
  *   [chat_before／chat_after 世界书·常驻]（1.9.84：常驻＝跨轮一字不变，
  *      挪进稳定区吃 0.1× 缓存；从前跟关键词条目并在一起挂尾巴，每轮全价重发）
  *   [记忆碎片]（类人记忆，全量、时间新→旧；两次浓缩之间逐字不变）
- *   ── 易变区（每轮都可能变，排在断点之后，不挂缓存标记）──
- *   [签名与动态·当前取值]（只有「你的当前签名是：…」这一行会随 TA 更新而变）
- *   [用户签名·当前取值]（「我」页面的签名；没设不注入，改了只动尾巴不断缓存）
- *   [零钱·当前取值]（TA 手头有多少零钱，1.4.36：他自己发红包／转账的本钱；没读到不注入）
- *   [当前状态]（时间感知开关打开时才有：此刻的年月日与时分）
+ *   ── 易变区（偶尔才变；1.11.69 起由调用方搬进 system 固定槽位、挂缓存断点读回来）──
  *   [role_before／role_after 世界书·关键词]（聊到才进、话题一过就撤）
  *   [chat_before 世界书·关键词]（影响当前对话的设定；常驻那半已挪稳定区）
  *   [对话历史]（走 messages 时为空）
  *   [chat_after 世界书·关键词]（紧贴最新消息，临时状态类；常驻那半已挪稳定区）
  *   [最新消息]（走 messages 时为空）
+ *   ── 瞬时区（挂在最末段、紧贴她这一轮的话；见 BuiltPrompt.ephemeral）──
+ *   [当前状态]（时间感知开关打开时才有：此刻的年月日与时分；每轮必变）
+ *   [签名·当前取值]（1.11.70：只在「刚改过、新值还没说过」时说一次，之后安静待着；
+ *      挂最末段会随这轮 user 原文写进 apiText、回喂一字不差——等于进了聊天原文）
+ *   [用户签名·当前取值]（「我」页面的签名；同上，改过才说一次，没设不注入）
+ *   [零钱·当前取值]（TA 手头有多少零钱，1.4.36：他自己发红包／转账的本钱；
+ *      1.11.70：不靠聊天原文记着（那条会被裁），本轮或最近几句聊到钱才现查账本注入一次）
  *
  * 为什么靠后：人设埋在中段时，会被前面大段的风格／格式／媒体规则挤掉注意力，
  * 弱模型（尤其是切换后的模型）直接按通用助手口吻泛泛作答，表现为「不读人设、
@@ -86,6 +89,23 @@ import type { ChatMessage } from "@/types/chat";
 /** 关键词扫描深度：最近几条消息参与命中判定。 */
 const SCAN_DEPTH = 6;
 
+/** 正则转义：用户名可能含正则元字符，拼进 RegExp 前先转义（用户签名取值行要用）。 */
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** 在「已经发出去／回喂过的原文」里，找某条取值行最后一次写的值。
+    找不到（从没说过、或那条被裁掉了）返回 undefined——调用方据此判断
+    「他是不是早知道了」：一样就不再念；对不上（或被裁）就自愈再念一次。 */
+function lastAnnounced(texts: string[], re: RegExp): string | undefined {
+  let found: string | undefined;
+  for (const t of texts) {
+    const m = t.match(re);
+    if (m) found = m[1];
+  }
+  return found;
+}
+
 export type ChatMode = "online" | "offline";
 
 /** 组装后的分段（预览弹窗与调试用）。 */
@@ -101,8 +121,15 @@ export interface BuiltPrompt {
   stableSections: PromptSection[];
   /** 稳定区文本（跨轮逐字不变；缓存断点打在这一段的末尾）。 */
   stable: string;
-  /** 易变区文本（记忆／关键词世界书／对话等；排在断点之后，不挂缓存标记）。 */
+  /** 易变区文本（偶尔才变的：签名／用户签名／零钱／朋友圈／关键词世界书）。
+   *  1.11.69 起由调用方搬进 system 的固定槽位（SystemParts.cache）、也挂一根缓存断点——
+   *  本轮没读到下一轮也能成为缓存，读回来只按 0.1× 计价。 */
   volatile: string;
+  /** 瞬时区文本（挂在最末段、紧贴她这一轮的话：此刻时间；1.11.70 起还有
+   *  签名／用户签名／零钱三行「该说才说」的取值）。它永远是新内容、读不到缓存，
+   *  只能按全价输入计价（这是应该的）。挂最末段另有个好处：会随这轮 user 原文
+   *  写进 apiText、下一轮回喂一字不差——等于把「说出口的取值」记进了聊天原文。 */
+  ephemeral: string;
   /** 完整 prompt 文本（各段以空行连接）。 */
   full: string;
   /** 本轮激活的世界书条目（预览用）。 */
@@ -289,27 +316,65 @@ export function buildImageSubject(
    并进 chatApi.ts 媒体规则，与〔图片〕〔语音〕并列成节；stableSections 里
    「签名与动态·说明」一条同步删除。「更不更由你判断」不再单写——媒体规则
    【逻辑】那句「不想发就不发，完全跟随你的性格」罩住全部标记。
-   签名取值行（buildSignatureLine）仍在易变区，没动。 */
+   签名取值行（buildSignatureLine）1.11.70 起挪到瞬时区（最末段），见下面。 */
 
-/** 签名取值行（TA 更新签名时才会变）——放易变区，尾巴上只留这一句。 */
-function buildSignatureLine(currentSignature: string | undefined): string {
-  return currentSignature?.trim()
-    ? `你的当前签名是：「${currentSignature.trim()}」。`
-    : "你还没有设定过签名（资料页显示的是默认文案）。";
+/** 签名取值行（TA 更新签名时才会变，1.11.70 起挂最末段）。
+ *  「该说才说」：只在「刚改过、新值还没说过」时出现一次——挂最末段，随这轮
+ *  user 原文写进 apiText（等于进了聊天原文）；往后每轮扫回喂原文发现「他早知道」
+ *  就不再念，那条被裁掉了再自愈念一次。值没变（或压根没设）就整行消失，安静待着。 */
+function buildSignatureLine(
+  currentSignature: string | undefined,
+  announced: string | undefined,
+): string {
+  const cur = currentSignature?.trim();
+  if (!cur || cur === announced) return "";
+  return `你的当前签名是：「${cur}」。`;
 }
 
-/** 用户签名取值行（「我」页面随时可改，和 TA 签名同理只在易变区留一行；
-    没设签名时回空串，整段不注入，prompt 与从前完全一致）。 */
-function buildUserSignatureLine(userName: string, signature: string | undefined): string {
+/** 用户签名取值行（「我」页面随时可改，和 TA 签名同一条规矩）：
+    只在改过、新值还没说过时说一次；没设签名（或值没变）时回空串，整行不注入。 */
+function buildUserSignatureLine(
+  userName: string,
+  signature: string | undefined,
+  announced: string | undefined,
+): string {
   const s = signature?.trim();
-  return s ? `${userName}的当前签名是：「${s}」。` : "";
+  if (!s || s === announced) return "";
+  return `${userName}的当前签名是：「${s}」。`;
 }
 
-/** TA 手头零钱取值行（1.4.36）：他自己发红包／转账时得知道有多少钱可花。
-    余额随时会变（他发了、我发了），只能挂易变区；没值（还没读出来）时整行不出现。 */
-function buildWalletLine(balanceCents: number | null | undefined): string {
+/**
+ * TA 手头零钱 ＋ 最近几笔（1.4.36／1.11.70／1.12.4）。
+ *
+ * **1.12.4（恩熙：「这个查手机是什么？我通过线上的功能去连接角色的手机……里面的东西
+ * 应该是他角色本身也会知晓的」「这是他自己在用的手机，他也都会知道」）**：改**常驻**。
+ * 从前是「聊到钱才露面」（1.11.70，省位置），但账本本来就是他手机里他自己的东西——
+ * 他当然一直知道剩多少、花过什么。于是余额与**最近三笔流水**一并挂上，每轮都在。
+ * 位置仍在易变区（余额随钱的进出而变，进前缀缓存会把缓存整段作废）。
+ */
+function buildWalletLine(
+  balanceCents: number | null | undefined,
+  recent?: { title: string; amount: number; createdAt: string }[],
+): string {
   if (balanceCents == null || !Number.isFinite(balanceCents)) return "";
-  return `你的零钱是：¥${formatYuan(balanceCents)}（发红包、转账给对方的钱都从这里出）。`;
+  const head = `你的零钱是：¥${formatYuan(balanceCents)}（发红包、转账给对方的钱都从这里出）。`;
+  const rows = (recent ?? []).slice(0, 3);
+  if (rows.length === 0) return head;
+  const list = rows
+    .map((e) => {
+      const day = walletDay(e.createdAt);
+      const sign = e.amount < 0 ? "−" : "+";
+      return `${day ? `${day} ` : ""}${e.title} ${sign}¥${formatYuan(Math.abs(e.amount))}`;
+    })
+    .join("；");
+  return `${head}你最近这几笔：${list}。这是你自己手机里的账，你心里有数，聊到花销时照实说。`;
+}
+
+/** 流水上的日子（「10月5日」）：只给模型看个远近，不必带年份。 */
+function walletDay(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getMonth() + 1}月${d.getDate()}日`;
 }
 
 /** 生日显示格式：2000-01-01 → 2000年1月1日。 */
@@ -531,8 +596,15 @@ export function buildPrompt(input: {
   /**
    * TA 手头的零钱（分；1.4.36）。他要在读人设之外知道「自己有多少钱可花」，
    * 发红包／转账才不至于凭空乱写。余额随时变，只进易变区一行；不传＝不注入。
+   * **1.12.4 起常驻**（不再等聊到钱），与 walletRecent 一起挂。
    */
   walletBalance?: number | null;
+  /**
+   * TA 最近的几笔零钱流水（新的在前；1.12.4）。这是他自己手机里的账，
+   * 他当然记得自己花过什么——挂三笔，聊到花销时他说得出实话。
+   * 只取 title／amount／createdAt 三格，不必把整条 WalletEntry 递进来。
+   */
+  walletRecent?: { title: string; amount: number; createdAt: string }[];
   /** 类人记忆（记忆系统的注入块；空则「记忆碎片」段留空）。 */
   memoryBlock?: string;
   /**
@@ -568,6 +640,18 @@ export function buildPrompt(input: {
   // 扫描文本：当前输入＋最近几条历史。
   const recent = dialogue.slice(-SCAN_DEPTH).map((m) => m.content);
   const scanText = [...recent, userInput].join("\n");
+
+  /* 1.11.70：签名／用户签名「该说才说」的判据——扫**回喂出去的原文**
+     （apiText 优先；挂最末段的那两行就写在它里边），拿上一次说过的值与现值比：
+     一样＝他早知道、不再念；对不上、或从没说过（那条被裁了也算）＝说一次（自愈）。
+     零钱不走这个判据：它不靠原文记着（账本每轮在手边）——1.12.4 起**常驻**，
+     不再等「聊到钱」才露面（恩熙：这是他自己在用的手机，账他本人当然知道）。 */
+  const announcedTexts = dialogue.map((m) => m.apiText ?? m.content);
+  const announcedSig = lastAnnounced(announcedTexts, /你的当前签名是：「([^」]*)」/);
+  const announcedUserSig = lastAnnounced(
+    announcedTexts,
+    new RegExp(`${escapeRe(userName)}的当前签名是：「([^」]*)」`),
+  );
 
   // 过滤书：scope 匹配模式 ＋ 绑定匹配（角色与「世界」取并集：绑了角色或所在世界，这本书都算数）。
   const usableBooks = books.filter((b) => {
@@ -653,16 +737,10 @@ export function buildPrompt(input: {
     ...buildRuleBlock(),
   ];
   const volatileSections: PromptSection[] = [
-    // 签名取值（TA 自己更新时才会变）必须放易变区（缓存断点之后），
-    // 否则它一变，稳定区整体作废，缓存就「中途突然读不到」。
-    // 固定说明放稳定区，尾巴上只留这一行值。
-    { label: "签名与动态·当前取值", content: buildSignatureLine(input.currentSignature) },
-    // 用户签名（「我」页面随时可改）：与 TA 签名同理只挂易变区一行——
-    // 它一变不能连累稳定区缓存；没设签名时回空串整段消失。
-    { label: "用户签名·当前取值", content: buildUserSignatureLine(userName, input.userSignature) },
-    // TA 的零钱（1.4.36）：他自己发红包／转账时的「本钱」，余额每轮都可能变，
-    // 与签名同理只挂易变区；没读到账（null）时整行消失。
-    { label: "零钱·当前取值", content: buildWalletLine(input.walletBalance) },
+    /* 1.11.70：签名／用户签名／零钱三行从这儿搬去了下面的瞬时区（最末段）——
+       它们本就只在「改过／聊到」时说一嘴。挂最末段会随这轮 user 原文写进 apiText，
+       下一轮回喂扫得到、等于进了聊天原文；留在易变区则只进 system，回喂扫不到，
+       每轮都当「没说」又念一遍，跟「改了才说」的初衷反着。 */
     /* 我发的朋友圈里**他有权看的那几条**（1.10.27）：可见范围真的在这儿生效——
        「仅自己可见」与「部分可见里没他」的，一律不进这一格，他读不到就提不起。
        每条内容会变（她随时发新的），与上一格同理挂易变区；空串时整块消失。 */
@@ -703,24 +781,50 @@ export function buildPrompt(input: {
     { label: "最新消息", content: excludeDialogue ? "" : `${userName}：${userInput}` },
     /* 1.7.96：原来这儿还有一块「你现在」（还惦记着的那一两件，见 buildWishBlock）——
        账里「最想做的事」撤掉后它一并删了。 */
-    // 时间感知（设置页开关）：打开时把「此刻」钉在尾巴最末——紧贴生成点，TA 在
-    // 「现在几点」上就不会乱编。分钟级、每轮都变，所以只能挂易变区（见文件头）。
+    /* 1.11.69：原来这儿（易变区最末）还有「当前状态」（此刻时间），现挪到下面的瞬时区。
+       易变区这一整块由调用方搬进 system 固定槽位、挂缓存断点读回来；
+       而时间分钟级、每轮必变，搬进缓存槽只会每轮作废它——它得单独留在最末。 */
+  ];
+  /* 瞬时区（1.11.69）：每轮必变的最末一截。此刻时间（时间感知开着时才有）——
+     它紧贴她这一轮的话，永远是新内容、读不到缓存，只能付全价；这是应该的。
+     1.11.70：签名／用户签名／零钱三行「该说才说」的取值也从易变区挪到这儿——
+     判据见上面 announcedTexts；签名两行全空时只剩零钱那一行（1.12.4 起它常驻）。 */
+  const dynamicFacts = [
+    buildSignatureLine(input.currentSignature, announcedSig),
+    buildUserSignatureLine(userName, input.userSignature, announcedUserSig),
+    buildWalletLine(input.walletBalance, input.walletRecent),
+  ]
+    .filter(Boolean)
+    .join("\n");
+  /* 取值行仍套抬头（VOLATILE_HEADER）：它们是「不是对方说的话」的系统取值，
+     跟从前一样防模型把「你的当前签名是：…」当台词照抄回来；此刻时间「现在是…」
+     自明，不套抬头（少写一份、少付一份全价，理由同下）。 */
+  const ephemeralSections: PromptSection[] = [
     { label: "当前状态", content: input.timeAware ? buildStatusBlock(mode, history) : "" },
+    {
+      label: "签名·用户签名·零钱·当前取值",
+      content: dynamicFacts ? `${VOLATILE_HEADER}\n${dynamicFacts}` : "",
+    },
   ];
 
   const stableList = stableSections.filter((s) => s.content);
   const volatileList = volatileSections.filter((s) => s.content);
+  const ephemeralList = ephemeralSections.filter((s) => s.content);
   const stable = stableList.map((s) => s.content).join("\n\n");
   /* 尾巴整体挂在抬头（VOLATILE_HEADER）下面一行。整条尾区都为空时（没世界书、
      时间感知也关着）连抬头一起消失，不凭空多给模型一个字。 */
   const volatileBody = volatileList.map((s) => s.content).join("\n\n");
   const volatile = volatileBody ? `${VOLATILE_HEADER}\n${volatileBody}` : "";
+  /* 瞬时区整体**不额外加抬头**：取值行那一格自带抬头（见上），此刻时间「现在是…」
+     自明，不再多写一份（它每轮都被新写，多一个字多付一份全价）。 */
+  const ephemeral = ephemeralList.map((s) => s.content).join("\n\n");
   return {
-    sections: [...stableList, ...volatileList],
+    sections: [...stableList, ...volatileList, ...ephemeralList],
     stableSections: stableList,
     stable,
     volatile,
-    full: [stable, volatile].filter(Boolean).join("\n\n"),
+    ephemeral,
+    full: [stable, volatile, ephemeral].filter(Boolean).join("\n\n"),
     activatedEntries: activated,
     usableBookCount: usableBooks.length,
   };

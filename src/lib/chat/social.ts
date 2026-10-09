@@ -236,7 +236,11 @@ async function buildSocialContext(
     stable,
     tail,
     apiHistory,
-    volatile: built.volatile,
+    /* 1.11.69：线上主聊天把易变那截搬进了 system 缓存槽，而社交这条链仍按老样子
+       整截挂在 turnInput 末尾；这儿把易变区与瞬时区拼回原来那一整截。
+       1.11.70：签名／用户签名／零钱三行从易变区挪进了瞬时区——它们如今也在这一整截
+       的最末尾（挂在 turnInput 尾部），社交反应的注入位置跟着一起变。 */
+    volatile: [built.volatile, built.ephemeral].filter(Boolean).join("\n\n"),
     bubbleCap,
     pairMode,
     turnInput,

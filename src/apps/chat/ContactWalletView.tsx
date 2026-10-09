@@ -25,7 +25,15 @@
 
 import { useEffect, useState, type CSSProperties } from "react";
 import { ChevronLeft } from "lucide-react";
-import { formatYuan, getBalance, listEntries, type WalletEntry } from "@/lib/settings/wallet";
+import {
+  clearContactAccount,
+  formatYuan,
+  getBalance,
+  listEntries,
+  type WalletEntry,
+} from "@/lib/settings/wallet";
+import { openContactAccountIfEmpty } from "@/lib/chat/contactAccount";
+import type { ContactProfile } from "@/types/contact";
 import { WalletEntryRow } from "./WalletView";
 import { WALLET_MONO, WALLET_PAPER_BAR, WALLET_PAPER_SHADOW, WALLET_TITLE } from "./WalletSheet";
 import { EN, SANS, T } from "./shared";
@@ -33,16 +41,26 @@ import { EN, SANS, T } from "./shared";
 export default function ContactWalletView({
   ownerId,
   ownerName,
+  profile,
+  onRegenerated,
   onBack,
 }: {
   /** 账本主人：角色的档案 id（TA 那本账）。 */
   ownerId: string;
   /** TA 的名字（余额卡上那句「谁的钱包」）。 */
   ownerName: string;
+  /** 他的人设档案：重新生成时拿它去重编一份（与开户同一份料）。 */
+  profile: ContactProfile;
+  /** 重新生成完把新余额交回外层（查手机那行「¥…」跟着刷新）；外层不关心时可以不传。 */
+  onRegenerated?: (balance: number) => void;
   onBack: () => void;
 }) {
   const [balance, setBalance] = useState<number | null>(null);
   const [entries, setEntries] = useState<WalletEntry[]>([]);
+  /** 弹着「确定要重新生成吗」那句确认（1.12.0）。 */
+  const [confirming, setConfirming] = useState(false);
+  /** 正在重新生成（清空 → 按人设重编，要走一次接口，得等）。 */
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -59,6 +77,35 @@ export default function ContactWalletView({
       alive = false;
     };
   }, [ownerId]);
+
+  /**
+   * 重新生成这本账（1.12.0，恩熙：「特别为这个钱包做一个重新计算、重新生成的功能」）。
+   *
+   * 为什么必须先清：开户是**一次性的**——`seedContactAccount` 只在白纸上写，
+   * 已经开过的账递什么都一个字不改（恩熙定的规矩）。想要新的一份，只能先
+   * `clearContactAccount` 抹回白纸，再让 `openContactAccountIfEmpty` 按人设重开。
+   *
+   * ⚠️ **抹的是这本账的全部**：余额与流水一起换新，**我发给他的钱也在里面**
+   * （那些转账落的就是这本账）——所以按钮后面压着一句确认，不让人误点。
+   */
+  const regenerate = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await clearContactAccount(ownerId);
+      const { balance: fresh } = await openContactAccountIfEmpty({ ownerId, profile });
+      onRegenerated?.(fresh);
+    } finally {
+      const [list, bal] = await Promise.all([
+        listEntries(ownerId, "contact"),
+        getBalance(ownerId, "contact"),
+      ]);
+      setEntries(list);
+      setBalance(bal);
+      setBusy(false);
+      setConfirming(false);
+    }
+  };
 
   const yuan = formatYuan(balance ?? 0);
   const [intPart, fracPart] = yuan.split(".");
@@ -144,6 +191,42 @@ export default function ContactWalletView({
         {/* 页脚一句实话：这本账是他的——我发过去的钱只是其中几笔 */}
         <div style={footNoteStyle}>
           这是 TA 自己的零钱账：他每月的进项、日常的花销都在这里，我发给他的钱也记在这里。
+        </div>
+
+        {/* ── 重新生成（1.12.0）：把这本账清空，按人设重编一份 ──
+            压在页脚下面、不当门面：它是个偶尔才用的动作，却会把这本账整个换掉，
+            所以点一下先出确认，再动手。 */}
+        <div style={regenBoxStyle}>
+          {confirming ? (
+            <>
+              <div style={regenWarnStyle}>
+                重新生成会把 TA 这本账清空重来：余额和全部流水都换成新编的一份
+                （我发给他的钱也一并没了）。确定吗？
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setConfirming(false)}
+                  disabled={busy}
+                  style={regenCancelStyle}
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void regenerate()}
+                  disabled={busy}
+                  style={regenConfirmStyle}
+                >
+                  {busy ? "重新生成中…" : "确定，重新生成"}
+                </button>
+              </div>
+            </>
+          ) : (
+            <button type="button" onClick={() => setConfirming(true)} style={regenBtnStyle}>
+              重新生成这本账
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -232,4 +315,59 @@ const footNoteStyle: CSSProperties = {
   lineHeight: 1.8,
   color: T.ink3,
   letterSpacing: ".04em",
+};
+
+/* ── 重新生成那一条（1.12.0）── */
+
+const regenBoxStyle: CSSProperties = {
+  marginTop: 26,
+  paddingTop: 18,
+  borderTop: `1px solid ${T.line}`,
+  display: "flex",
+  flexDirection: "column",
+  gap: 10,
+};
+
+const regenBtnStyle: CSSProperties = {
+  alignSelf: "flex-start",
+  borderRadius: 0,
+  border: `1px solid ${T.ink}`,
+  background: "#FFFFFF",
+  color: T.ink,
+  fontFamily: SANS,
+  fontSize: 12,
+  letterSpacing: ".06em",
+  padding: "7px 14px",
+  cursor: "pointer",
+};
+
+const regenWarnStyle: CSSProperties = {
+  fontSize: 11.5,
+  lineHeight: 1.7,
+  color: T.ink2,
+  letterSpacing: ".03em",
+};
+
+const regenCancelStyle: CSSProperties = {
+  borderRadius: 0,
+  border: `1px solid ${T.ink3}`,
+  background: "#FFFFFF",
+  color: T.ink2,
+  fontFamily: SANS,
+  fontSize: 12,
+  letterSpacing: ".06em",
+  padding: "7px 14px",
+  cursor: "pointer",
+};
+
+const regenConfirmStyle: CSSProperties = {
+  borderRadius: 0,
+  border: "none",
+  background: T.ink,
+  color: "#FFFFFF",
+  fontFamily: SANS,
+  fontSize: 12,
+  letterSpacing: ".06em",
+  padding: "8px 14px",
+  cursor: "pointer",
 };

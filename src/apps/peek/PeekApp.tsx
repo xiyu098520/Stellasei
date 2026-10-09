@@ -23,17 +23,19 @@
  * 近黑圆返回钮），不另起一套。
  */
 
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { ChevronLeft, ChevronRight, Wallet } from "lucide-react";
+import { useEffect, useState, type CSSProperties } from "react";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { usePhone } from "@/context/PhoneContext";
 import { getArchives } from "@/lib/settings/contact";
 import { getConversations } from "@/lib/settings/chat";
-import { DEFAULT_MASK_ID, ensureMasks, getCurrentMask } from "@/lib/settings/mask";
+import { DEFAULT_MASK_ID, ensureMasks, getCurrentMask, type Mask } from "@/lib/settings/mask";
 import { openContactAccountIfEmpty } from "@/lib/chat/contactAccount";
-import { formatYuan } from "@/lib/settings/wallet";
 import ContactWalletView from "@/apps/chat/ContactWalletView";
+import ContactPhoneApp from "@/apps/peek/ContactPhoneApp";
+import { ChatIcon } from "@/apps/icons";
 import { AVATAR_GRADIENT, EN, SANS, T } from "@/apps/chat/shared";
 import type { ArchiveEntry } from "@/types/contact";
+import type { Conversation } from "@/types/chat";
 
 export default function PeekApp() {
   const { closeApp } = usePhone();
@@ -41,10 +43,16 @@ export default function PeekApp() {
   const [phones, setPhones] = useState<ArchiveEntry[] | null>(null);
   /** 打开的那台手机的主人；null＝停在名单上。 */
   const [target, setTarget] = useState<ArchiveEntry | null>(null);
-  /** 他钱包那本账开着（第三层）。 */
+  /** 他手机屏幕里正开着哪一屏（1.12.15）：桌面／星绥通讯。钱包另起一层。 */
+  const [view, setView] = useState<"home" | "app">("home");
+  /** 他钱包那本账开着。 */
   const [walletOpen, setWalletOpen] = useState(false);
-  /** 他那本账的零钱（分）；null＝还没读出来，不写假数。 */
-  const [cents, setCents] = useState<number | null>(null);
+  /** 读回来的会话：他手机里那个「星绥通讯」就是我跟他的这一条，**同一份数据**。 */
+  const [convs, setConvs] = useState<Conversation[]>([]);
+  /** 当前面具（「我」）：联系人里要有我、聊天列表里那一条也是我，所以名字与头像都带上。 */
+  const [mask, setMask] = useState<Mask | null>(null);
+  /** 当前面具 id（挑出「我跟这个角色」的那一条会话要用）。 */
+  const [maskId, setMaskId] = useState(DEFAULT_MASK_ID);
 
   useEffect(() => {
     let alive = true;
@@ -55,12 +63,15 @@ export default function PeekApp() {
         ensureMasks(),
       ]);
       if (!alive) return;
-      const maskId = getCurrentMask(masks)?.id ?? DEFAULT_MASK_ID;
+      const currentMaskId = getCurrentMask(masks)?.id ?? DEFAULT_MASK_ID;
+      setMask(getCurrentMask(masks) ?? null);
+      setMaskId(currentMaskId);
+      setConvs(conversations);
       setPhones(
         conversations
           .filter(
             (c) =>
-              c.maskId === maskId &&
+              c.maskId === currentMaskId &&
               c.friendStatus !== "removed" &&
               c.friendStatus !== "requested",
           )
@@ -75,23 +86,20 @@ export default function PeekApp() {
     };
   }, []);
 
-  /* 进谁的手机就先给他「开户」——第一次翻才有活干（AI 读人设编一份起手资金与
-     过去两三个月的流水），开过的账只把余额读出来。开户要走一次模型、得等几秒，
-     期间余额行写「正在对账」。 */
+  /* 进谁的手机就先给他「开户」（1.4.36）——第一次翻才有活干（AI 读人设编一份起手资金
+     与最近一周的流水），开过的账什么都不做。开户要走一次模型、得等几秒；摆在**桌面**
+     这一层就做掉，免得点进钱包时还是一本空账。 */
   useEffect(() => {
     if (!target) return;
-    let alive = true;
-    void openContactAccountIfEmpty({ ownerId: target.id, profile: target.data }).then(
-      ({ balance }) => {
-        if (alive) setCents(balance);
-      },
-    );
-    return () => {
-      alive = false;
-    };
+    void openContactAccountIfEmpty({ ownerId: target.id, profile: target.data });
   }, [target]);
 
   const nameOf = (a: ArchiveEntry) => a.data.name || a.data.nickname || "TA";
+
+  /** 他手机里那个「星绥通讯」＝我跟他的这条会话（同一份数据，所以天然是延续的）。 */
+  const targetConv = target
+    ? convs.find((c) => c.characterId === target.id && c.maskId === maskId)
+    : undefined;
 
   return (
     <div style={rootStyle}>
@@ -121,7 +129,9 @@ export default function PeekApp() {
                   key={a.id}
                   type="button"
                   onClick={() => {
-                    setCents(null); // 换一台手机，先把上一台的数清掉，免得闪在新页上
+                    /* 换一台手机：先把他那台手机的屏推回桌面、钱包关掉，免得闪在新手机上。 */
+                    setView("home");
+                    setWalletOpen(false);
                     setTarget(a);
                   }}
                   style={phoneCardStyle}
@@ -151,60 +161,71 @@ export default function PeekApp() {
         </div>
       </div>
 
-      {/* ── 第二层：他的手机 → 他的星绥通讯 ── */}
+      {/* ── 第二层：他的手机（1.12.6）——**占满整屏**，外面不套机身 ── */}
       <div style={slideStyle(target !== null)}>
-        <div style={headerStyle}>
-          <button
-            type="button"
-            aria-label="返回"
-            onClick={() => setTarget(null)}
-            style={backBtnStyle}
-          >
-            <ChevronLeft size={18} strokeWidth={2} />
-          </button>
-          <div style={titleBoxStyle}>
-            <span style={titleStyle}>{target ? `${nameOf(target)}的手机` : "TA的手机"}</span>
-            <span style={titleEnStyle}>his phone</span>
-          </div>
-        </div>
-
         {target ? (
-          <div style={scrollStyle}>
-            {/* 机身：他的身份牌 */}
-            <div style={bodyCardStyle}>
-              <span style={avatarStyle(target.data.photo)}>
-                {target.data.photo ? null : nameOf(target).slice(0, 1)}
-              </span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 16, fontWeight: 700 }}>{nameOf(target)}</div>
-                <div style={{ marginTop: 3, fontSize: 11, color: T.ink3, letterSpacing: ".04em" }}>
-                  这台手机用的是星绥通讯
-                </div>
+          view === "home" ? (
+            <div style={homeScreenStyle}>
+              {/* 壁纸 ＋ 极淡网点（跟我们主屏同一手：一层底色、一层几乎感觉不到的纹理） */}
+              <div style={homeWallpaperStyle} aria-hidden />
+              <div style={homeTextureStyle} aria-hidden />
+
+              {/* 顶上不摆任何标题行（主屏也没有）；只在右上角留一颗**关闭**的叉叉
+                  ——这一台手机是"被翻开"的，划下来就当关掉了。 */}
+              <button
+                type="button"
+                aria-label="关闭"
+                onClick={() => {
+                  setTarget(null);
+                  setView("home");
+                  setWalletOpen(false);
+                }}
+                style={homeCloseStyle}
+              >
+                <X size={17} strokeWidth={2.2} />
+              </button>
+
+              {/* 应用网格：跟主屏同一套格位（4 栏 × 6 排、格位 66px、横 20 竖 3、行高均分）。
+                  他眼下只有一枚应用，而且属于 Dock 那一类（主屏也把 Dock 应用从网格里排除），
+                  所以这里空着——以后装的应用从这儿排。 */}
+              <div style={homeGridStyle} />
+
+              {/* 翻页小点（主屏 Dock 上方那道；他只有一页，就一枚） */}
+              <div style={homeDotsStyle}>
+                <span style={homeDotStyle} />
+              </div>
+
+              {/* 底部 Dock：跟主屏同一块（宽度公式：格位×4 ＋ 间距×3 ＋ 余量 30）。
+                  **格位留 4 个**（恩熙：其他按钮还没做进去而已）——眼下只停着「星绥通讯」
+                  一枚，其余三格空着占位，以后往里装。图标**不挂名字**（主屏 Dock 的规矩）。 */}
+              <div style={homeDockStyle}>
+                <button
+                  type="button"
+                  aria-label="星绥通讯"
+                  onClick={() => setView("app")}
+                  style={appTileStyle}
+                >
+                  <span style={appGlossStyle} aria-hidden />
+                  <ChatIcon size={26} strokeWidth={1.75} />
+                </button>
+                <span aria-hidden />
+                <span aria-hidden />
+                <span aria-hidden />
               </div>
             </div>
-
-            {/* 他的星绥通讯：这一版只摆得出钱包 */}
-            <div style={sectionHeadStyle}>
-              <span style={{ fontSize: 12.5, fontWeight: 600, letterSpacing: ".04em" }}>
-                星绥通讯
-              </span>
-              <span style={{ fontFamily: EN, fontSize: 9, color: T.ink3, letterSpacing: ".3em" }}>
-                stellasei
-              </span>
-            </div>
-            <div style={boxCardStyle}>
-              <PeekRow
-                icon={<Wallet size={16} strokeWidth={1.8} color={T.pink} />}
-                label="钱包"
-                value={cents === null ? "正在对账…" : `¥${formatYuan(cents)}`}
-                onClick={() => setWalletOpen(true)}
-              />
-            </div>
-
-            <div style={footNoteStyle}>
-              他的零钱和收支明细都在这里。他的聊天记录、朋友圈，以后也挂到这台手机上。
-            </div>
-          </div>
+          ) : (
+            <ContactPhoneApp
+              ownerId={target.id}
+              ownerName={nameOf(target)}
+              ownerAvatar={target.data.photo ?? ""}
+              myName={mask?.name ?? ""}
+              myAvatar={mask?.avatar ?? ""}
+              friends={phones ?? []}
+              messages={targetConv?.messages ?? []}
+              onOpenWallet={() => setWalletOpen(true)}
+              onBack={() => setView("home")}
+            />
+          )
         ) : null}
       </div>
 
@@ -214,35 +235,12 @@ export default function PeekApp() {
           <ContactWalletView
             ownerId={target.id}
             ownerName={nameOf(target)}
+            profile={target.data}
             onBack={() => setWalletOpen(false)}
           />
         ) : null}
       </div>
     </div>
-  );
-}
-
-/** 手机里的一行（图标 ＋ 名字 ＋ 右侧值 ＋ 箭头）。 */
-function PeekRow({
-  icon,
-  label,
-  value,
-  onClick,
-}: {
-  icon: ReactNode;
-  label: string;
-  value?: string;
-  onClick: () => void;
-}) {
-  return (
-    <button type="button" onClick={onClick} style={rowStyle}>
-      <span style={rowIconStyle}>{icon}</span>
-      <span style={{ flex: 1, minWidth: 0, textAlign: "left", fontSize: 14, fontWeight: 500 }}>
-        {label}
-      </span>
-      {value ? <span style={{ fontSize: 13, color: T.ink2 }}>{value}</span> : null}
-      <ChevronRight size={16} strokeWidth={1.9} color={T.ink3} />
-    </button>
   );
 }
 
@@ -388,57 +386,152 @@ const phoneHintStyle: CSSProperties = {
   letterSpacing: ".04em",
 };
 
-/** 机身里的身份牌（头像 ＋ 名字）。 */
-const bodyCardStyle: CSSProperties = {
+/**
+ * 他的手机（1.12.6 起**整屏铺满**，1.12.7 补齐桌面该有的东西）。不套机身边框
+ * （恩熙：「不是要做成小手机的里头看一个小手机，而是一样做成全屏的样子」）：
+ * 壁纸铺满整屏 → 让开状态栏的顶部行 → 一行日期 → 应用区 → 底部 Dock。
+ */
+const homeScreenStyle: CSSProperties = {
+  position: "relative",
+  flex: 1,
+  minHeight: 0,
   display: "flex",
-  alignItems: "center",
-  gap: 12,
-  padding: "16px 18px",
-  borderRadius: 22,
-  border: `1px solid ${T.line}`,
-  background: "#FFFFFF",
-  boxShadow: "0 12px 30px -22px rgba(20,19,24,.5)",
-};
-
-/** 他的星绥通讯里的一格（白卡，圆角同钱包页）。 */
-const boxCardStyle: CSSProperties = {
-  borderRadius: 20,
-  border: `1px solid ${T.line}`,
-  background: "#FFFFFF",
-  boxShadow: "0 12px 30px -24px rgba(20,19,24,.5)",
+  flexDirection: "column",
   overflow: "hidden",
-  padding: "4px 4px",
+  background: "#F2F2F3",
 };
 
-const rowStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 12,
-  width: "100%",
-  padding: "12px 10px",
+/** 壁纸：铺满整屏（连状态栏底下一起）。**只用黑白灰**（恩熙定的），不上色。 */
+const homeWallpaperStyle: CSSProperties = {
+  position: "absolute",
+  inset: 0,
+  background: "linear-gradient(180deg, #FBFBFB 0%, #F0F0F1 46%, #E3E3E5 100%)",
+};
+
+/** 极淡网点纹理（跟我们主屏同一手）：几乎感觉不到，但桌面不至于是块光板。 */
+const homeTextureStyle: CSSProperties = {
+  position: "absolute",
+  inset: 0,
+  backgroundImage: "radial-gradient(circle, rgba(17,17,17,.055) 1px, transparent 1px)",
+  backgroundSize: "22px 22px",
+};
+
+/**
+ * 右上角那颗**关闭**的叉叉（1.12.13）：浮在壁纸上，不占一行标题。
+ * 这一台手机是「被翻开」的，关掉就走——所以是叉叉，不是返回箭头。
+ */
+const homeCloseStyle: CSSProperties = {
+  position: "absolute",
+  top: "calc(var(--safe-area-top, 0px) + var(--sim-status-h, 0px) + 8px)",
+  right: 14,
+  width: 32,
+  height: 32,
+  zIndex: 3,
+  borderRadius: 999,
   border: "none",
-  background: "transparent",
-  cursor: "pointer",
-  fontFamily: SANS,
-  color: T.ink,
-};
-
-const rowIconStyle: CSSProperties = {
-  width: 30,
-  height: 30,
-  flexShrink: 0,
-  borderRadius: 10,
-  background: T.pinkSoft,
+  background: "rgba(17,17,17,.06)",
+  color: "rgba(23,23,26,.72)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
+  cursor: "pointer",
+  padding: 0,
 };
 
-const sectionHeadStyle: CSSProperties = {
+/**
+ * 应用网格：**照主屏 `GridLayout` 的真值**（1.12.12）——4 栏 × 6 排、格位 66px、
+ * 横 gap 20、竖 gap 3、行高 `minmax(0,1fr)` 均分铺满，图标在格子里居中。
+ * 网格里只放「不属于 Dock」的应用；他眼下那一枚属于 Dock，所以这里是空的。
+ */
+const homeGridStyle: CSSProperties = {
+  position: "relative",
+  flex: 1,
+  minHeight: 0,
+  /* 顶上那条标题行撤了（1.12.13），所以让开系统状态栏这件事挪到网格自己身上
+     ——与主屏那层容器的 `pt-[calc(safe-area-top + sim-status-h + 6px)]` 同值。 */
+  paddingTop: "calc(var(--safe-area-top, 0px) + var(--sim-status-h, 0px) + 6px)",
+  display: "grid",
+  gridTemplateColumns: "repeat(4, 66px)",
+  gridTemplateRows: "repeat(6, minmax(0, 1fr))",
+  columnGap: 20,
+  rowGap: 3,
+  justifyContent: "center",
+};
+
+/** 翻页小点那一条（主屏在 Dock 上方留的那道）。他只有一页，就一枚。 */
+const homeDotsStyle: CSSProperties = {
+  flexShrink: 0,
+  position: "relative",
   display: "flex",
-  alignItems: "baseline",
+  alignItems: "center",
+  justifyContent: "center",
   gap: 8,
-  margin: "22px 0 8px",
+  marginBottom: 12,
+};
+
+const homeDotStyle: CSSProperties = {
+  width: 16,
+  height: 6,
+  borderRadius: 999,
+  background: "rgba(23,23,26,.45)",
+};
+
+/**
+ * 底部 Dock：**照主屏 `Dock` 的真值**（1.12.12）——宽度公式 格位×数量 ＋ 间距×(数量−1) ＋ 30、
+ * 高 92、圆角 32、格位 66／间距 20、居中悬浮。
+ * **格位留 4 个**（1.12.14，恩熙：「下面的格子依旧要让它是 4 个，只不过其他按钮还没做进去」）
+ * ＝66×4 ＋ 20×3 ＋ 30 ＝ 354px，跟主屏一样宽；眼下只第一格停着应用，其余空着占位。
+ * 材质用主屏那块玻璃同值；配色按恩熙定的走黑白灰。
+ */
+const homeDockStyle: CSSProperties = {
+  flexShrink: 0,
+  alignSelf: "center",
+  width: "min(354px, calc(100% - 8px))",
+  minHeight: 92,
+  borderRadius: 32,
+  display: "grid",
+  gridTemplateColumns: "repeat(4, 66px)",
+  columnGap: 20,
+  justifyContent: "center",
+  alignItems: "center",
+  marginBottom: "calc(var(--safe-area-bottom, 0px) + 10px)",
+  background: "rgba(255,255,255,.35)",
+  border: "1px solid rgba(255,255,255,.4)",
+  boxShadow: "0 8px 30px rgba(23,23,26,.10), inset 0 1px 0 rgba(255,255,255,.55)",
+  transform: "translateZ(0)",
+  WebkitBackdropFilter: "blur(24px) saturate(160%)",
+  backdropFilter: "blur(24px) saturate(160%)",
+};
+
+/**
+ * 应用图标方块：**照主屏那颗**（58×58、圆角 16、淡底 ＋ 内描边 1px ＋ 一道斜高光、
+ * 线描图标 26／1.75）——只是把主屏那支紫换成中性灰黑（黑白灰）。
+ * Dock 里的图标**不挂名字**，跟主屏 Dock 一个规矩。
+ */
+const appTileStyle: CSSProperties = {
+  position: "relative",
+  width: 58,
+  height: 58,
+  borderRadius: 16,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  overflow: "hidden",
+  border: "none",
+  padding: 0,
+  cursor: "pointer",
+  background: "rgba(17,17,17,.05)",
+  boxShadow: "inset 0 0 0 1px rgba(17,17,17,.14), 0 1px 4px rgba(17,17,17,.03)",
+  color: "#2B2B2F",
+};
+
+/** 图标上那道斜高光（主屏同款：从左上角淡下去）。 */
+const appGlossStyle: CSSProperties = {
+  position: "absolute",
+  inset: 0,
+  borderRadius: 16,
+  background: "linear-gradient(160deg, rgba(255,255,255,.5) 0%, rgba(255,255,255,0) 55%)",
+  pointerEvents: "none",
 };
 
 const footNoteStyle: CSSProperties = {
