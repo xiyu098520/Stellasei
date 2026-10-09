@@ -14,7 +14,7 @@
 import { kvGet, kvSet } from "@/lib/db/idb";
 import { uuid } from "@/lib/uuid";
 import { DEFAULT_MASK_ID, ensureMasks } from "@/lib/settings/mask";
-import { createArchive, getArchives, saveArchive, EMPTY_PROFILE, isAssistantOff } from "@/lib/settings/contact";
+import { getArchives, saveArchive } from "@/lib/settings/contact";
 import {
   DEFAULT_API_SETTINGS,
   DEFAULT_IMAGE_EXTRAS,
@@ -616,25 +616,21 @@ export async function markConversationRead(
 
 /**
  * 确保内置 AI 助手就位（打开聊天 App 时调用一次）：
- * - **没删过**助手、而档案库里又没有「助手模式」档案 → 自动建一个（星绥）；
- * - 已有档案还是更早的旧默认（星绥助手／私人 AI 助手）→ 自动升级成新默认；
+ * - 档案库里已有「助手模式」档案、还是更早的旧默认（星绥助手／私人 AI 助手）→ 自动升级成新默认；
  * - 每个已建面具没跟助手绑定 → 自动建立绑定（建一条空会话）。
- * 助手由此开箱即用地躺在每个面具的通讯人列表里，想用就直接找它聊，不想用就不理。
  *
- * ⚠️ 原写法分不清「从没建过」和「自己删的」：助手档案删了、下次开聊天 App 又被补回来，
- * 像永远删不掉——前者该建，后者不该再冒出来。现在靠 `isAssistantOff()` 那枚
- * 辞退标记分界（删除时落下、重新打开某张档案的助手模式即清掉；**1.4.16 起
- * 关掉最后一张助手档案的开关同样落标记**——不然关一次开关、下次进聊天又自动
- * 补一个，跟删了又蹦是同一种乱象）。
+ * **1.12.33 起不再「开箱即用」**：全新手机（档案库里一张助手档案都没有）不再自动
+ * 预置默认助手星绥——想要的话，自己到档案里开启「AI 助手模式」即可，之后照旧自动升级
+ * 默认值、补面具绑定。这样「全新没助手」和「自己删了助手」终于是同一个结果，
+ * 省掉了原先靠辞退标记区分「从没建过／亲手删掉」的那套绕法。
  * 「删除好友」仍是假删／真删会话，档案不动，不走这条路。
  */
 export async function ensureAssistant(): Promise<void> {
   const archives = await getArchives();
   const found = archives.filter((a) => a.data.isAssistant === true);
-  /* 档案库里一个助手都没有、而那枚辞退标记又立着 → 是亲手删的，**别再长出来**。
-     （标记只拦「重建」：万一还留着另一张助手档案，升级默认值、补面具绑定这些
-     正事照旧要办，所以判据是「没有 ＋ 被辞退」而不是单看标记。） */
-  if (found.length === 0 && (await isAssistantOff())) return;
+  /* 一张助手档案都没有 → 直接收工，不再自动创建。 */
+  if (found.length === 0) return;
+  const assistant = found[0];
   /* 所有助手档案都升级旧默认值（防删建历史留下多个），只认旧默认值——
      名字／职业被用户自己改过的，一个字不动。 */
   for (const a of found) {
@@ -647,16 +643,6 @@ export async function ensureAssistant(): Promise<void> {
         ...(d.labels === "助手" ? { labels: "" } : {}),
       });
     }
-  }
-  let assistant = found[0];
-  if (!assistant) {
-    assistant = await createArchive();
-    await saveArchive(assistant.id, {
-      ...EMPTY_PROFILE,
-      name: "星绥",
-      nickname: "小绥",
-      isAssistant: true,
-    });
   }
   const [masks, convs] = await Promise.all([ensureMasks(), getConversations()]);
   for (const m of masks) {
