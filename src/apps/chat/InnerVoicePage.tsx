@@ -42,8 +42,8 @@ const TONE = {
 /** 宋体（思源宋）：这一页的骨——标题、页签、竖签、英文小标、脚注。 */
 const FP = "var(--font-serif-sc), 'Songti SC', 'STSong', 'SimSun', Georgia, serif";
 
-/** 正文那一支（朱雀仿宋，只有 400 一档）：成句要读的字全归它。 */
-const FK = "'Zhuque Fangsong', 'FangSong', 'STFangsong', 'Songti SC', Georgia, serif";
+/** 正文那一支（仿宋）：成句要读的字全归它。系统仿宋（iOS 自带，零下载、零闪）。 */
+const FK = "'FangSong', 'STFangsong', 'Songti SC', Georgia, serif";
 
 /** 英文衬线（Playfair）：数字、小标、时间与序号用它，自带真斜体面。 */
 const FE = "var(--font-playfair), Georgia, 'Songti SC', serif";

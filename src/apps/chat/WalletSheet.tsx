@@ -17,11 +17,9 @@ import type { CSSProperties, ReactNode } from "react";
 import { X } from "lucide-react";
 import { SANS, T } from "./shared";
 
-/** 标题书写体：霞鹜文楷（自托管，见 src/app/lxgw-wenkai.css）。
- *  ⚠️ 它只有 400／500 两个字重，别再往上加——多出来的字重是浏览器
- *  合成出来的描边，笔锋会被糊平。 */
+/** 标题书写体：系统楷体（零下载、零闪）。 */
 export const WALLET_TITLE =
-  "'LXGW WenKai GB', 'Kaiti SC', 'STKaiti', 'KaiTi', 'Songti SC', Georgia, serif";
+  "'Kaiti SC', 'STKaiti', 'KaiTi', 'Songti SC', Georgia, serif";
 
 /** 账目上的数字一律等宽（金额、尾号），像打上去的。 */
 export const WALLET_MONO = "var(--font-mono), ui-monospace, Menlo, monospace";

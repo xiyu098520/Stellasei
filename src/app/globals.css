@@ -79,11 +79,10 @@
   /* 英文刊头用的衬线；中文宋体走系统字体棧，零加载成本。 */
   --font-serif: var(--font-playfair), Georgia, "Songti SC", "SimSun", serif;
   --font-song: "Songti SC", "STSong", "SimSun", Georgia, serif;
-  /* 塔罗牌面上那一版字——不跟全 App 的通用宋体走：--font-serif 摆金线牌面上像一张文档，
-     霞鹜文楷太可爱，牌面用志莽行（手写行书、笔收着，牌上十几像素的小字既认得出、
-     又不是印刷体的味道）。
-     末尾那条 var(--font-serif-sc) 是兜底：志莽行缺哪个字，掉回思源宋，不许掉回系统默认。 */
-  --font-arcana: "Zhi Mang Xing", var(--font-serif-sc), Georgia, serif;
+  /* 塔罗牌面上那一版字——原先用自托管「志莽行」手写行书，但它走 font-display:swap，
+     冷启动必闪一下。现改用系统行楷／楷体（iOS 自带，零下载、零闪）。 */
+  --font-arcana: "Xingkai SC", "STXingkai", "Kaiti SC", "STKaiti", "KaiTi",
+    "Songti SC", Georgia, serif;
 }
 
 /* 页面永远不该有文档级滚动（手机壳内部各区自理）。锁死所有设备、不只触屏。

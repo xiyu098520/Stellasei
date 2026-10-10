@@ -1,12 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Playfair_Display, Noto_Serif_SC } from "next/font/google";
+// 原三支自托管中文字体（霞鹜文楷／志莽行／朱雀仿宋）走 font-display:swap，
+// 冷启动必闪一下；已全部改用系统相近字体（楷体／行楷／仿宋），零下载、零闪。
 import "./globals.css";
-// 霞鹜文楷（自托管、按码点分块）：记忆 App 的标题字体，见文件内注释。
-import "./lxgw-wenkai.css";
-// 志莽行（同样自托管、按码点分块）：世界书牌面上书名那一版手写行书，见文件内注释。
-import "./zhi-mang-xing.css";
-// 朱雀仿宋（同样自托管、按码点分块）：私密心声那一页说心声用的字，见文件内注释。
-import "./zhuque-fangsong.css";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
