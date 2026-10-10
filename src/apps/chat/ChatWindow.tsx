@@ -58,6 +58,7 @@ import {
   markConversationRead,
   offlineMemoryRoundsOf,
   offlineWordsOf,
+  subscribeCharChatSettings,
   updateConversation,
   updateMessage,
   type ConversationPatch,
@@ -3735,6 +3736,11 @@ export default function ChatWindow({
      挂着的聊天窗不自己回去拉，就会停进「TA 明明说话了、屏幕上却是空的」。
      订阅一声就重拉一次，TA 那句问候当场上屏。 */
   useEffect(() => subscribeSocialAppend(() => void refreshConv()), [refreshConv]);
+
+  /* 角色级设置在资料页被改（尤其换参考图）时的那一铃：本窗常驻挂载、conv 进场后不再回读，
+     不订阅就会一直捧着旧引用——传完新图回来生图仍报「参考图读不出数据」，非重启不可。
+     订阅一声就重拉，让新参考图当场进 conv。 */
+  useEffect(() => subscribeCharChatSettings(() => void refreshConv()), [refreshConv]);
 
   /* 拉黑／解除要像正常开关：点了立刻生效（状态＋系统提示先落库、先刷屏），
      TA 的第一反应走一次文本 API、在后台慢慢写，落库完再刷一屏把话冒出来——开关不等它。 */
