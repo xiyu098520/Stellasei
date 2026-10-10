@@ -51,10 +51,9 @@ export const SANS =
 
 /** 中文宋体（旧板 C 那一套还在用，留住）。 */
 export const SERIF = "var(--font-serif-sc), 'Songti SC', Georgia, serif";
-/** 中文楷体（霞鹜文楷 GB，站内自托管）。自带笔锋，用在红封套这种中式卡面上。
- *  该字库只带 300／400／500 三档——写 600 会被浏览器合成描边、把笔锋糊平，字重别往上加。 */
+/** 中文楷体（系统楷体，零下载、零闪）。自带笔锋，用在红封套这种中式卡面上。 */
 export const KAI =
-  "'LXGW WenKai GB', 'Kaiti SC', 'STKaiti', 'KaiTi', 'Songti SC', Georgia, serif";
+  "'Kaiti SC', 'STKaiti', 'KaiTi', 'Songti SC', Georgia, serif";
 
 /** 英文装饰衬线（斜体小字：messages / pinned / lucky money…）。 */
 export const EN = "var(--font-playfair), Georgia, serif";

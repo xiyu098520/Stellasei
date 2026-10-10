@@ -103,12 +103,8 @@ const OFFSET_SHADOW = "3px 3px 0 rgba(27,25,24,.06)";
 
 const SERIF = "'Songti SC', Georgia, serif";
 /** 标题：书写体——笔画有起有收、横画微仰，像编者亲手写在卡片上的，不是活字砖块。
- *  首选霞鹜文楷（自托管分块，见 src/app/lxgw-wenkai.css），标题一律用它的 500
- *  （Medium）：再细一档（400）就没有笔锋了；
- *  ⚠️ 不要再往上加到 600/700：霞鹜文楷只有 400/500 两个字重，超出的字重浏览器会
- *  合成加粗（描边），反而把笔锋糊平。
- *  后面几个系统楷体只在字体块下载完成前兜底。 */
-const TITLE = "'LXGW WenKai GB', 'Kaiti SC', 'STKaiti', 'KaiTi', 'Songti SC', Georgia, serif";
+ *  走系统楷体（iOS 自带，零下载、零闪）。 */
+const TITLE = "'Kaiti SC', 'STKaiti', 'KaiTi', 'Songti SC', Georgia, serif";
 const EN = "var(--font-playfair), Georgia, serif";
 /** 编目数字（日期戳、编号、计数）一律等宽，像打上去的。 */
 const MONO = "var(--font-mono), ui-monospace, Menlo, monospace";
