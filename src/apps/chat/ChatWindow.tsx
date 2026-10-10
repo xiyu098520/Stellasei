@@ -787,6 +787,14 @@ export default function ChatWindow({
 
   const rootRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
+  /* 消息区里那一层「内容」：单独包一层，是为了能挂 ResizeObserver 盯住它的高度。
+     盯 main 没用——main 是定高的滚动容器，内容长高它自己不涨；盯这一层才收得到
+     「内容变高了」这件事（图片刚从仓库取出来、换掉骨架，或又落了一条消息）。 */
+  const contentRef = useRef<HTMLDivElement>(null);
+  /* 是否「贴底」：进门默认贴底；用户往上翻（离底超过一屏的余量）就关掉，
+     自己滑回底部附近再打开。内容长高时只在这个开关为真时才重钉底，
+     这样她翻看旧消息时不会有东西把她拽回最新那条。 */
+  const stickRef = useRef(true);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   /* 选图用的隐藏输入（加号面板里的「发送图片」点它，见 sendPickedImage）。 */
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -1004,6 +1012,8 @@ export default function ChatWindow({
     if (!loaded || !visible) return;
     const el = bodyRef.current;
     if (!el) return;
+    /* 进门一律回到「贴底」状态——从列表翻回来时她多半是想看最新那条。 */
+    stickRef.current = true;
     const pin = () => {
       el.scrollTop = el.scrollHeight;
     };
@@ -1024,6 +1034,31 @@ export default function ChatWindow({
       cancelAnimationFrame(raf2);
     };
   }, [loaded, visible]);
+
+  /* 滚动时维护「贴底」开关：离底 80px 以内算贴底，往上一翻就关掉。
+     只在用户真的滚动时算，不常驻跑 rAF（那正是手机发烫的来源之一）。 */
+  const onBodyScroll = useCallback(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }, []);
+
+  /* 内容长高就重钉底——这是「进门停在中上、得自己往下滑」的正解。
+     进门那一帧 pin 完之后，图片是**随后**才从仓库取出来换成真图的（骨架换成图、
+     高度变了），又或者流式气泡、正在输入那行接着冒出来把内容顶高；这些高出来的部分
+     进门时都还不存在，pin 一次钉不住，随即的 2 拍 rAF 也等不到它们。
+     用 ResizeObserver 盯住内容层：只要它变高、且此刻处于「贴底」状态，就重新钉到最底。
+     stickRef 为假（她正往上翻着看）时不钉——不能把她拽回来。 */
+  useEffect(() => {
+    const content = contentRef.current;
+    const el = bodyRef.current;
+    if (!content || !el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      if (stickRef.current) el.scrollTop = el.scrollHeight;
+    });
+    ro.observe(content);
+    return () => ro.disconnect();
+  }, []);
 
   /* 加载更早的消息：只把**上屏条数**往上推一格，消息本身一条都没动。
      推完要把视口钉住：新增的那些全在上头，不钉的话内容整体下坠，她正看着的那行会跑掉。
@@ -5776,12 +5811,16 @@ export default function ChatWindow({
           overscrollBehavior: "none",
           padding: "10px 0 16px",
         }}
+        onScroll={onBodyScroll}
         onClick={() => {
           setShowPlus(false);
           setShowImageSource(false);
           setShowSheet(false);
         }}
       >
+        {/* 内容层：纯粹为了给 ResizeObserver 一个可观察的盒子（见上面的贴底效应），
+            本身不带任何样式，布局与原先直接把消息铺在 main 里一模一样。 */}
+        <div ref={contentRef}>
         {loaded && messages.length === 0 ? (
           <div
             style={{
@@ -5954,6 +5993,7 @@ export default function ChatWindow({
             </span>
           </div>
         ) : null}
+        </div>
       </main>
 
       {/* 底部输入条：实底**墨色**，跟顶栏一头一尾、中间留浅。
