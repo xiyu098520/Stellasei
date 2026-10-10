@@ -323,6 +323,25 @@ function applyCharSettings(c: Conversation, s: CharacterChatSettings | undefined
   };
 }
 
+/* 角色设置变更的「铃」：个别 API／语音参数／生图参考图都是**角色级**的，写入口在
+   通讯录的资料页（CharacterSettingsPanel → updateCharChatSettings）。可聊天窗口是
+   **常驻挂载**的（退回只是 display:none，见 ChatApp），它的 conv 只在进场那一刻读一次；
+   资料页在别处把设置改掉，挂着的聊天窗没人告诉它，就会一直捧着进场时那份旧值——
+   典型表现：换完参考图回聊天室生图，仍报「参考图读不出数据」，非把 App 整个重启才生效。
+   聊天窗订阅它，落完库自己回去重拉一次（与 social.ts 的 subscribeSocialAppend 同一套路）。 */
+const charSettingsListeners = new Set<() => void>();
+
+export function subscribeCharChatSettings(cb: () => void): () => void {
+  charSettingsListeners.add(cb);
+  return () => {
+    charSettingsListeners.delete(cb);
+  };
+}
+
+function notifyCharChatSettings(): void {
+  for (const cb of charSettingsListeners) cb();
+}
+
 /** 写某角色的角色级设置（只收这三样；显式传 `undefined` ＝ 清掉那一项）。 */
 export async function updateCharChatSettings(
   characterId: string,
@@ -333,6 +352,8 @@ export async function updateCharChatSettings(
   for (const k of CHAR_LEVEL_KEYS) if (next[k] === undefined) delete next[k];
   all[characterId] = next;
   await kvSet(CHAR_SETTINGS_KEY, all);
+  /* 落库完再摇铃：挂着的聊天窗据此重拉 conv，新参考图当场生效，不必重启。 */
+  notifyCharChatSettings();
   return next;
 }
 
