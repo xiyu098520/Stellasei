@@ -89,11 +89,6 @@ import type { ChatMessage } from "@/types/chat";
 /** 关键词扫描深度：最近几条消息参与命中判定。 */
 const SCAN_DEPTH = 6;
 
-/** 正则转义：用户名可能含正则元字符，拼进 RegExp 前先转义（用户签名取值行要用）。 */
-function escapeRe(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 /** 在「已经发出去／回喂过的原文」里，找某条取值行最后一次写的值。
     找不到（从没说过、或那条被裁掉了）返回 undefined——调用方据此判断
     「他是不是早知道了」：一样就不再念；对不上（或被裁）就自愈再念一次。 */
@@ -331,18 +326,6 @@ function buildSignatureLine(
   return `你的当前签名是：「${cur}」。`;
 }
 
-/** 用户签名取值行（「我」页面随时可改，和 TA 签名同一条规矩）：
-    只在改过、新值还没说过时说一次；没设签名（或值没变）时回空串，整行不注入。 */
-function buildUserSignatureLine(
-  userName: string,
-  signature: string | undefined,
-  announced: string | undefined,
-): string {
-  const s = signature?.trim();
-  if (!s || s === announced) return "";
-  return `${userName}的当前签名是：「${s}」。`;
-}
-
 /**
  * TA 手头零钱 ＋ 最近几笔（1.4.36／1.11.70／1.12.4）。
  *
@@ -401,13 +384,20 @@ function buildUserMaskBlock(
   userName: string,
   charName: string,
   mask: { persona: string; gender: string; birth: string; extra: string } | null | undefined,
+  signature?: string,
 ): string {
-  if (!mask) return "";
+  /* 1.12.39（恩熙：「我改了个签名，朋友就算看到了，也不会把这个当做什么去问候我」）：
+     用户签名从「瞬时区播报」并进这块档案，当一行普通背景——他知道你现在的签名，
+     但没有任何「它刚变了」的信号递到眼前，就不会一更新就拿它当由头。
+     没面具、但写过签名时，这块也单独立起来（只一行签名），别把「知道你」丢了。 */
+  const sig = signature?.trim() ?? "";
+  if (!mask && !sig) return "";
   const rows: [string, string][] = [
-    ["性别", mask.gender],
-    ["生日", mask.birth ? formatBirth(mask.birth) : ""],
-    ["人设", mask.persona],
-    ["补充", mask.extra],
+    ["性别", mask?.gender ?? ""],
+    ["生日", mask?.birth ? formatBirth(mask.birth) : ""],
+    ["人设", mask?.persona ?? ""],
+    ["补充", mask?.extra ?? ""],
+    ["签名", sig],
   ];
   const lines = rows
     .filter(([, v]) => v && v.trim())
@@ -591,7 +581,8 @@ export function buildPrompt(input: {
   userMask?: { persona: string; gender: string; birth: string; extra: string } | null;
   /** TA 的当前签名（会话层动态签名；TA 可在回复末尾附〔签名〕标记更新）。 */
   currentSignature?: string;
-  /** 用户的当前签名（「我」页面那句；随时可改，只进易变区一行，不进稳定区）。 */
+  /** 用户的当前签名（「我」页面那句；随时可改）。1.12.39 起并进稳定区
+   *  【对方·档案】当背景一行——他知道你现在的签名，但不做瞬时播报。 */
   userSignature?: string;
   /**
    * TA 手头的零钱（分；1.4.36）。他要在读人设之外知道「自己有多少钱可花」，
@@ -641,17 +632,15 @@ export function buildPrompt(input: {
   const recent = dialogue.slice(-SCAN_DEPTH).map((m) => m.content);
   const scanText = [...recent, userInput].join("\n");
 
-  /* 1.11.70：签名／用户签名「该说才说」的判据——扫**回喂出去的原文**
-     （apiText 优先；挂最末段的那两行就写在它里边），拿上一次说过的值与现值比：
-     一样＝他早知道、不再念；对不上、或从没说过（那条被裁了也算）＝说一次（自愈）。
+  /* 1.11.70：角色签名「该说才说」的判据——扫**回喂出去的原文**（apiText 优先；
+     挂最末段的那行就写在它里边），拿上一次说过的值与现值比：一样＝他早知道、
+     不再念；对不上、或从没说过（那条被裁了也算）＝说一次（自愈）。
      零钱不走这个判据：它不靠原文记着（账本每轮在手边）——1.12.4 起**常驻**，
-     不再等「聊到钱」才露面（恩熙：这是他自己在用的手机，账他本人当然知道）。 */
+     不再等「聊到钱」才露面（恩熙：这是他自己在用的手机，账他本人当然知道）。
+     1.12.39：**用户签名**不再走这套瞬时播报（改并进稳定区【对方·档案】当背景，
+     见 buildUserMaskBlock）——恩熙嫌它一更新就被拿来当由头问候，太刻意。 */
   const announcedTexts = dialogue.map((m) => m.apiText ?? m.content);
   const announcedSig = lastAnnounced(announcedTexts, /你的当前签名是：「([^」]*)」/);
-  const announcedUserSig = lastAnnounced(
-    announcedTexts,
-    new RegExp(`${escapeRe(userName)}的当前签名是：「([^」]*)」`),
-  );
 
   // 过滤书：scope 匹配模式 ＋ 绑定匹配（角色与「世界」取并集：绑了角色或所在世界，这本书都算数）。
   const usableBooks = books.filter((b) => {
@@ -700,7 +689,7 @@ export function buildPrompt(input: {
      稳定区排在缓存断点之前，只放逐字不变的纯静态内容；会变的一律排在断点之后。 */
   const stableSections: PromptSection[] = [
     // 我方身份前置（学 miya：用户人设在前、角色档案在后）。
-    { label: "对方档案", content: buildUserMaskBlock(userName, charName, input.userMask) },
+    { label: "对方档案", content: buildUserMaskBlock(userName, charName, input.userMask, input.userSignature) },
     // 世界书常驻条目＝设定里的「世界法则」，跨轮一字不变，留在断点之前。
     {
       label: "世界法则（角色前·常驻）",
@@ -737,10 +726,11 @@ export function buildPrompt(input: {
     ...buildRuleBlock(),
   ];
   const volatileSections: PromptSection[] = [
-    /* 1.11.70：签名／用户签名／零钱三行从这儿搬去了下面的瞬时区（最末段）——
+    /* 1.11.70：角色签名／零钱两行从这儿搬去了下面的瞬时区（最末段）——
        它们本就只在「改过／聊到」时说一嘴。挂最末段会随这轮 user 原文写进 apiText，
        下一轮回喂扫得到、等于进了聊天原文；留在易变区则只进 system，回喂扫不到，
-       每轮都当「没说」又念一遍，跟「改了才说」的初衷反着。 */
+       每轮都当「没说」又念一遍，跟「改了才说」的初衷反着。
+       （1.12.39：用户签名不再走瞬时区，并进稳定区【对方·档案】当背景。） */
     /* 我发的朋友圈里**他有权看的那几条**（1.10.27）：可见范围真的在这儿生效——
        「仅自己可见」与「部分可见里没他」的，一律不进这一格，他读不到就提不起。
        每条内容会变（她随时发新的），与上一格同理挂易变区；空串时整块消失。 */
@@ -787,11 +777,11 @@ export function buildPrompt(input: {
   ];
   /* 瞬时区（1.11.69）：每轮必变的最末一截。此刻时间（时间感知开着时才有）——
      它紧贴她这一轮的话，永远是新内容、读不到缓存，只能付全价；这是应该的。
-     1.11.70：签名／用户签名／零钱三行「该说才说」的取值也从易变区挪到这儿——
-     判据见上面 announcedTexts；签名两行全空时只剩零钱那一行（1.12.4 起它常驻）。 */
+     1.11.70：角色签名／零钱两行「该说才说」的取值也从易变区挪到这儿——
+     判据见上面 announcedTexts；签名那行空时只剩零钱那一行（1.12.4 起它常驻）。
+     1.12.39：用户签名不再走瞬时区（挪去稳定区当背景，见 buildUserMaskBlock）。 */
   const dynamicFacts = [
     buildSignatureLine(input.currentSignature, announcedSig),
-    buildUserSignatureLine(userName, input.userSignature, announcedUserSig),
     buildWalletLine(input.walletBalance, input.walletRecent),
   ]
     .filter(Boolean)
@@ -802,7 +792,7 @@ export function buildPrompt(input: {
   const ephemeralSections: PromptSection[] = [
     { label: "当前状态", content: input.timeAware ? buildStatusBlock(mode, history) : "" },
     {
-      label: "签名·用户签名·零钱·当前取值",
+      label: "签名·零钱·当前取值",
       content: dynamicFacts ? `${VOLATILE_HEADER}\n${dynamicFacts}` : "",
     },
   ];
