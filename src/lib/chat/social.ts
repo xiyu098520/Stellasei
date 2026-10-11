@@ -17,6 +17,7 @@ import {
   deleteConversation,
   getApiBundle,
   getChatPrefs,
+  getConversationMessages,
   getOrCreateConversation,
   proactiveBaseMinOf,
   updateConversation,
@@ -147,7 +148,7 @@ async function buildSocialContext(
   /* 本轮真正当「刚发来的那条」的内容：问候＝对方的申请附言；其余社交反应＝任务指令。 */
   const turnInput = (turn?.userInput ?? "").trim() || instruction;
   /* 与 ChatWindow 同一趟齐活：世界书、每聊天设置、面具、TA 的零钱（顺带按人设开户）、记忆。 */
-  const [books, prefs, masks, apiBundle, memory, taWallet] = await Promise.all([
+  const [books, prefs, masks, apiBundle, memory, taWallet, history] = await Promise.all([
     getWorldBooks(),
     getChatPrefs(),
     getMasks(),
@@ -156,13 +157,17 @@ async function buildSocialContext(
     openContactAccountIfEmpty({ ownerId: character.id, profile: d })
       .then((r) => r.balance)
       .catch(() => getBalance(character.id, "contact")),
+    /* 社交反应要的是**完整对话历史**。会话列表拿到的 conv 只在 messages 里挂了最近一条、
+       朋友圈那边更是从列表取 conv——一律不便携完整历史。这里直接按会话把全量读出来
+       （只读这一个会话），凑上下文不缺口，也不必让每个调用方各自备齐。 */
+    getConversationMessages(character.id, maskId),
   ]);
   const globalApi = apiBundle.text;
   const mask = masks.find((m) => m.id === maskId) ?? getCurrentMask(masks);
   const myName = (mask?.name ?? "").trim() || userName.trim() || "我";
   const bubbleCap = bubbleCapOf(conv);
   /* 记忆模块统一出口：原文窗口＋记忆块一处算出（社交反应与线上同口径）。 */
-  const { trimmedHistory, memoryBlock } = await buildInjection(conv.messages, memory, myName);
+  const { trimmedHistory, memoryBlock } = await buildInjection(history, memory, myName);
   const built = buildPrompt({
     characterId: character.id,
     /* 他住的「世界」（档案分类）：世界书绑了世界时按它判命中。 */
@@ -170,7 +175,7 @@ async function buildSocialContext(
     profile: d,
     books,
     mode: "online",
-    history: conv.messages,
+    history,
     userInput: turnInput,
     userName: myName,
     userMask: mask,

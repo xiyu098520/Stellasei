@@ -39,6 +39,7 @@ import {
   clearMomentsAndSignature,
   getApiBundle,
   getConversations,
+  getConversationMessages,
   setMomentPinned,
 } from "@/lib/settings/chat";
 import { releaseImageAsset } from "@/lib/chat/media-asset";
@@ -1076,7 +1077,12 @@ export default function MemoryApp() {
         return;
       }
       const result = await forceCondense(
-        { characterId: openId.characterId, maskId: openId.maskId, messages: conv.messages },
+        {
+          characterId: openId.characterId,
+          maskId: openId.maskId,
+          /* 归总要整段对话：会话列表的 conv 只挂了最近一条，这里按会话读全量。 */
+          messages: await getConversationMessages(openId.characterId, openId.maskId),
+        },
         charName,
         "我",
         api,
@@ -1186,7 +1192,10 @@ export default function MemoryApp() {
        **线下见过面的那一场记录也要清**（1.7.39 恩熙：「在记忆里面清除了角色的记忆，
        那应该是包含线上线下的一块清」）——在 `clearConversation` 里顺手做的，
        见那里的注释；清完「见着面」那道总闸也一并放平，线上输入解锁。 */
-    for (const m of conv?.messages ?? []) releaseImageAsset(m.imageUrl);
+    /* 回收图引用要遍历**整段对话**：会话列表的 conv 只挂了最近一条，
+       这里按会话读全量（只读这一个会话），免得漏收历史消息里的图。 */
+    const msgs = await getConversationMessages(openId.characterId, openId.maskId);
+    for (const m of msgs) releaseImageAsset(m.imageUrl);
     for (const mo of conv?.moments ?? []) releaseImageAsset(mo.imageRef);
     await clearConversation(openId.characterId, openId.maskId);
     await clearMomentsAndSignature(openId.characterId, openId.maskId);

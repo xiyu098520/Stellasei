@@ -18,11 +18,13 @@
  */
 
 const DB_NAME = "stellasei-new";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const KV_STORE = "kv";
 const MESSAGES_STORE = "messages";
 /** 消息仓库里「这行属于哪个会话」的目录索引（按 convId 取一个会话的全部消息）。 */
 const MESSAGES_BY_CONV = "byConv";
+/** 复合索引 `[convId, seq]`：反向游标一步就能取到「某会话最近一条」（治读用）。 */
+const MESSAGES_BY_CONV_SEQ = "byConvSeq";
 
 /**
  * 消息仓库里一行记录的公共骨架：任何一条消息落库时都带上
@@ -56,12 +58,21 @@ function openDb(): Promise<IDBDatabase> {
           // 键值库：每笔 { key, value }，value 可以是任意结构化数据（含 Blob）。
           db.createObjectStore(KV_STORE, { keyPath: "key" });
         }
-        if (!db.objectStoreNames.contains(MESSAGES_STORE)) {
-          // 消息库：一条消息一行（keyPath = id），另有 byConv 索引按会话取。
-          const messages = db.createObjectStore(MESSAGES_STORE, {
-            keyPath: "id",
-          });
+
+        /* 消息库：一条消息一行（keyPath = id）。注意要拿到「已存在的仓库」
+           （升级时它已在库里），不能只在「新建」分支里建索引——v2→v3 就是
+           在既有仓库上补 byConvSeq 这条复合索引。 */
+        const messages = db.objectStoreNames.contains(MESSAGES_STORE)
+          ? request.transaction!.objectStore(MESSAGES_STORE)
+          : db.createObjectStore(MESSAGES_STORE, { keyPath: "id" });
+        if (!messages.indexNames.contains(MESSAGES_BY_CONV)) {
           messages.createIndex(MESSAGES_BY_CONV, "convId", { unique: false });
+        }
+        if (!messages.indexNames.contains(MESSAGES_BY_CONV_SEQ)) {
+          /* 复合索引 [convId, seq]：同一会话内按 seq 排序，反向游标一步取最近一条。 */
+          messages.createIndex(MESSAGES_BY_CONV_SEQ, ["convId", "seq"], {
+            unique: false,
+          });
         }
       };
 
@@ -254,6 +265,41 @@ export async function msgGetByConv<T extends MessageRow>(
 ): Promise<T[]> {
   return runStoreTx<T[]>(MESSAGES_STORE, "readonly", (store) =>
     store.index(MESSAGES_BY_CONV).getAll(convId) as IDBRequest<T[]>,
+  );
+}
+
+/**
+ * 取某个会话「seq 最大的一条」＝最近一条消息（会话列表预览用）。
+ *
+ * 走 byConvSeq 复合索引 + 反向游标：索引进来已按 [convId, seq] 排好，
+ * 反向游标的第一笔就是这个会话 seq 最大的那条——不用把整会话读出来再挑。
+ * 拿到第一笔随即停手（不再 continue），事务随即提交。
+ */
+export async function msgGetLastByConv<T extends MessageRow>(
+  convId: string,
+): Promise<T | undefined> {
+  return openDb().then(
+    (db) =>
+      new Promise<T | undefined>((resolve, reject) => {
+        const tx = db.transaction(MESSAGES_STORE, "readonly");
+        const range = IDBKeyRange.bound([convId], [convId, Infinity]);
+        const request = tx
+          .objectStore(MESSAGES_STORE)
+          .index(MESSAGES_BY_CONV_SEQ)
+          .openCursor(range, "prev");
+        let result: T | undefined;
+        let done = false;
+        request.onsuccess = () => {
+          const cursor = request.result;
+          if (!cursor || done) return;
+          done = true;
+          result = cursor.value as T;
+        };
+        request.onerror = () => reject(request.error);
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(txAbortError(tx, "IndexedDB 事务"));
+        tx.oncomplete = () => resolve(result);
+      }),
   );
 }
 
