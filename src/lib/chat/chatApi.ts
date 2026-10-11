@@ -2290,11 +2290,16 @@ function resolveGenderKey(gender: string): "male" | "female" | "" {
  * ⚠️ **1.12.43（恩熙：「就是皮肤粗糙」「我虽然想要真实照片的质感，但是磨皮还是要有的」
  * 「稍微有点二次元写实风格」）**：1.12.40 那一版矫枉过正了——`film grain` ＋
  * `natural skin texture` 把模型推向「纪实未修图」，于是皮肤发糙、连体毛都画上了。
- * 现在回到**半写实**这一档：`masterpiece, best quality` 加回来（它只是质量加权的
- * 标签，不拉纯二次元，SD 系写实模型也吃），颗粒删掉，皮肤改成「磨过、干净、无瑕」。
+ * 现在回到**半写实**这一档：颗粒删掉，皮肤改成「磨过、干净、无瑕」。
+ *
+ * ⚠️ **1.12.44（恩熙：「现在又太二次元了，老公」）**：1.12.43 我加回来的
+ * `masterpiece, best quality` 与 `semi-realistic`，在 SD 系词表里其实是**强二次元倾向**
+ * 的标签（Danbooru 体系训练出身），等于暗地把风格又拉回了动漫。**这两个撤掉**；
+ * 质量靠 `highly detailed` 那些已经够。⚠️ 往后**每次只动一个变量**，
+ * 不再整批翻——否则只会在两个极端之间来回荡。
  * ⚠️ 画风预设**恒为空**（[types/chat.ts](file:///d:/Stellasei-New/src/types/chat.ts#L861)
  * 默认就是空串），审美全压在默认串上——它必须自己扛住「好看、像真人、但不糙」。 */
-const QUALITY_TAIL = "masterpiece, best quality, photorealistic, semi-realistic, smooth flawless skin, soft skin, attractive, refined features, highly detailed, coherent composition, natural lighting";
+const QUALITY_TAIL = "photorealistic, smooth flawless skin, soft skin, attractive, refined features, highly detailed, coherent composition, natural lighting";
 /** 负面词（**字段版**，只递给认 `negative_prompt` 的站点）。单子按「一眼看着怪」的常见
     崩坏扩过一遍：多指／粘连指／多手多脚／肢体错乱／同一张脸重复／脸崩／糊／水印签名
     文字 logo／截图／裁切边框。
@@ -2307,17 +2312,22 @@ const QUALITY_TAIL = "masterpiece, best quality, photorealistic, semi-realistic,
     heavy grain / body hair / arm hair / leg hair / chest hair / facial hair`——
     「皮肤粗糙」与「有体毛」都是负面词缺位；② 排二次元那组**放宽**：删掉
     `illustration, 2d, cel shaded, painting`（恩熙要的「二次元写实」本身就带一点理想化
-    的基因，这半边不能全压死），只留 `anime, cartoon, sketch` 防纯动漫。 */
+    的基因，这半边不能全压死），只留 `anime, cartoon, sketch` 防纯动漫。
+    ⚠️ **1.12.44**：上一轮撤得过狠，出图反弹成「太二次元」——`2d, cel shaded` **加回来**
+    （这两词最直接地打掉平面动漫感）；`illustration`／`painting` 暂不恢复，留作下一步
+    的旋钮（还偏动漫就加 `illustration`，又偏写实就撤 `2d`）。 */
 const QUALITY_NEGATIVE =
-  "lowres, worst quality, jpeg artifacts, blurry, bad anatomy, bad hands, extra fingers, fused fingers, missing fingers, extra limbs, malformed limbs, deformed face, disfigured, cloned face, duplicate face, poorly drawn face, watermark, signature, text, logo, screenshot, cropped, out of frame, border, frame, anime, cartoon, sketch, rough skin, skin blemishes, visible pores, heavy grain, body hair, arm hair, leg hair, chest hair, facial hair";
+  "lowres, worst quality, jpeg artifacts, blurry, bad anatomy, bad hands, extra fingers, fused fingers, missing fingers, extra limbs, malformed limbs, deformed face, disfigured, cloned face, duplicate face, poorly drawn face, watermark, signature, text, logo, screenshot, cropped, out of frame, border, frame, anime, cartoon, sketch, 2d, cel shaded, rough skin, skin blemishes, visible pores, heavy grain, body hair, arm hair, leg hair, chest hair, facial hair";
 /** 同一张单子的**中文正文版**，给不认 `negative_prompt` 字段的站点用（GPT 系、方舟：
     字段递了也是白递，只能把负面写成正文里的一句「画面中避免出现：…」）。
     和 QUALITY_NEGATIVE 是一套意思的两副面孔，**改一处要跟着改另一处**。
     ⚠️ **1.12.43**：同上面那串一起改——补「皮肤粗糙／毛孔／噪点／体毛」这一组，
     并把「插画感、赛璐璐上色、手绘线条」删掉（理由见上，「二次元写实」要留一点
-    理想化的余地），只留「动漫或卡通画风」防纯动漫。 */
+    理想化的余地），只留「动漫或卡通画风」防纯动漫。
+    ⚠️ **1.12.44**：同英文那串一致——「赛璐璐上色」**加回来**打掉平面动漫感；
+    「插画感、手绘线条」暂不恢复，留作旋钮。 */
 const FLAW_AVOID_TEXT =
-  "多指、手指粘连或变形、多手多脚、四肢错乱或拼接、同一张脸重复出现、五官错位或面部崩坏、画面糊成一团或细节融化、水印、签名、文字、logo、截图、裁切与相框边条、动漫或卡通画风、皮肤粗糙、毛孔粗大、噪点颗粒、皮肤瑕疵、体毛、手臂汗毛、腿毛、胸毛、胡茬";
+  "多指、手指粘连或变形、多手多脚、四肢错乱或拼接、同一张脸重复出现、五官错位或面部崩坏、画面糊成一团或细节融化、水印、签名、文字、logo、截图、裁切与相框边条、动漫或卡通画风、赛璐璐上色、皮肤粗糙、毛孔粗大、噪点颗粒、皮肤瑕疵、体毛、手臂汗毛、腿毛、胸毛、胡茬";
 
 /* 自拍路径的「设备词清洗」（1.12.42）。
    恩熙原话：「他很喜欢描述手机屏幕的光打在脸上，只要出现这个，这个手机就会出现在
