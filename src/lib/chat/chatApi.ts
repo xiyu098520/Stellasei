@@ -2303,6 +2303,43 @@ const QUALITY_NEGATIVE =
 const FLAW_AVOID_TEXT =
   "多指、手指粘连或变形、多手多脚、四肢错乱或拼接、同一张脸重复出现、五官错位或面部崩坏、画面糊成一团或细节融化、水印、签名、文字、logo、截图、裁切与相框边条、动漫或卡通画风、插画感、赛璐璐上色、手绘线条";
 
+/* 自拍路径的「设备词清洗」（1.12.42）。
+   恩熙原话：「他很喜欢描述手机屏幕的光打在脸上，只要出现这个，这个手机就会出现在
+   这个画面里」「第二视角肯定还是可以的，但是自拍视角肯定不行的」。
+   为什么不再写一条规矩：L631 那条早就写着「不许出现手机／屏幕／镜头，连『手机屏幕的
+   冷光打在脸上』都不行」——写了三回（1.12.8／1.12.9／1.12.10），TA 还是照写。长篇指令
+   里的一条禁令指望不上，所以改成程序兜底：**送进生图请求之前**把设备词换掉。
+   ⚠️ 只在**自拍路径**清洗：描述了「别人拍／镜子／自拍杆／后置／画面中不出现本人」的
+   一律原样放行——第二视角本来就要手机入镜，那是恩熙明确要保留的。
+   ⚠️ 副作用：擦掉词以后，个别句子会读着有点别扭（如「亮着的屏幕」只剩「亮着的」）。
+   宁可句子别扭，也别让手机长进画面——这是权衡后的选择。 */
+const SELFIE_PASS = /别人|帮拍|帮我拍|朋友拍|路人拍|镜子|对镜|镜中|自拍杆|后置|第二视角|画面中不出现本人/;
+
+function sanitizeSelfiePrompt(text: string): string {
+  if (SELFIE_PASS.test(text)) return text;
+  return text
+    /* 先把「设备的光」整体换成没有光源的光——手机就是这么长出来的。 */
+    .replace(
+      /(?:手机|平板电脑|平板|电脑|显示器)?屏幕(?:上|里|中)?的(?:冷光|亮光|幽光|微光|蓝光|白光|光晕|光)/g,
+      "幽冷的白光",
+    )
+    .replace(/手机的(?:冷光|亮光|幽光|微光|蓝光|白光|光晕|光)/g, "幽冷的白光")
+    /* 剩下的设备名一并抹掉：字面还在，生图模型就有由头把设备画进来。 */
+    .replace(/手机屏幕|手机|平板电脑|平板|显示器|屏幕/g, "")
+    .replace(/镜头/g, "画面")
+    /* 抹完收尾：把空出来的标点、空格捯饬一下，别把句子切碎。
+       「亮着／开着」这类句尾的状态词也一并收走（「…屏幕亮着」被擦掉设备名后会剩
+       一个孤零零的「亮着」，读着像断句）。 */
+    .replace(/[，、]\s*(?:亮着|开着|黑着|灭着)(?=[，、。；]|$)/g, "")
+    .replace(/(?:亮着|开着|黑着|灭着)的(?=[，、。；]|$)/g, "")
+    .replace(/[（(]\s*[)）]/g, "")
+    .replace(/[，、；]{2,}/g, "，")
+    .replace(/[，、]\s*(?=[，、。；])/g, "")
+    .replace(/^\s*[，、；]\s*|\s*[，、；]\s*$/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 export async function generateImage(
   api: ChatApiSettings,
   prompt: string,
@@ -2362,6 +2399,10 @@ export async function generateImage(
      官方）字段送了也白送，只能把负面词改写进正面提示词里。 */
   const negativeNative = takesNegativeField(base);
 
+  /* 画面描述先过一遍「设备词清洗」（1.12.42）：自拍路径里把「手机／屏幕／镜头」换掉，
+     第二视角与无人物放行。后面一律用这份 sceneText，不再用原始 prompt。 */
+  const sceneText = sanitizeSelfiePrompt(prompt);
+
   /* ① 身份锚指令（带参考图时的提示词） */
   const anchorPrompt = [
     /* ⚠️ 走 /images/edits 的站点（＝除了方舟、百炼以外的所有站点）拿到的其实是**改图** ｜ 详细见 docs/施工日志.md */
@@ -2399,7 +2440,7 @@ export async function generateImage(
       : "",
     genderText ? `人物性别：${genderText}。` : "",
     looksText ? `人物设定（五官与发型以参考图为准，参考图看不清的细节按这段文字补）：${looksText}` : "",
-    `这张图片的画面：${prompt.trim()}`,
+    `这张图片的画面：${sceneText.trim()}`,
     /* 末尾把身份再钉一次（「二重保险」）：开头的锁身份指令与 TA 那
        段几百字的画面描述之间隔着一长串内容（去精致感／画风／性别／人设），到收尾时
        权重已经被冲淡，所以在最后一句再核对一次——同「首尾各钉一次」的思路。 */
@@ -2413,7 +2454,7 @@ export async function generateImage(
     styleText,
     genderTags.positive,
     looksText,
-    prompt.trim(),
+    sceneText.trim(),
     /* 「不应该出现的东西」的正文版：只有**不认负面字段**的
        站点（OpenAI 官方、方舟）走这里——这两家纯文生图时负面词会被直接丢掉
        （字段被忽略、标签串里又没写）。**改成恒出**：填的词 ＋ `FLAW_AVOID_TEXT`。
@@ -2441,7 +2482,7 @@ export async function generateImage(
      （【发图片】规则要求角色本人不在画面时必须写上）。 */
   const scenePrompt = [
     styleText,
-    prompt.trim(),
+    sceneText.trim(),
     !negativeNative
       ? `画面中避免出现：${[extras.negativePrompt.trim(), FLAW_AVOID_TEXT].filter(Boolean).join("；")}`
       : "",
@@ -2461,7 +2502,7 @@ export async function generateImage(
   /* 不带参考图的串分两种：画面里有角色本人 → tagPrompt；
      画面里没有角色本人（描述里带着「画面中不出现本人」）→ scenePrompt。
      只认角色本人写下的那几个字，程序不猜；漏写就按「有本人」走，最多多带一句用不上的话。 */
-  const noPerson = prompt.includes("画面中不出现本人");
+  const noPerson = sceneText.includes("画面中不出现本人");
   let final = refs.length > 0 && !nai ? anchorPrompt : noPerson ? scenePrompt : tagPrompt;
 
   /* 含中文且开了翻译：先走文本 API 译成英文；翻译失败不阻塞生图，退回原文继续。 */
