@@ -2285,8 +2285,16 @@ function resolveGenderKey(gender: string): "male" | "female" | "" {
  * 原来那串 `masterpiece, best quality` 是 Danbooru／NovelAI 体系的画质标签，
  * SD 系模型一见就往二次元拉。而画风预设**恒为空**（[types/chat.ts](file:///d:/Stellasei-New/src/types/chat.ts#L861)
  * 默认就是空串），审美全压在默认串上——它必须自己扛住「好看且像真人」。
- * 故换成人像摄影向的串：写实质感、皮肤纹理、胶片颗粒、自然光。 */
-const QUALITY_TAIL = "photorealistic, realistic, natural skin texture, film grain, attractive, refined features, highly detailed, coherent composition, natural lighting";
+ * 故换成人像摄影向的串：写实质感、皮肤纹理、胶片颗粒、自然光。
+ *
+ * ⚠️ **1.12.43（恩熙：「就是皮肤粗糙」「我虽然想要真实照片的质感，但是磨皮还是要有的」
+ * 「稍微有点二次元写实风格」）**：1.12.40 那一版矫枉过正了——`film grain` ＋
+ * `natural skin texture` 把模型推向「纪实未修图」，于是皮肤发糙、连体毛都画上了。
+ * 现在回到**半写实**这一档：`masterpiece, best quality` 加回来（它只是质量加权的
+ * 标签，不拉纯二次元，SD 系写实模型也吃），颗粒删掉，皮肤改成「磨过、干净、无瑕」。
+ * ⚠️ 画风预设**恒为空**（[types/chat.ts](file:///d:/Stellasei-New/src/types/chat.ts#L861)
+ * 默认就是空串），审美全压在默认串上——它必须自己扛住「好看、像真人、但不糙」。 */
+const QUALITY_TAIL = "masterpiece, best quality, photorealistic, semi-realistic, smooth flawless skin, soft skin, attractive, refined features, highly detailed, coherent composition, natural lighting";
 /** 负面词（**字段版**，只递给认 `negative_prompt` 的站点）。单子按「一眼看着怪」的常见
     崩坏扩过一遍：多指／粘连指／多手多脚／肢体错乱／同一张脸重复／脸崩／糊／水印签名
     文字 logo／截图／裁切边框。
@@ -2294,14 +2302,22 @@ const QUALITY_TAIL = "photorealistic, realistic, natural skin texture, film grai
     排二次元的词就是干这个的。从前那句「只放坏了的东西、别夹审美取向的词」至此作废
     ——那是「什么算好看由画风词定」时代的规矩，画风词没人填，它就归默认串管。
     ⚠️ **1.12.40 同时删掉 `real photo`**：它字面意思是「别画照片」，与「要真人质感」
-    正好反着（老规矩「不许出现真实照片」本意是别出截图/水印，那两条留着）。 */
+    正好反着（老规矩「不许出现真实照片」本意是别出截图/水印，那两条留着）。
+    ⚠️ **1.12.43**：① 皮肤与毛发：末尾补 `rough skin / skin blemishes / visible pores /
+    heavy grain / body hair / arm hair / leg hair / chest hair / facial hair`——
+    「皮肤粗糙」与「有体毛」都是负面词缺位；② 排二次元那组**放宽**：删掉
+    `illustration, 2d, cel shaded, painting`（恩熙要的「二次元写实」本身就带一点理想化
+    的基因，这半边不能全压死），只留 `anime, cartoon, sketch` 防纯动漫。 */
 const QUALITY_NEGATIVE =
-  "lowres, worst quality, jpeg artifacts, blurry, bad anatomy, bad hands, extra fingers, fused fingers, missing fingers, extra limbs, malformed limbs, deformed face, disfigured, cloned face, duplicate face, poorly drawn face, watermark, signature, text, logo, screenshot, cropped, out of frame, border, frame, anime, cartoon, illustration, 2d, cel shaded, painting, sketch";
+  "lowres, worst quality, jpeg artifacts, blurry, bad anatomy, bad hands, extra fingers, fused fingers, missing fingers, extra limbs, malformed limbs, deformed face, disfigured, cloned face, duplicate face, poorly drawn face, watermark, signature, text, logo, screenshot, cropped, out of frame, border, frame, anime, cartoon, sketch, rough skin, skin blemishes, visible pores, heavy grain, body hair, arm hair, leg hair, chest hair, facial hair";
 /** 同一张单子的**中文正文版**，给不认 `negative_prompt` 字段的站点用（GPT 系、方舟：
     字段递了也是白递，只能把负面写成正文里的一句「画面中避免出现：…」）。
-    和 QUALITY_NEGATIVE 是一套意思的两副面孔，**改一处要跟着改另一处**。 */
+    和 QUALITY_NEGATIVE 是一套意思的两副面孔，**改一处要跟着改另一处**。
+    ⚠️ **1.12.43**：同上面那串一起改——补「皮肤粗糙／毛孔／噪点／体毛」这一组，
+    并把「插画感、赛璐璐上色、手绘线条」删掉（理由见上，「二次元写实」要留一点
+    理想化的余地），只留「动漫或卡通画风」防纯动漫。 */
 const FLAW_AVOID_TEXT =
-  "多指、手指粘连或变形、多手多脚、四肢错乱或拼接、同一张脸重复出现、五官错位或面部崩坏、画面糊成一团或细节融化、水印、签名、文字、logo、截图、裁切与相框边条、动漫或卡通画风、插画感、赛璐璐上色、手绘线条";
+  "多指、手指粘连或变形、多手多脚、四肢错乱或拼接、同一张脸重复出现、五官错位或面部崩坏、画面糊成一团或细节融化、水印、签名、文字、logo、截图、裁切与相框边条、动漫或卡通画风、皮肤粗糙、毛孔粗大、噪点颗粒、皮肤瑕疵、体毛、手臂汗毛、腿毛、胸毛、胡茬";
 
 /* 自拍路径的「设备词清洗」（1.12.42）。
    恩熙原话：「他很喜欢描述手机屏幕的光打在脸上，只要出现这个，这个手机就会出现在
@@ -2421,10 +2437,11 @@ export async function generateImage(
        只写笼统的「不许照搬」时，机位与手臂手势都会被照搬参考图——压不住的原因
        是没把这几项一个个点名，所以下面那串点名留着。 */
     "**神态归描述管**：这一刻在做什么、脸上是什么神态，就画那一种；描述写了哪种就画哪种，没写到的也不许自己挑一种默认的「好看」表情顶上。**镜头的高低与远近、脸朝哪边、头倾斜多少度、肩膀的高低、手臂伸不伸出来**，这些全都属于这一次的创作，不是参考图带来的默认值——参考图里是那样，不代表这一次也要那样。头发的**样式**照上面锁死（不许换发型、不许改长短、不许变发色），但**此刻的状态跟着情境走**——可以被打湿、被风吹乱、松散垂下来，不要画得一丝不苟。",
-    /* 去精致感 → **1.12.41 改成「要好看、但不要塑料」**（原句是「去精致感、更像生活中的
-       一张照片」，恩熙看过参考图后要的是「好看又不假」）：不追影楼精修、不塑料磨皮，
-       但人必须画得好看；顺手把「不刻意盯着镜头」去掉——她喜欢的那张就是淡淡看镜头的。 */
-    "画面跟着情景走，不必追求影楼式的精修、不要塑料磨皮，但人物要画得好看——五官精致、轮廓清晰、气质出众，皮肤干净而真实；表情与姿态放松自然，不摆拍、不做广告式的笑。",
+    /* 去精致感 → **1.12.41 改成「要好看、但不要塑料」**，**1.12.43 再定成「照片打底、
+       脸按理想化精修」**（恩熙：「想要真实照片的质感，但是磨皮还是要有的」「稍微有点
+       二次元写实风格」）：影楼那套摆拍感不要，但皮肤得是磨过、干净柔润的，
+       不许把毛孔与体毛当「真实」画出来——这就是她要的半写实。 */
+    "人物要画得好看——五官精致、轮廓清晰、气质出众，皮肤干净细腻、柔润通透（适度磨皮、不露毛孔、不画体毛，但保留一点真实的光影层次，别磨成塑料假面）；不必追求影楼式的精修与摆拍感，表情与姿态放松自然，不做广告式的笑。",
     /* 画风词**原样**进串、只出现一次（「**画风不用去管**」）：
        外面不要再套「画风要求：」这层壳、末尾也不要整份复读。
        位置保持不动——它前面是「参考图只交长相」与锁身份那几句（那些必须排最前，
@@ -2444,7 +2461,7 @@ export async function generateImage(
     /* 末尾把身份再钉一次（「二重保险」）：开头的锁身份指令与 TA 那
        段几百字的画面描述之间隔着一长串内容（去精致感／画风／性别／人设），到收尾时
        权重已经被冲淡，所以在最后一句再核对一次——同「首尾各钉一次」的思路。 */
-    "画面质量：真实照片质感、自然的皮肤纹理与光影、高质量、细节丰富、构图完整；画面里若有人物，人物是画面主体、面部清晰，人物状态与场景相符。**最后再核对一次身份**：五官与发型严格照参考图，是同一个人（不要自行换脸、换发型、改发色），同时把这个人画到最好看的一面。视角与姿势按这次的画面描述呈现（参考图只用来认人）。",
+    "画面质量：真实照片的质感、皮肤干净细腻柔润（适度磨皮、不露毛孔）、高质量、细节丰富、构图完整；画面里若有人物，人物是画面主体、面部清晰，人物状态与场景相符。**最后再核对一次身份**：五官与发型严格照参考图，是同一个人（不要自行换脸、换发型、改发色），同时把这个人画到最好看的一面。视角与姿势按这次的画面描述呈现（参考图只用来认人）。",
   ]
     .filter(Boolean)
     .join("\n");
@@ -2463,8 +2480,9 @@ export async function generateImage(
       ? `画面中避免出现：${[extras.negativePrompt.trim(), FLAW_AVOID_TEXT].filter(Boolean).join("；")}`
       : "",
     /* 1.12.41：同身份锚那条一起改口径——「要好看、不要塑料」（原句是「去精致感」）。
+       1.12.43：同那边一起定成「干净柔润、适度磨皮、不画体毛」。
        这里刻意不写「随手一拍／像照片」——写「像照片」等于替用户定画风。 */
-    "画面跟着情景走，不必追求影楼式的精修、不要塑料磨皮，但人物要画得好看、五官精致、轮廓清晰；表情与姿态放松自然，不摆拍、不做广告式的笑",
+    "人物要画得好看、五官精致、轮廓清晰、皮肤干净细腻柔润（适度磨皮、不露毛孔、不画体毛）；表情与姿态放松自然，不做广告式的笑",
     QUALITY_TAIL,
     /* 正面提示词后缀：补细节用，整串收尾。
        是最靠后的一句，权重也最轻——它是锦上添花，不是命令。
