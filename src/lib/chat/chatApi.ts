@@ -2326,8 +2326,14 @@ function resolveGenderKey(gender: string): "male" | "female" | "" {
  * 现在两头都收回一点：`candid snapshot` 删掉，加 `flattering`（＝「把这个人拍好看」，
  * 它**不规定好看成什么样**，所以不会同质化）；防撞脸那句（「长相照外貌文字、不同角色
  * 必须不同的脸」）**一句不动**——那才是防撞脸的功臣，不是删好看词。
- * ⚠️ 皮肤那几处**不动**（1.12.45 刚调好）。 */
-const QUALITY_TAIL = "RAW photo, photorealistic, flattering, realistic skin, natural skin tone, highly detailed, coherent composition, natural lighting";
+ * ⚠️ 皮肤那几处**不动**（1.12.45 刚调好）。
+ * ⚠️ **1.12.48（恩熙：「我说的像真人是我希望再写实一点……生成的感觉还是很不像真人」）**：
+ * 她要的是**画面本身更像真照片**（一眼还是「画出来的」）。这一轮**只推写实度、只加不删**：
+ * 补摄影向的 `8k uhd, dslr, photograph`——这是 SD 圈那套**写实人像**的标准串
+ * （`RAW photo, 8k uhd, dslr` 常连用），与动漫那套 `masterpiece, best quality` 不同源。
+ * ⚠️ 不碰 `flattering`（好看）、不碰性别标签、不碰正文的防撞脸与皮肤口径——
+ * 那些 1.12.47 刚调好。 */
+const QUALITY_TAIL = "RAW photo, photorealistic, flattering, realistic skin, natural skin tone, 8k uhd, dslr, photograph, highly detailed, coherent composition, natural lighting";
 /** 负面词（**字段版**，只递给认 `negative_prompt` 的站点）。单子按「一眼看着怪」的常见
     崩坏扩过一遍：多指／粘连指／多手多脚／肢体错乱／同一张脸重复／脸崩／糊／水印签名
     文字 logo／截图／裁切边框。
@@ -2345,9 +2351,12 @@ const QUALITY_TAIL = "RAW photo, photorealistic, flattering, realistic skin, nat
     （这两词最直接地打掉平面动漫感）；`illustration`／`painting` 暂不恢复，留作下一步
     的旋钮（还偏动漫就加 `illustration`，又偏写实就撤 `2d`）。
     ⚠️ **1.12.45**：补 `plastic skin`——防「磨过头成了塑料皮」，与 `visible pores`
-    一头压毛孔、一头压塑料，夹出「真皮肤但毛孔不凸显」。 */
+    一头压毛孔、一头压塑料，夹出「真皮肤但毛孔不凸显」。
+    ⚠️ **1.12.48**：补 `3d render / cg / digital art / digital painting`——恩熙说
+    「生成的感觉还是很不像真人」，这几个词正是**「一眼看着像画的/像CG」**的元凶
+    （只加不删，不动皮肤与动漫那两组）。 */
 const QUALITY_NEGATIVE =
-  "lowres, worst quality, jpeg artifacts, blurry, bad anatomy, bad hands, extra fingers, fused fingers, missing fingers, extra limbs, malformed limbs, deformed face, disfigured, cloned face, duplicate face, poorly drawn face, watermark, signature, text, logo, screenshot, cropped, out of frame, border, frame, anime, cartoon, sketch, 2d, cel shaded, rough skin, skin blemishes, visible pores, heavy grain, plastic skin, body hair, arm hair, leg hair, chest hair, facial hair";
+  "lowres, worst quality, jpeg artifacts, blurry, bad anatomy, bad hands, extra fingers, fused fingers, missing fingers, extra limbs, malformed limbs, deformed face, disfigured, cloned face, duplicate face, poorly drawn face, watermark, signature, text, logo, screenshot, cropped, out of frame, border, frame, anime, cartoon, sketch, 2d, cel shaded, 3d render, cg, digital art, digital painting, rough skin, skin blemishes, visible pores, heavy grain, plastic skin, body hair, arm hair, leg hair, chest hair, facial hair";
 /** 同一张单子的**中文正文版**，给不认 `negative_prompt` 字段的站点用（GPT 系、方舟：
     字段递了也是白递，只能把负面写成正文里的一句「画面中避免出现：…」）。
     和 QUALITY_NEGATIVE 是一套意思的两副面孔，**改一处要跟着改另一处**。
@@ -2356,9 +2365,10 @@ const QUALITY_NEGATIVE =
     理想化的余地），只留「动漫或卡通画风」防纯动漫。
     ⚠️ **1.12.44**：同英文那串一致——「赛璐璐上色」**加回来**打掉平面动漫感；
     「插画感、手绘线条」暂不恢复，留作旋钮。
-    ⚠️ **1.12.45**：补「塑料感皮肤」，同 `plastic skin`（理由见上）。 */
+    ⚠️ **1.12.45**：补「塑料感皮肤」，同 `plastic skin`（理由见上）。
+    ⚠️ **1.12.48**：补「3D渲染、CG、数字绘画」，同 `3d render / cg / digital art`（理由见上）。 */
 const FLAW_AVOID_TEXT =
-  "多指、手指粘连或变形、多手多脚、四肢错乱或拼接、同一张脸重复出现、五官错位或面部崩坏、画面糊成一团或细节融化、水印、签名、文字、logo、截图、裁切与相框边条、动漫或卡通画风、赛璐璐上色、皮肤粗糙、毛孔粗大、噪点颗粒、皮肤瑕疵、塑料感皮肤、体毛、手臂汗毛、腿毛、胸毛、胡茬";
+  "多指、手指粘连或变形、多手多脚、四肢错乱或拼接、同一张脸重复出现、五官错位或面部崩坏、画面糊成一团或细节融化、水印、签名、文字、logo、截图、裁切与相框边条、动漫或卡通画风、赛璐璐上色、3D渲染、CG感、数字绘画、皮肤粗糙、毛孔粗大、噪点颗粒、皮肤瑕疵、塑料感皮肤、体毛、手臂汗毛、腿毛、胸毛、胡茬";
 
 /* 自拍路径的「设备词清洗」（1.12.42）。
    恩熙原话：「他很喜欢描述手机屏幕的光打在脸上，只要出现这个，这个手机就会出现在
