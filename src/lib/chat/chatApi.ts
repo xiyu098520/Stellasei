@@ -2252,15 +2252,17 @@ async function requestImageViaChat(
 /* ---------- miya 原味：性别标签与人设外貌都拼进提示词 ---------- */
 /* 性别用正／负面标签成对喂：正面点名性别，负面把异性词反向排掉。
    「你是男性」这类自然语言对生图模型几乎无效，标签才管用。
-   （对照 miya：resolveContactGenderKey + buildGenderPromptTags） */
+   （对照 miya：resolveContactGenderKey + buildGenderPromptTags）
+   ⚠️ **1.12.40**：原来的 `1boy／1girl` 是 Danbooru／NovelAI 体系的动漫标签，
+   同样往二次元拉（和 QUALITY_TAIL 那个毛病同源），换成 `man／woman`。 */
 const GENDER_TAGS: Record<"male" | "female", { positive: string; negative: string }> = {
   male: {
-    positive: "1boy, male, man",
-    negative: "1girl, female, woman, feminine, breasts",
+    positive: "man, male",
+    negative: "woman, female, feminine, breasts",
   },
   female: {
-    positive: "1girl, female, woman",
-    negative: "1boy, male, man, masculine, beard",
+    positive: "woman, female",
+    negative: "man, male, masculine, beard",
   },
 };
 
@@ -2274,20 +2276,30 @@ function resolveGenderKey(gender: string): "male" | "female" | "" {
   return "";
 }
 
-/** 质量尾巴（miya 固定串，原样照搬）。 */
-const QUALITY_TAIL = "masterpiece, best quality, highly detailed, coherent composition, natural lighting";
+/** 质量尾巴（原样照搬 miya 的固定串）。
+ *
+ * ⚠️ **1.12.40（恩熙：「它出来的图片是非常二次元的。我是想要保留一点真人质感的」
+ * 「我用户端，配置的 API 里头不写任何提示词，只靠小手机默认提示词去生成」）**：
+ * 原来那串 `masterpiece, best quality` 是 Danbooru／NovelAI 体系的画质标签，
+ * SD 系模型一见就往二次元拉。而画风预设**恒为空**（[types/chat.ts](file:///d:/Stellasei-New/src/types/chat.ts#L861)
+ * 默认就是空串），审美全压在默认串上——它必须自己扛住「好看且像真人」。
+ * 故换成人像摄影向的串：写实质感、皮肤纹理、胶片颗粒、自然光。 */
+const QUALITY_TAIL = "photorealistic, realistic, natural skin texture, film grain, highly detailed, coherent composition, natural lighting";
 /** 负面词（**字段版**，只递给认 `negative_prompt` 的站点）。单子按「一眼看着怪」的常见
     崩坏扩过一遍：多指／粘连指／多手多脚／肢体错乱／同一张脸重复／脸崩／糊／水印签名
-    文字 logo／真实照片／截图／裁切边框。
-    ⚠️ **只放「坏了」的东西，别夹审美取向的词**（什么算好看由画风词定，见
-    FLAW_AVOID_TEXT 旁边三条注释）。 */
+    文字 logo／截图／裁切边框。
+    ⚠️ **1.12.40 起这里也担内置默认审美**（恩熙不填画风预设，全走默认）：末尾那组
+    排二次元的词就是干这个的。从前那句「只放坏了的东西、别夹审美取向的词」至此作废
+    ——那是「什么算好看由画风词定」时代的规矩，画风词没人填，它就归默认串管。
+    ⚠️ **1.12.40 同时删掉 `real photo`**：它字面意思是「别画照片」，与「要真人质感」
+    正好反着（老规矩「不许出现真实照片」本意是别出截图/水印，那两条留着）。 */
 const QUALITY_NEGATIVE =
-  "lowres, worst quality, jpeg artifacts, blurry, bad anatomy, bad hands, extra fingers, fused fingers, missing fingers, extra limbs, malformed limbs, deformed face, disfigured, cloned face, duplicate face, poorly drawn face, watermark, signature, text, logo, screenshot, real photo, cropped, out of frame, border, frame";
+  "lowres, worst quality, jpeg artifacts, blurry, bad anatomy, bad hands, extra fingers, fused fingers, missing fingers, extra limbs, malformed limbs, deformed face, disfigured, cloned face, duplicate face, poorly drawn face, watermark, signature, text, logo, screenshot, cropped, out of frame, border, frame, anime, cartoon, illustration, 2d, cel shaded, painting, sketch";
 /** 同一张单子的**中文正文版**，给不认 `negative_prompt` 字段的站点用（GPT 系、方舟：
     字段递了也是白递，只能把负面写成正文里的一句「画面中避免出现：…」）。
     和 QUALITY_NEGATIVE 是一套意思的两副面孔，**改一处要跟着改另一处**。 */
 const FLAW_AVOID_TEXT =
-  "多指、手指粘连或变形、多手多脚、四肢错乱或拼接、同一张脸重复出现、五官错位或面部崩坏、画面糊成一团或细节融化、水印、签名、文字、logo、真实照片、截图、裁切与相框边条";
+  "多指、手指粘连或变形、多手多脚、四肢错乱或拼接、同一张脸重复出现、五官错位或面部崩坏、画面糊成一团或细节融化、水印、签名、文字、logo、截图、裁切与相框边条、动漫或卡通画风、插画感、赛璐璐上色、手绘线条";
 
 export async function generateImage(
   api: ChatApiSettings,
@@ -2383,7 +2395,7 @@ export async function generateImage(
     /* 末尾把身份再钉一次（「二重保险」）：开头的锁身份指令与 TA 那
        段几百字的画面描述之间隔着一长串内容（去精致感／画风／性别／人设），到收尾时
        权重已经被冲淡，所以在最后一句再核对一次——同「首尾各钉一次」的思路。 */
-    "画面质量：高质量、细节丰富、构图完整；画面里若有人物，人物是画面主体、面部清晰，人物状态与场景相符。**最后再核对一次身份**：五官与发型严格照参考图，是同一个人，不要自行换脸、换发型、改发色，也不要「美化」成另一版。视角与姿势按这次的画面描述呈现（参考图只用来认人）。",
+    "画面质量：真实照片质感、自然的皮肤纹理与光影、高质量、细节丰富、构图完整；画面里若有人物，人物是画面主体、面部清晰，人物状态与场景相符。**最后再核对一次身份**：五官与发型严格照参考图，是同一个人，不要自行换脸、换发型、改发色，也不要「美化」成另一版。视角与姿势按这次的画面描述呈现（参考图只用来认人）。",
   ]
     .filter(Boolean)
     .join("\n");
