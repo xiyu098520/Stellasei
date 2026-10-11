@@ -1,17 +1,33 @@
 /**
- * 星绥通讯持久化（IndexedDB KV）。
+ * 星绥通讯持久化（IndexedDB）。
  *
  * 会话按「角色 × 面具」归档：换面具＝换身份重新聊，
  * 每个面具对每个角色各有一份独立的聊天记录与每聊天设定。
  *
- * 三份数据：
- * - chat-conversations —— 会话阵列（含置顶／背景／字号等每聊天设定）
+ * 数据分两处放：
+ * - chat-conversations（kv 库）—— 会话**元数据**阵列（每聊天设定／动态／签名……），
+ *   **不含消息**。1.12.54 起消息已挪走，这里只留骨架。
+ * - messages（独立仓库）—— 聊天消息，**一条一行**（keyPath = id）＋ `byConv` 索引。
+ *   为什么拆：从前把全部消息塞在会话阵列里整份存一个键，每发一条都要「读全量 → 改 →
+ *   写全量」（O(全部消息)），聊得越多越卡；拆开后发一条＝只写这一行（O(1)）。
+ *   每条消息落库时盖上 `convId`（属于哪个会话）与 `seq`（会话内单调序号，读时按它排）。
  * - chat-character-settings —— 角色级的三样（个别 API／语音参数／生图参考图），跟角色走
  * - api-settings-bundle —— 三类 API 设定（文本／图文／语音，各自独立）
  *   （旧版单份 chat-api-settings 读取时自动迁移为「文本 API」）
  */
 
-import { kvGet, kvSet } from "@/lib/db/idb";
+import {
+  kvGet,
+  kvSet,
+  msgDelete,
+  msgDeleteByConv,
+  msgGet,
+  msgGetAll,
+  msgGetByConv,
+  msgPut,
+  msgPutAll,
+  type MessageRow,
+} from "@/lib/db/idb";
 import { uuid } from "@/lib/uuid";
 import { DEFAULT_MASK_ID, ensureMasks } from "@/lib/settings/mask";
 import { getArchives, saveArchive } from "@/lib/settings/contact";
@@ -97,7 +113,7 @@ export type ConversationPatch = Partial<
   >
 >;
 
-/* 会话写入串行链：本模组每个写接口都是「读整份会话阵列 → 改 → 写回」，
+/* 会话写入串行链：本模组每个写接口都是「读整份会话元数据 → 改 → 写回」，
    并发调用会互相覆盖（典型：媒体占位回填的同时用户又发了消息，
    后写的把先写的抹掉——表现就是「刚生成好的语音/图片突然没了」）。
    所有会写 chat-conversations 的入口统一排进这一条队，逐个执行。
@@ -108,6 +124,97 @@ function serializeConvWrite<T>(task: () => Promise<T>): Promise<T> {
   const run = convWriteChain.then(task);
   convWriteChain = run.catch(() => {});
   return run;
+}
+
+/* ------------------------- 消息仓库：读骨架 / 挂回 / 迁移 ------------------------- */
+
+/** 消息在 messages 仓库里的落库形状＝消息本体 + `convId` + `seq`（见 db/idb.ts）。 */
+type StoredMessage = ChatMessage & MessageRow;
+
+/** 从落库行还原成 ChatMessage（把 `convId`／`seq` 这两个「库内部」栏位剥掉）。 */
+function toChatMessage(row: StoredMessage): ChatMessage {
+  const message = { ...row };
+  delete (message as Partial<MessageRow>).convId;
+  delete (message as Partial<MessageRow>).seq;
+  return message;
+}
+
+/** 老数据「消息还内嵌在会话里」是否已搬完的标记（只搬一次）。 */
+const MSG_MIGRATION_KEY = "chat-messages-migrated-v1";
+/** 迁移闸门：同一分页里并发读会话时只跑一次搬运，别互相踩。 */
+let migrationGate: Promise<void> | null = null;
+
+/**
+ * 把老数据里「内嵌在会话阵列中的消息」搬进 messages 仓库（只做一次）。
+ *
+ * 旧版把每条会话的全部消息塞在会话阵列里、整份存成一个键；现在消息改存 messages
+ * 仓库（一条一行）。头一次读会话时搬一次：逐条写成 MessageRow（补 `convId` 与按阵列
+ * 顺序补 `seq`），会话本体只留元数据（`messages=[]`、`msgSeq=条数`），最后盖标记。
+ * 幂等：`put` 同 id 覆盖；标记在就直接跳过；模块级闸门防并发重复搬。
+ * 出错不写标记：下次读会话还会再试，不会把消息卡死。
+ */
+function migrateMessagesOnce(): Promise<void> {
+  if (migrationGate) return migrationGate;
+  migrationGate = (async () => {
+    if (await kvGet<boolean>(MSG_MIGRATION_KEY)) return;
+    const raw = await kvGet<Conversation[]>(CONVERSATIONS_KEY);
+    if (!Array.isArray(raw) || raw.length === 0) {
+      await kvSet(MSG_MIGRATION_KEY, true);
+      return;
+    }
+    const rows: StoredMessage[] = [];
+    const next = raw.map((c0) => {
+      const c = normalizeConv(c0);
+      const messages = Array.isArray(c.messages) ? c.messages : [];
+      let seq = 0;
+      for (const m of messages) {
+        seq += 1;
+        rows.push({ ...m, convId: c.id, seq });
+      }
+      return { ...c, messages: [], msgSeq: seq };
+    });
+    if (rows.length > 0) await msgPutAll(rows);
+    await kvSet(CONVERSATIONS_KEY, next);
+    await kvSet(MSG_MIGRATION_KEY, true);
+  })().catch((error) => {
+    migrationGate = null;
+    throw error;
+  });
+  return migrationGate;
+}
+
+/**
+ * 读会话**元数据**列表（不含消息）：从 chat-conversations 拿骨架，`messages` 一律
+ * 清空、由 `attachMessages` 另外挂回。读之前先跑一次老数据迁移。
+ * 写路径也用它：改会话元数据时不必再把全部消息读出来。
+ */
+async function readConvList(): Promise<Conversation[]> {
+  await migrateMessagesOnce();
+  const saved = await kvGet<Conversation[]>(CONVERSATIONS_KEY);
+  if (!Array.isArray(saved)) return [];
+  return saved.map((c) => ({ ...normalizeConv(c), messages: [] }));
+}
+
+/**
+ * 把消息挂回会话：一次取全量消息，按 `convId` 分组、按 `seq` 排序，剥掉库内部栏位后挂回。
+ *
+ * 阶段①为「对外行为完全不变」仍全量挂回（消费点拿到的 Conversation 还是带完整 messages）；
+ * 收窄成「只读当前会话 + 最近 N 条」留待下一步。
+ */
+async function attachMessages(list: Conversation[]): Promise<void> {
+  if (list.length === 0) return;
+  const rows = await msgGetAll<StoredMessage>();
+  const grouped = new Map<string, StoredMessage[]>();
+  for (const row of rows) {
+    const arr = grouped.get(row.convId);
+    if (arr) arr.push(row);
+    else grouped.set(row.convId, [row]);
+  }
+  for (const c of list) {
+    const arr = grouped.get(c.id) ?? [];
+    arr.sort((a, b) => a.seq - b.seq);
+    c.messages = arr.map(toChatMessage);
+  }
 }
 
 /* --------------------------- 气泡条数（每聊天） --------------------------- */
@@ -361,15 +468,14 @@ export async function updateCharChatSettings(
 
 /** 读全部会话；顺手把这「角色级三样」盖上去（见上），并给还没记录的角色补一份迁移档。 */
 export async function getConversations(): Promise<Conversation[]> {
-  const saved = await kvGet<Conversation[]>(CONVERSATIONS_KEY);
-  if (!Array.isArray(saved)) return [];
-  const list = saved.map(normalizeConv);
+  const list = await readConvList();
   /* 「聊过没有」这枚戳子的一次性补盖：重置记忆后消息列表的对话框也该还在，
      老数据没戳子，按「手上有消息」补一次——有消息＝确实聊过，盖上；
-     一条消息也没有＝从没聊过（助手预绑的空会话），不盖。 */
+     一条消息也没有＝从没聊过（助手预绑的空会话），不盖。
+     1.12.54：消息已搬进独立仓库，这里改看 msgSeq（＞0 即聊过、不读消息本体）。 */
   let stamped = false;
   for (const c of list) {
-    if (c.chatStarted === undefined && c.messages.length > 0) {
+    if (c.chatStarted === undefined && (c.msgSeq ?? 0) > 0) {
       c.chatStarted = true;
       stamped = true;
     }
@@ -383,6 +489,7 @@ export async function getConversations(): Promise<Conversation[]> {
     migrated = true;
   }
   if (migrated) await kvSet(CHAR_SETTINGS_KEY, all);
+  await attachMessages(list);
   return list.map((c) => applyCharSettings(c, all[c.characterId]));
 }
 
@@ -421,9 +528,10 @@ async function appendMessageNow(
   message: Omit<ChatMessage, "id" | "createdAt"> & { id?: string; createdAt?: string },
   opts?: { bumpUnread?: boolean },
 ): Promise<Conversation> {
-  const list = await getConversations();
+  const list = await readConvList();
   const idx = findIdx(list, characterId, maskId);
   const now = new Date().toISOString();
+  const convKey = convId(characterId, maskId);
   const full: ChatMessage = {
     id: message.id ?? uuid(),
     role: message.role,
@@ -481,25 +589,33 @@ async function appendMessageNow(
   };
 
   if (idx >= 0) {
-    list[idx].messages.push(full);
+    /* 会话内序号 +1：读时按它排，不靠 id／createdAt（见 MessageRow 说明）。 */
+    const seq = (list[idx].msgSeq ?? 0) + 1;
+    list[idx].msgSeq = seq;
     /* 戳子一盖上就不再摘：列表靠它认「这条会话聊过」，清完记忆那行也还留着。 */
     list[idx].chatStarted = true;
     list[idx].updatedAt = now;
     if (opts?.bumpUnread) list[idx].unreadCount = (list[idx].unreadCount ?? 0) + 1;
+    await msgPut({ ...full, convId: convKey, seq });
     await kvSet(CONVERSATIONS_KEY, list);
+    /* 回传的会话带上这条新消息：消费点若要看 messages 也看得到（历史行为不变）。 */
+    list[idx].messages = [full];
     return list[idx];
   }
 
   const fresh: Conversation = {
-    id: convId(characterId, maskId),
+    id: convKey,
     characterId,
     maskId,
-    messages: [full],
+    messages: [],
+    msgSeq: 1,
     chatStarted: true,
     createdAt: now,
     updatedAt: now,
   };
+  await msgPut({ ...full, convId: convKey, seq: 1 });
   await kvSet(CONVERSATIONS_KEY, [...list, fresh]);
+  fresh.messages = [full];
   return fresh;
 }
 
@@ -509,10 +625,13 @@ export async function deleteMessage(
   maskId: string,
   messageId: string,
 ): Promise<Conversation | null> {
-  const list = await getConversations();
+  const list = await readConvList();
   const idx = findIdx(list, characterId, maskId);
   if (idx < 0) return null;
-  list[idx].messages = list[idx].messages.filter((m) => m.id !== messageId);
+  const convKey = convId(characterId, maskId);
+  /* 仅当这条消息确实属于本会话才删（保持「按会话过滤」的旧语义）。 */
+  const row = await msgGet<StoredMessage>(messageId);
+  if (row && row.convId === convKey) await msgDelete(messageId);
   await kvSet(CONVERSATIONS_KEY, list);
   return list[idx];
 }
@@ -529,10 +648,15 @@ async function updateMessageNow(
   maskId: string,
   message: ChatMessage,
 ): Promise<Conversation | null> {
-  const list = await getConversations();
+  const list = await readConvList();
   const idx = findIdx(list, characterId, maskId);
   if (idx < 0) return null;
-  list[idx].messages = list[idx].messages.map((m) => (m.id === message.id ? message : m));
+  const convKey = convId(characterId, maskId);
+  /* 取回原行的 seq（序号跟着消息走、更新不改变先后）；不在本会话就只更新会话时间戳。 */
+  const prev = await msgGet<StoredMessage>(message.id);
+  if (prev && prev.convId === convKey) {
+    await msgPut({ ...message, convId: convKey, seq: prev.seq });
+  }
   list[idx].updatedAt = new Date().toISOString();
   await kvSet(CONVERSATIONS_KEY, list);
   return list[idx];
@@ -557,11 +681,17 @@ export async function healStalePendingMedia(
   characterId: string,
   maskId: string,
 ): Promise<Conversation | null> {
-  const list = await getConversations();
+  const list = await readConvList();
   const idx = findIdx(list, characterId, maskId);
   if (idx < 0) return null;
-  let healed = false;
-  list[idx].messages = list[idx].messages.map((m) => {
+  const convKey = convId(characterId, maskId);
+  /* 消息已搬进独立仓库：按会话取回、按 seq 还原成从前那份有序列表。 */
+  const rows = (await msgGetByConv<StoredMessage>(convKey)).sort((a, b) => a.seq - b.seq);
+  const changed: StoredMessage[] = [];
+  const healedById = new Map<string, ChatMessage>();
+  for (const row of rows) {
+    const m = toChatMessage(row);
+    let next: ChatMessage | null = null;
     /* 被误判的历史残留：还原成「等点生成」（`pending` 一起带上，那颗「生成」按钮
        才认得这条路）。认出它的办法只有一个：**这行失败没有像样的原因**——
        空着，或者原因就是这份归位手续自己写的那句话。真失败的原因是从生图层带回来的
@@ -570,22 +700,20 @@ export async function healStalePendingMedia(
        没成之前只该看见描述和一颗生成，重画一下的成本远小于
        一进聊天就被通知一次失败。 */
     if (m.type === "image" && m.error && !m.imageUrl && (!m.errorText || m.errorText === HEAL_NOTE)) {
-      healed = true;
-      return { ...m, error: undefined, errorText: undefined, pending: true, awaitGen: true };
+      next = { ...m, error: undefined, errorText: undefined, pending: true, awaitGen: true };
+    } else if (m.pending && (m.type === "image" || m.type === "voice") && !m.awaitGen) {
+      next = { ...m, pending: false, error: true, errorText: m.errorText ?? HEAL_NOTE };
     }
-    if (!m.pending || (m.type !== "image" && m.type !== "voice")) return m;
-    if (m.awaitGen) return m;
-    healed = true;
-    return {
-      ...m,
-      pending: false,
-      error: true,
-      errorText: m.errorText ?? HEAL_NOTE,
-    };
-  });
-  if (!healed) return list[idx];
+    if (!next) continue;
+    healedById.set(row.id, next);
+    changed.push({ ...next, convId: convKey, seq: row.seq });
+  }
+  if (changed.length === 0) return list[idx];
+  await msgPutAll(changed);
   list[idx].updatedAt = new Date().toISOString();
   await kvSet(CONVERSATIONS_KEY, list);
+  /* 回传的会话带上归位后的完整消息：调用方（聊天窗）会读它的 messages。 */
+  list[idx].messages = rows.map((row) => healedById.get(row.id) ?? toChatMessage(row));
   return list[idx];
 }
 
@@ -601,7 +729,7 @@ async function updateConversationNow(
   maskId: string,
   patch: ConversationPatch,
 ): Promise<Conversation> {
-  const list = await getConversations();
+  const list = await readConvList();
   const idx = findIdx(list, characterId, maskId);
   const now = new Date().toISOString();
   if (idx < 0) {
@@ -627,7 +755,7 @@ export async function markConversationRead(
   characterId: string,
   maskId: string,
 ): Promise<void> {
-  const list = await getConversations();
+  const list = await readConvList();
   const idx = findIdx(list, characterId, maskId);
   if (idx >= 0 && (list[idx].unreadCount ?? 0) > 0) {
     list[idx].unreadCount = 0;
@@ -694,7 +822,7 @@ export async function appendMetaUpdates(
 ): Promise<void> {
   const sig = typeof meta.signature === "string" ? meta.signature.trim() : "";
   if (!sig) return;
-  const list = await getConversations();
+  const list = await readConvList();
   const idx = findIdx(list, characterId, maskId);
   const now = new Date().toISOString();
   if (idx < 0) {
@@ -724,7 +852,7 @@ export async function setMomentImageRef(
   momentId: string,
   imageRef: string,
 ): Promise<void> {
-  const list = await getConversations();
+  const list = await readConvList();
   const idx = list.findIndex((c) => c.id === conversationId);
   if (idx < 0) return;
   const mIdx = (list[idx].moments ?? []).findIndex((m) => m.id === momentId);
@@ -744,7 +872,7 @@ export async function setMomentImagePrompt(
   momentId: string,
   imagePrompt: string,
 ): Promise<void> {
-  const list = await getConversations();
+  const list = await readConvList();
   const idx = list.findIndex((c) => c.id === conversationId);
   if (idx < 0) return;
   const mIdx = (list[idx].moments ?? []).findIndex((m) => m.id === momentId);
@@ -768,7 +896,7 @@ export async function setMomentPinned(
   momentId: string,
   pinned: boolean,
 ): Promise<void> {
-  const list = await getConversations();
+  const list = await readConvList();
   const idx = list.findIndex((c) => c.id === conversationId);
   if (idx < 0) return;
   const mIdx = (list[idx].moments ?? []).findIndex((m) => m.id === momentId);
@@ -792,7 +920,7 @@ export async function setMomentLikes(
   momentId: string,
   likes: MomentLike[],
 ): Promise<void> {
-  const list = await getConversations();
+  const list = await readConvList();
   const idx = list.findIndex((c) => c.id === conversationId);
   if (idx < 0) return;
   const mIdx = (list[idx].moments ?? []).findIndex((m) => m.id === momentId);
@@ -812,7 +940,7 @@ export async function setMomentComments(
   momentId: string,
   comments: MomentComment[],
 ): Promise<void> {
-  const list = await getConversations();
+  const list = await readConvList();
   const idx = list.findIndex((c) => c.id === conversationId);
   if (idx < 0) return;
   const mIdx = (list[idx].moments ?? []).findIndex((m) => m.id === momentId);
@@ -846,10 +974,12 @@ export async function clearConversation(characterId: string, maskId: string): Pr
      那应该是包含线上线下的一块清」）。清在这儿而不是各自去记：两条重置路（记忆 App 的
      「重置记忆」／聊天里的「清空聊天记录」）都过这个函数，跟上面 blockCount 同一个道理。 */
   await clearOfflineScene(characterId, maskId);
-  const list = await getConversations();
+  const list = await readConvList();
   const idx = findIdx(list, characterId, maskId);
   if (idx < 0) return;
-  list[idx].messages = [];
+  /* 消息已搬进独立仓库：按会话整段删掉（只删本会话的行）。 */
+  await msgDeleteByConv(convId(characterId, maskId));
+  list[idx].msgSeq = 0;
   list[idx].unreadCount = 0;
   delete list[idx].blockCount;
   /* 记录都倒空了，线下那一场自然也不算还开着：把总闸放平，线上输入解锁
@@ -873,7 +1003,7 @@ export async function clearMomentsAndSignature(
   characterId: string,
   maskId: string,
 ): Promise<void> {
-  const list = await getConversations();
+  const list = await readConvList();
   const idx = findIdx(list, characterId, maskId);
   if (idx < 0) return;
   list[idx].moments = [];
@@ -884,9 +1014,11 @@ export async function clearMomentsAndSignature(
 
 /** 删除会话本身（＝解除绑定：聊天记录＋每聊天设定一并删除；角色档案不受影响）。 */
 export async function deleteConversation(characterId: string, maskId: string): Promise<void> {
-  const list = await getConversations();
+  const list = await readConvList();
   const next = list.filter((c) => !(c.characterId === characterId && c.maskId === maskId));
   if (next.length !== list.length) {
+    /* 会话没了，它名下的消息也一并清掉，不留孤儿行。 */
+    await msgDeleteByConv(convId(characterId, maskId));
     await kvSet(CONVERSATIONS_KEY, next);
   }
 }

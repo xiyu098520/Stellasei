@@ -10,7 +10,7 @@
  * 注意：本模组只能在客户端调用（IndexedDB 不存在于 SSR）。
  */
 
-import { kvEach } from "@/lib/db/idb";
+import { kvEach, msgEach } from "@/lib/db/idb";
 import { eachMediaSummary } from "@/lib/db/media-store";
 
 export type StorageCategoryId = "chat" | "media" | "archives" | "memories" | "other";
@@ -209,6 +209,12 @@ export async function scanStorageSpace(): Promise<StorageSnapshot> {
     const bucket = totals[KEY_CATEGORY[key] ?? "other"];
     bucket.bytes += estimateValueBytes(value);
     bucket.count += countOf(value);
+  }).catch(() => undefined);
+
+  /* 1.12.54：文字消息已搬进 messages 独立仓库，不在 chat-conversations 里了，
+     单独数一遍把字节补回「聊天记录」类。条目数仍是「几个对话」，所以只加字节、不加 count。 */
+  await msgEach((row) => {
+    totals.chat.bytes += estimateValueBytes(row);
   }).catch(() => undefined);
 
   await eachMediaSummary((item) => {
