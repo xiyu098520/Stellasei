@@ -27,7 +27,7 @@ import { useEffect, useState, type CSSProperties } from "react";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { usePhone } from "@/context/PhoneContext";
 import { getArchives } from "@/lib/settings/contact";
-import { getConversations } from "@/lib/settings/chat";
+import { getConversations, getConversationMessages } from "@/lib/settings/chat";
 import { DEFAULT_MASK_ID, ensureMasks, getCurrentMask, type Mask } from "@/lib/settings/mask";
 import { openContactAccountIfEmpty } from "@/lib/chat/contactAccount";
 import ContactWalletView from "@/apps/chat/ContactWalletView";
@@ -35,7 +35,7 @@ import ContactPhoneApp from "@/apps/peek/ContactPhoneApp";
 import { ChatIcon } from "@/apps/icons";
 import { AVATAR_GRADIENT, EN, SANS, T } from "@/apps/chat/shared";
 import type { ArchiveEntry } from "@/types/contact";
-import type { Conversation } from "@/types/chat";
+import type { ChatMessage } from "@/types/chat";
 
 export default function PeekApp() {
   const { closeApp } = usePhone();
@@ -47,12 +47,17 @@ export default function PeekApp() {
   const [view, setView] = useState<"home" | "app">("home");
   /** 他钱包那本账开着。 */
   const [walletOpen, setWalletOpen] = useState(false);
-  /** 读回来的会话：他手机里那个「星绥通讯」就是我跟他的这一条，**同一份数据**。 */
-  const [convs, setConvs] = useState<Conversation[]>([]);
   /** 当前面具（「我」）：联系人里要有我、聊天列表里那一条也是我，所以名字与头像都带上。 */
   const [mask, setMask] = useState<Mask | null>(null);
   /** 当前面具 id（挑出「我跟这个角色」的那一条会话要用）。 */
   const [maskId, setMaskId] = useState(DEFAULT_MASK_ID);
+  /** 打开的那台手机里「我跟他的聊天」的**完整消息**（连同它属于哪个角色）。convs 来自
+   *  会话列表、每条只挂了最近一条，不够翻——进手机时按需把这一条会话的全量读出来
+   *  （只读这一个会话）。带上 characterId 是为了换手机时能一眼认出「这份还是上一台的」。 */
+  const [targetChat, setTargetChat] = useState<{ characterId: string; messages: ChatMessage[] }>({
+    characterId: "",
+    messages: [],
+  });
 
   useEffect(() => {
     let alive = true;
@@ -66,7 +71,6 @@ export default function PeekApp() {
       const currentMaskId = getCurrentMask(masks)?.id ?? DEFAULT_MASK_ID;
       setMask(getCurrentMask(masks) ?? null);
       setMaskId(currentMaskId);
-      setConvs(conversations);
       setPhones(
         conversations
           .filter(
@@ -96,10 +100,18 @@ export default function PeekApp() {
 
   const nameOf = (a: ArchiveEntry) => a.data.name || a.data.nickname || "TA";
 
-  /** 他手机里那个「星绥通讯」＝我跟他的这条会话（同一份数据，所以天然是延续的）。 */
-  const targetConv = target
-    ? convs.find((c) => c.characterId === target.id && c.maskId === maskId)
-    : undefined;
+  /** 他手机里那个「星绥通讯」＝我跟他的这条会话（同一份数据，所以天然是延续的）。
+   *  会话列表只挂了最近一条，这里按需把这一条会话的完整消息读出来给他翻。 */
+  useEffect(() => {
+    if (!target) return;
+    let alive = true;
+    void getConversationMessages(target.id, maskId).then((messages) => {
+      if (alive) setTargetChat({ characterId: target.id, messages });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [target, maskId]);
 
   return (
     <div style={rootStyle}>
@@ -221,7 +233,7 @@ export default function PeekApp() {
               myName={mask?.name ?? ""}
               myAvatar={mask?.avatar ?? ""}
               friends={phones ?? []}
-              messages={targetConv?.messages ?? []}
+              messages={targetChat.characterId === target.id ? targetChat.messages : []}
               onOpenWallet={() => setWalletOpen(true)}
               onBack={() => setView("home")}
             />

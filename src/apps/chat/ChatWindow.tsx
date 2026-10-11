@@ -8044,75 +8044,6 @@ function stripVoiceTags(text: string): string {
    第三个参数 `onFailed`：播放**确实失败**（元素报错、被拒，或只读探针抓到「假播放」）
    时回调一次，让界面能出一句可见提示（回应「可以点、没声音、也不显示失败」）。
    返回 null（兼容旧签名）。 */
-/* #region debug-point voice-playback-silent */
-/* 运行时插桩（TRAE-debugger）：把播放全链路证据回传到本机 Debug Server。
-   **只上报、不改任何业务行为**；定位完即整段删除。 */
-const DBG_VOICE_URL = "http://192.168.1.2:7777/event";
-const DBG_VOICE_RUN = "post-fix-2";
-function dbgVoice(
-  point: string,
-  hypothesisId: string,
-  data: Record<string, unknown>,
-): void {
-  try {
-    void fetch(DBG_VOICE_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sessionId: "voice-playback-silent",
-        runId: DBG_VOICE_RUN,
-        hypothesisId,
-        location: "ChatWindow.playVoiceViaElement." + point,
-        data,
-        ts: Date.now(),
-      }),
-    }).catch(() => { /* ignore */ });
-  } catch { /* ignore */ }
-}
-function dbgVoiceSnap(el: HTMLAudioElement): Record<string, unknown> {
-  let errCode = 0;
-  let errMsg = "";
-  try {
-    const e = el.error;
-    if (e) { errCode = e.code; errMsg = String(e.message ?? ""); }
-  } catch { /* ignore */ }
-  return {
-    readyState: el.readyState,
-    networkState: el.networkState,
-    paused: el.paused,
-    ended: el.ended,
-    currentTime: Number(el.currentTime.toFixed(3)),
-    duration: Number.isFinite(el.duration) ? Number(el.duration.toFixed(3)) : String(el.duration),
-    volume: el.volume,
-    muted: el.muted,
-    isConnected: el.isConnected,
-    errCode,
-    errMsg,
-  };
-}
-function dbgVoiceEnv(): Record<string, unknown> {
-  const nav = navigator as unknown as {
-    audioSession?: { type?: string };
-    standalone?: boolean;
-  };
-  const hasAudioSession = !!nav.audioSession;
-  let sessionType = "n/a";
-  if (hasAudioSession) { try { sessionType = String(nav.audioSession?.type ?? ""); } catch { /* ignore */ } }
-  let standaloneMedia: boolean | null = null;
-  try { standaloneMedia = window.matchMedia("(display-mode: standalone)").matches; } catch { /* ignore */ }
-  return {
-    hasAudioSession,
-    sessionType,
-    isSecureContext: window.isSecureContext,
-    protocol: location.protocol,
-    host: location.host,
-    standaloneMedia,
-    navigatorStandalone: !!nav.standalone,
-    visibility: document.visibilityState,
-    ua: navigator.userAgent,
-  };
-}
-/* #endregion debug-point voice-playback-silent */
 function playVoiceViaElement(
   dataUrl: string,
   onEnded: () => void,
@@ -8125,24 +8056,6 @@ function playVoiceViaElement(
      唯一被证实能响的写法；它缺的另一半是「首触解锁」，这轮补在 @/lib/audio-session。 */
   const el = new Audio();
   voiceEl = el;
-  /* #region debug-point voice-playback-silent */
-  dbgVoice("entry", "A", {
-    len: dataUrl.length,
-    head: dataUrl.slice(0, 48),
-    isAudioDataUrl: dataUrl.startsWith("data:audio"),
-    isBlobUrl: dataUrl.startsWith("blob:"),
-    isHttp: dataUrl.startsWith("http"),
-    hasBase64: dataUrl.includes(";base64,"),
-    ...dbgVoiceEnv(),
-  });
-  if (!dataUrl.startsWith("data:audio") && !dataUrl.startsWith("blob:") && !dataUrl.startsWith("http")) {
-    dbgVoice("entry-weird-format", "B", { head: dataUrl.slice(0, 64) });
-  }
-  (["loadedmetadata", "canplay", "playing", "ended", "stalled", "suspend", "durationchange"] as const)
-    .forEach((evt) => {
-      el.addEventListener(evt, () => dbgVoice("evt:" + evt, "C", dbgVoiceSnap(el)));
-    });
-  /* #endregion debug-point voice-playback-silent */
   let settled = false;
   const finalize = () => {
     if (settled) return;
@@ -8154,40 +8067,19 @@ function playVoiceViaElement(
     onEnded();
   };
   el.onended = () => {
-    /* #region debug-point voice-playback-silent */
-    dbgVoice("onended", "D", dbgVoiceSnap(el));
-    /* #endregion debug-point voice-playback-silent */
     finalize();
   };
   el.onerror = () => {
-    /* #region debug-point voice-playback-silent */
-    dbgVoice("onerror", "A", dbgVoiceSnap(el));
-    /* #endregion debug-point voice-playback-silent */
     if (settled) return; /* 已经收尾（播完／已报错）就不再重复报 */
     onFailed?.();
     finalize();
   };
   /* 参考项目 playSrc 结尾：play() 不 await（手势里同步调，最有机会出声）；被拒时 catch 里
      记一次失败＋finalize 收尾，别让它变成未处理的 rejection。 */
-  el.src = dataUrl; /* 元素已挂 DOM，此刻才设源，紧接着 play（Apple adv22945）*/
-  /* #region debug-point voice-playback-silent */
-  dbgVoice("src-set", "E", dbgVoiceSnap(el));
-  /* #endregion debug-point voice-playback-silent */
+  el.src = dataUrl;
   el.play().then(
+    () => {},
     () => {
-      /* #region debug-point voice-playback-silent */
-      dbgVoice("play-resolved", "C", dbgVoiceSnap(el));
-      /* #endregion debug-point voice-playback-silent */
-    },
-    (e: unknown) => {
-      /* #region debug-point voice-playback-silent */
-      const errObj = e as { name?: string; message?: string };
-      dbgVoice("play-rejected", "C", {
-        errName: String(errObj?.name ?? ""),
-        errMessage: String(errObj?.message ?? e),
-        ...dbgVoiceSnap(el),
-      });
-      /* #endregion debug-point voice-playback-silent */
       if (settled || voiceEl !== el) return;
       onFailed?.();
       finalize();
@@ -8198,14 +8090,6 @@ function playVoiceViaElement(
      界面全看不出来。这时只**报一声失败**让气泡出可见提示，**绝不动元素**
      （不 pause/load），免得误掐 iOS 起播慢的正常播放（1.11.80 的明确告诫）。 */
   window.setTimeout(() => {
-    /* #region debug-point voice-playback-silent */
-    const dbgSettled = settled || voiceEl !== el;
-    const dbgSilent = !el.paused && el.currentTime <= 0.05;
-    dbgVoice(dbgSilent ? "probe-2500-silent" : "probe-2500-ok", dbgSilent ? "C" : "D", {
-      settled: dbgSettled,
-      ...dbgVoiceSnap(el),
-    });
-    /* #endregion debug-point voice-playback-silent */
     if (settled || voiceEl !== el) return; /* 已收尾／已换下一条，不误报 */
     if (el.paused || el.currentTime > 0.05) return; /* 秒数在走＝正常起播 */
     onFailed?.();

@@ -22,8 +22,8 @@ import {
   msgDelete,
   msgDeleteByConv,
   msgGet,
-  msgGetAll,
   msgGetByConv,
+  msgGetLastByConv,
   msgPut,
   msgPutAll,
   type MessageRow,
@@ -185,7 +185,7 @@ function migrateMessagesOnce(): Promise<void> {
 
 /**
  * 读会话**元数据**列表（不含消息）：从 chat-conversations 拿骨架，`messages` 一律
- * 清空、由 `attachMessages` 另外挂回。读之前先跑一次老数据迁移。
+ * 清空、由 `attachLastMessages` 另外挂回。读之前先跑一次老数据迁移。
  * 写路径也用它：改会话元数据时不必再把全部消息读出来。
  */
 async function readConvList(): Promise<Conversation[]> {
@@ -196,25 +196,41 @@ async function readConvList(): Promise<Conversation[]> {
 }
 
 /**
- * 把消息挂回会话：一次取全量消息，按 `convId` 分组、按 `seq` 排序，剥掉库内部栏位后挂回。
+ * 给会话列表挂上「最近一条消息」（列表预览／未读等只用得到这一条）。
  *
- * 阶段①为「对外行为完全不变」仍全量挂回（消费点拿到的 Conversation 还是带完整 messages）；
- * 收窄成「只读当前会话 + 最近 N 条」留待下一步。
+ * 为什么只挂一条：会话列表只是拿来排行与显示末条摘要的，不需要每条会话的全部历史。
+ * 从前是一次 msgGetAll 把**全库消息**读进来再分组——库越大越慢，跟「打开列表」
+ * 这件小事完全不成比例。现在每条会话只走一次 byConvSeq 反向游标取 seq 最大那条
+ * （`msgGetLastByConv`），读取量与「会话数」成正比，与「历史总条数」无关。
+ * 拿完整历史请走 `getConversationMessages`（聊天窗、社交反应等才需要）。
  */
-async function attachMessages(list: Conversation[]): Promise<void> {
+async function attachLastMessages(list: Conversation[]): Promise<void> {
   if (list.length === 0) return;
-  const rows = await msgGetAll<StoredMessage>();
-  const grouped = new Map<string, StoredMessage[]>();
-  for (const row of rows) {
-    const arr = grouped.get(row.convId);
-    if (arr) arr.push(row);
-    else grouped.set(row.convId, [row]);
-  }
-  for (const c of list) {
-    const arr = grouped.get(c.id) ?? [];
-    arr.sort((a, b) => a.seq - b.seq);
-    c.messages = arr.map(toChatMessage);
-  }
+  await Promise.all(
+    list.map(async (c) => {
+      if ((c.msgSeq ?? 0) <= 0) {
+        c.messages = [];
+        return;
+      }
+      const row = await msgGetLastByConv<StoredMessage>(c.id);
+      c.messages = row ? [toChatMessage(row)] : [];
+    }),
+  );
+}
+
+/**
+ * 取某「角色 × 面具」会话的全部消息（按 seq 升序，已剥掉库内部栏位）。
+ *
+ * 聊天窗进场、社交反应凑上下文这类**确实要完整历史**的地方用它；只读一个会话，
+ * 不会像从前的 getConversations 那样把全库消息都拖出来。会话不存在时回传空阵列。
+ */
+export async function getConversationMessages(
+  characterId: string,
+  maskId: string,
+): Promise<ChatMessage[]> {
+  await migrateMessagesOnce();
+  const rows = await msgGetByConv<StoredMessage>(convId(characterId, maskId));
+  return rows.sort((a, b) => a.seq - b.seq).map(toChatMessage);
 }
 
 /* --------------------------- 气泡条数（每聊天） --------------------------- */
@@ -466,13 +482,19 @@ export async function updateCharChatSettings(
 
 /* ----------------------------- 会话 CRUD ----------------------------- */
 
-/** 读全部会话；顺手把这「角色级三样」盖上去（见上），并给还没记录的角色补一份迁移档。 */
-export async function getConversations(): Promise<Conversation[]> {
+/**
+ * 读会话骨架（元数据 + 角色级设置），并顺手做完两件一次性补盖：
+ * - 「聊过没有」戳子（老数据没戳子，按 msgSeq＞0 补一次）；
+ * - 角色级三样设置的迁移档（还没记录的角色补一份）。
+ *
+ * getConversations（列表）与 getOrCreateConversation（单个会话）都从它起手，
+ * 免得两处各写一遍补盖逻辑。
+ */
+async function loadConvSkeleton(): Promise<{
+  list: Conversation[];
+  settings: Record<string, CharacterChatSettings>;
+}> {
   const list = await readConvList();
-  /* 「聊过没有」这枚戳子的一次性补盖：重置记忆后消息列表的对话框也该还在，
-     老数据没戳子，按「手上有消息」补一次——有消息＝确实聊过，盖上；
-     一条消息也没有＝从没聊过（助手预绑的空会话），不盖。
-     1.12.54：消息已搬进独立仓库，这里改看 msgSeq（＞0 即聊过、不读消息本体）。 */
   let stamped = false;
   for (const c of list) {
     if (c.chatStarted === undefined && (c.msgSeq ?? 0) > 0) {
@@ -481,35 +503,50 @@ export async function getConversations(): Promise<Conversation[]> {
     }
   }
   if (stamped) await kvSet(CONVERSATIONS_KEY, list);
-  const all = await getAllCharSettings();
+  const settings = await getAllCharSettings();
   let migrated = false;
   for (const c of list) {
-    if (all[c.characterId]) continue;
-    all[c.characterId] = seedCharSettings(list, c.characterId);
+    if (settings[c.characterId]) continue;
+    settings[c.characterId] = seedCharSettings(list, c.characterId);
     migrated = true;
   }
-  if (migrated) await kvSet(CHAR_SETTINGS_KEY, all);
-  await attachMessages(list);
-  return list.map((c) => applyCharSettings(c, all[c.characterId]));
+  if (migrated) await kvSet(CHAR_SETTINGS_KEY, settings);
+  return { list, settings };
 }
 
-/** 取某角色在某面具下的会话；没有则建一个空的（不落库，首条消息才写）。 */
+/** 读全部会话；顺手把这「角色级三样」盖上去（见上），并给还没记录的角色补一份迁移档。
+ *  列表只挂每会话的**最近一条消息**（见 attachLastMessages）——需要完整历史请走
+ *  getConversationMessages。 */
+export async function getConversations(): Promise<Conversation[]> {
+  const { list, settings } = await loadConvSkeleton();
+  await attachLastMessages(list);
+  return list.map((c) => applyCharSettings(c, settings[c.characterId]));
+}
+
+/** 取某角色在某面具下的会话（**含完整消息**）；没有则建一个空的（不落库，首条消息才写）。
+ *  只读这一个会话的消息，不再拖全库。 */
 export async function getOrCreateConversation(
   characterId: string,
   maskId: string,
 ): Promise<Conversation> {
-  const list = await getConversations();
+  const { list, settings } = await loadConvSkeleton();
   const found = list[findIdx(list, characterId, maskId)];
-  if (found) return found;
+  if (found) {
+    found.messages = await getConversationMessages(characterId, maskId);
+    return applyCharSettings(found, settings[characterId]);
+  }
   const now = new Date().toISOString();
-  return {
-    id: convId(characterId, maskId),
-    characterId,
-    maskId,
-    messages: [],
-    createdAt: now,
-    updatedAt: now,
-  };
+  return applyCharSettings(
+    {
+      id: convId(characterId, maskId),
+      characterId,
+      maskId,
+      messages: [],
+      createdAt: now,
+      updatedAt: now,
+    },
+    settings[characterId],
+  );
 }
 
 /** 追加一条消息（会话不存在则顺手建立）。
