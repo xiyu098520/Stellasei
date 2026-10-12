@@ -196,12 +196,13 @@ export default function MessageList({
         }
       `}</style>
 
-      {/* 顶栏 G1：左返回键（回小手机主屏幕） / 居中「消息」22 衬线雾蓝 / 右加号；底下一行斜体 Messages */}
+      {/* 顶栏 G1：左返回键（回小手机主屏幕） / 居中「消息」22 衬线雾蓝 / 右加号；底下一行斜体 Messages。
+          标题块整体上提（顶距压到 2px），斜体英文跟搜索条的间距同步收紧，不悬空。 */}
       <div
         style={{
           flex: "none",
           zIndex: 20,
-          padding: "calc(var(--safe-area-top, 0px) + var(--sim-status-h, 0px) + 6px) 26px 0",
+          padding: "calc(var(--safe-area-top, 0px) + var(--sim-status-h, 0px) + 2px) 26px 0",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -349,8 +350,8 @@ export default function MessageList({
         </div>
       </div>
 
-      {/* 标题下的搜索条：圆角浅底 ＋ 放大镜 ＋ 占位字 */}
-      <div style={{ flex: "none", padding: "16px 26px 2px" }}>
+      {/* 标题下的搜索条：圆角浅底 ＋ 放大镜 ＋ 占位字（上距随标题块收紧，别让英文行掉进空谷） */}
+      <div style={{ flex: "none", padding: "12px 26px 2px" }}>
         <div
           style={{
             display: "flex",
