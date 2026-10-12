@@ -846,7 +846,7 @@ function ChatTabBar({
         display: "flex",
         alignItems: "center",
         borderTop: `1px solid ${HZ.line2}`,
-        padding: "13px 14px calc(var(--safe-area-bottom, 0px) + 11px)",
+        padding: "13px 14px calc(var(--safe-area-bottom, 0px) + 4px)",
         background: HZ.paper,
       }}
     >
