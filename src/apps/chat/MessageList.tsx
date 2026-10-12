@@ -11,18 +11,18 @@ import {
   UserPlus,
   Users,
 } from "lucide-react";
-import { AVATAR_GRADIENT, EN, SANS, T, listTime, previewOf } from "./shared";
+import { HZ, LAT, SANS, SERIF, listTime, previewOf } from "./shared";
 import { hexToRgba } from "@/lib/colors";
 import { DEFAULT_MASK_ID, type Mask } from "@/lib/settings/mask";
 import type { ArchiveEntry } from "@/types/contact";
 import type { Conversation } from "@/types/chat";
 
 /* =======================================================================
- * 消息列表页（黑粉蓝板）。
- * 不套主题、不起名：底是透粉的白，主色是一支亮粉（有未读的卡整张就是
- * 粉的，一眼分得清），蓝只做置顶那一小枚记号，黄只在未读计数上跳一下；出彩靠
- * 的是字号对比、留白、圆角和按钮的分量。头像留着，是圆的。
- * 消息列表是全局的：显示所有面具的所有绑定对话（同一角色可多行）
+ * 消息列表页（简约大气 · 戊「秩序 × 气泡 × 雾面」定稿）。
+ * 底是白灰纸面，主色一支雾蓝；标题「消息」进顶栏居中，底下跟一行斜体
+ * Messages；分区小标 PINNED · 置顶 / ALL · 全部；气泡按「区」聚成整块
+ * 哑光薄雾面片（静态颗粒，不吃性能），块内只留极细分隔线、头像一圈柔白边光。
+ * 消息列表是全局的：显示所有面具的所有绑定对话（同一角色可多行）。
  * ===================================================================== */
 
 /** 加号底下摊开的四张卡（顺序即摊开顺序）。 */
@@ -38,6 +38,10 @@ const ACTIONS = [
  *  颜色，等于没区分），按次序取色则保证同一屏里任意两张面具的颜色一定不同。
  *  真正的区分主力是**编号**（跟面具册里那张的编号一一对上），颜色只当一层极淡的底色。 */
 const MASK_TAG_COLORS = ["#E0669A", "#4E7FC4", "#8A6FD0", "#2F9E8F", "#B8712E", "#B05074"];
+
+/** 静态颗粒纹理（内联 SVG 噪点，平铺），做面片的哑光手感。 */
+const GRAIN =
+  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='130' height='130'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")";
 
 export default function MessageList({
   archives,
@@ -139,136 +143,125 @@ export default function MessageList({
 
   return (
     <div
+      className="ml-root"
       style={{
         position: "relative",
         flex: 1,
         minHeight: 0,
         display: "flex",
         flexDirection: "column",
-        background: T.bg,
+        background: HZ.paper,
         fontFamily: SANS,
-        color: T.ink,
+        color: HZ.ink,
         overflow: "hidden",
       }}
     >
-      {/* 互动：按下整张卡往里收一档、颜色压暗一点（不跑动画，只动 transform／filter）。
+      {/* 互动：按下收一档、颜色压暗一点（不跑动画，只动 transform／filter）。
           加号摊开是错开落下的位移＋缩放。 */}
       <style>{`
-        .ml-card { transition: transform .16s ease, filter .16s ease; }
-        .ml-card:active { transform: scale(.982); filter: brightness(.95); }
+        .ml-root { --grain: ${GRAIN}; }
         .ml-hbtn { transition: opacity .15s ease, transform .15s ease; }
-        .ml-hbtn:active { opacity: .6; transform: scale(.94); }
-        .ml-search::placeholder { color: ${T.ink3}; }
+        .ml-hbtn:active { opacity: .55; transform: scale(.92); }
+        .ml-row { position: relative; transition: filter .16s ease; }
+        .ml-row:active { filter: brightness(.97); }
+        /* 块内行与行之间只留一条**两端缩进**的极细分隔线 */
+        .ml-row + .ml-row::before {
+          content: ''; position: absolute; top: 0; left: 16px; right: 16px;
+          height: 1px; background: ${HZ.line2};
+        }
+        /* 气泡组＝一块哑光薄雾面片；颗粒是静态纹理，mix-blend 压在上层 */
+        .ml-group {
+          position: relative; overflow: hidden; border-radius: 22px;
+          background: linear-gradient(180deg, #F2F3F1, #EDEFEC);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,.85), 0 1px 2px rgba(58,65,73,.05);
+        }
+        .ml-group > * { position: relative; z-index: 1; }
+        .ml-group::after {
+          content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+          background-image: var(--grain); background-size: 130px 130px;
+          mix-blend-mode: multiply; opacity: .04;
+        }
+        /* 头像一圈柔白边光，整个人像从面片里浮起来一点 */
+        .ml-av {
+          box-shadow: 0 1px 2px rgba(58,65,73,.07), inset 0 1px 0 rgba(255,255,255,.95);
+          border: 1px solid rgba(255,255,255,.75);
+        }
+        .ml-search::placeholder { color: ${HZ.ink3}; }
         .ml-sheet {
           transition: transform .26s cubic-bezier(.34,1.4,.64,1), opacity .18s ease;
         }
         @media (prefers-reduced-motion: reduce) {
-          .ml-card, .ml-hbtn, .ml-sheet { transition: none; }
+          .ml-hbtn, .ml-row, .ml-sheet { transition: none; }
         }
       `}</style>
 
-      {/* 头部：菜单圆钮＋刊号小字 → 大标题「消息」＋一颗粉圆按钮 */}
+      {/* 顶栏 G1：左菜单 / 居中「消息」22 衬线雾蓝 / 右加号；底下一行斜体 Messages */}
       <div
         style={{
           flex: "none",
           zIndex: 20,
-          padding: "calc(var(--safe-area-top, 0px) + var(--sim-status-h, 0px) + 4px) 20px 0",
+          padding: "calc(var(--safe-area-top, 0px) + var(--sim-status-h, 0px) + 12px) 26px 0",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <button
             type="button"
             onClick={onOpenSidebar}
             aria-label="打开侧边栏"
             className="ml-hbtn"
             style={{
-              width: 36,
-              height: 36,
+              width: 24,
+              height: 24,
               flex: "none",
-              borderRadius: 999,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              border: `1px solid ${T.line}`,
-              background: T.card,
-              color: T.ink,
+              border: "none",
+              background: "none",
+              padding: 0,
+              color: HZ.ink,
               cursor: "pointer",
-              boxShadow: "0 6px 16px -12px rgba(20,19,24,.5)",
             }}
           >
-            <Menu size={17} strokeWidth={1.9} />
+            <Menu size={22} strokeWidth={1.5} />
           </button>
+
           <span
             style={{
-              fontFamily: EN,
-              fontSize: 9.5,
-              letterSpacing: ".24em",
-              color: T.ink3,
-              textTransform: "uppercase",
+              fontFamily: SERIF,
+              fontSize: 22,
+              fontWeight: 600,
+              letterSpacing: ".2em",
+              paddingLeft: ".2em",
+              color: HZ.accent,
             }}
           >
-            Stellasei · Messages
+            消息
           </span>
-        </div>
 
-        <div
-          style={{
-            display: "flex",
-            alignItems: "flex-end",
-            justifyContent: "space-between",
-            marginTop: 12,
-          }}
-        >
-          <div style={{ minWidth: 0 }}>
-            <h1
-              style={{
-                margin: 0,
-                fontSize: 32,
-                fontWeight: 800,
-                letterSpacing: "-.01em",
-                lineHeight: 1,
-                color: T.ink,
-              }}
-            >
-              消息
-            </h1>
-            <div
-              style={{
-                marginTop: 8,
-                fontSize: 12,
-                letterSpacing: ".06em",
-                color: T.ink3,
-                fontVariantNumeric: "tabular-nums",
-              }}
-            >
-              {searched.length} 条对话
-            </div>
-          </div>
-
-          {/* 粉圆按钮：按一下，四张卡从它底下错开摊出来 */}
-          <div style={{ position: "relative", flex: "none" }}>
+          {/* 加号：按一下，四张卡从它底下错开摊出来 */}
+          <div style={{ position: "relative", flex: "none", width: 24, height: 24 }}>
             <button
               type="button"
               onClick={() => setPlusOpen((v) => !v)}
               aria-label="更多"
               className="ml-hbtn"
               style={{
-                width: 48,
-                height: 48,
-                borderRadius: 999,
-                border: "none",
-                background: T.pink,
-                color: "#FFFFFF",
+                width: 24,
+                height: 24,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
+                border: "none",
+                background: "none",
+                padding: 0,
+                color: HZ.ink,
                 cursor: "pointer",
-                boxShadow: "0 14px 26px -14px rgba(232,106,155,.9)",
               }}
             >
               <Plus
                 size={22}
-                strokeWidth={2.4}
+                strokeWidth={1.5}
                 style={{
                   transition: "transform .25s cubic-bezier(.22,1,.36,1)",
                   transform: plusOpen ? "rotate(45deg)" : "none",
@@ -279,7 +272,7 @@ export default function MessageList({
             <div
               style={{
                 position: "absolute",
-                top: 60,
+                top: 40,
                 right: 0,
                 width: 176,
                 zIndex: 30,
@@ -305,9 +298,9 @@ export default function MessageList({
                     alignItems: "center",
                     gap: 11,
                     padding: "10px 12px",
-                    background: T.card,
+                    background: "#FFFFFF",
                     borderRadius: 16,
-                    boxShadow: "0 18px 30px -18px rgba(20,19,24,.45)",
+                    boxShadow: "0 18px 30px -18px rgba(58,65,73,.45)",
                     cursor: "pointer",
                     transform: plusOpen ? "none" : "translateY(-12px) scale(.94)",
                     opacity: plusOpen ? 1 : 0,
@@ -321,15 +314,15 @@ export default function MessageList({
                       width: 28,
                       height: 28,
                       borderRadius: 999,
-                      background: T.pinkSoft,
+                      background: HZ.accentSoft,
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
                     }}
                   >
-                    <item.icon size={15} strokeWidth={1.9} color={T.pink} />
+                    <item.icon size={15} strokeWidth={1.9} color={HZ.accent} />
                   </span>
-                  <span style={{ flex: 1, fontSize: 13.5, letterSpacing: ".04em", color: T.ink }}>
+                  <span style={{ flex: 1, fontSize: 13.5, letterSpacing: ".04em", color: HZ.ink }}>
                     {item.name}
                   </span>
                 </div>
@@ -337,29 +330,44 @@ export default function MessageList({
             </div>
           </div>
         </div>
+
+        <div
+          style={{
+            textAlign: "center",
+            fontFamily: SERIF,
+            fontStyle: "italic",
+            fontSize: 12.5,
+            letterSpacing: ".12em",
+            textIndent: ".12em",
+            color: HZ.ink3,
+            padding: "3px 30px 0",
+          }}
+        >
+          Messages
+        </div>
       </div>
 
-      {/* 搜索：一颗白胶囊 */}
-      <div style={{ flex: "none", padding: "12px 20px 0" }}>
+      {/* 标题下的搜索条：圆角浅底 ＋ 放大镜 ＋ 占位字 */}
+      <div style={{ flex: "none", padding: "16px 26px 2px" }}>
         <div
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 10,
-            height: 44,
-            padding: "0 16px",
-            background: T.card,
-            border: `1px solid ${T.line}`,
-            borderRadius: 999,
+            gap: 9,
+            height: 38,
+            padding: "0 14px",
+            borderRadius: 12,
+            background: "linear-gradient(180deg,#F1F2F0,#EBEDEA)",
+            boxShadow: "inset 0 1px 0 rgba(255,255,255,.85), 0 1px 2px rgba(58,65,73,.05)",
           }}
         >
-          <Search size={16} strokeWidth={2} color={T.ink3} style={{ flex: "none" }} />
+          <Search size={16} strokeWidth={1.7} color={HZ.ink3} style={{ flex: "none" }} />
           <input
             type="text"
             className="ml-search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="找一个人"
+            placeholder="搜索"
             style={{
               flex: 1,
               minWidth: 0,
@@ -367,21 +375,22 @@ export default function MessageList({
               outline: "none",
               background: "transparent",
               fontSize: 13.5,
-              letterSpacing: ".03em",
+              letterSpacing: ".16em",
               fontFamily: SANS,
-              color: T.ink,
+              color: HZ.ink,
             }}
           />
         </div>
       </div>
 
-      {/* 条目：一行一张卡 */}
+      {/* 条目：气泡按区聚成整块 */}
       <div
         style={{
           flex: 1,
+          minHeight: 0,
           overflowY: "auto",
           overscrollBehavior: "none",
-          padding: "12px 16px calc(var(--safe-area-bottom, 0px) + 18px)",
+          padding: "13px 20px 18px",
         }}
       >
         {archives.length === 0 ? (
@@ -394,26 +403,30 @@ export default function MessageList({
           <>
             {pinned.length > 0 ? (
               <div>
-                <SectionLabel cn="置顶" count={pinned.length} dot={T.blue} />
-                {pinned.map((row) => (
-                  <ConversationRow
-                    key={`${row.conv.characterId}::${row.maskId}`}
-                    row={row}
-                    onOpen={() => onOpenChat(row.conv.characterId, row.maskId)}
-                  />
-                ))}
+                <Sect en="Pinned" cn="置顶" />
+                <div className="ml-group">
+                  {pinned.map((row) => (
+                    <ConversationRow
+                      key={`${row.conv.characterId}::${row.maskId}`}
+                      row={row}
+                      onOpen={() => onOpenChat(row.conv.characterId, row.maskId)}
+                    />
+                  ))}
+                </div>
               </div>
             ) : null}
             {normal.length > 0 ? (
-              <div>
-                {pinned.length > 0 ? <SectionLabel cn="全部" count={normal.length} /> : null}
-                {normal.map((row) => (
-                  <ConversationRow
-                    key={`${row.conv.characterId}::${row.maskId}`}
-                    row={row}
-                    onOpen={() => onOpenChat(row.conv.characterId, row.maskId)}
-                  />
-                ))}
+              <div style={{ marginTop: pinned.length > 0 ? 16 : 0 }}>
+                <Sect en="All" cn="全部" />
+                <div className="ml-group">
+                  {normal.map((row) => (
+                    <ConversationRow
+                      key={`${row.conv.characterId}::${row.maskId}`}
+                      row={row}
+                      onOpen={() => onOpenChat(row.conv.characterId, row.maskId)}
+                    />
+                  ))}
+                </div>
               </div>
             ) : null}
           </>
@@ -431,7 +444,7 @@ export default function MessageList({
   );
 }
 
-/** 空状态：一小撮粉线起头，下面两行字——纯排版，不放图标。 */
+/** 空状态：一小撮雾蓝线起头，下面两行字——纯排版，不放图标。 */
 function EmptyState({ cn, hint }: { cn: string; hint: string }) {
   return (
     <div
@@ -443,13 +456,17 @@ function EmptyState({ cn, hint }: { cn: string; hint: string }) {
         textAlign: "center",
       }}
     >
-      <span style={{ width: 32, height: 4, borderRadius: 999, background: T.pink, marginBottom: 20 }} />
-      <div style={{ fontSize: 17, fontWeight: 700, color: T.ink, letterSpacing: ".06em" }}>{cn}</div>
+      <span
+        style={{ width: 32, height: 4, borderRadius: 999, background: HZ.accent, opacity: 0.7, marginBottom: 20 }}
+      />
+      <div style={{ fontFamily: SERIF, fontSize: 17, fontWeight: 600, color: HZ.ink, letterSpacing: ".08em" }}>
+        {cn}
+      </div>
       <div
         style={{
           marginTop: 10,
           fontSize: 12.5,
-          color: T.ink2,
+          color: HZ.ink2,
           letterSpacing: ".04em",
           lineHeight: 1.6,
         }}
@@ -460,40 +477,31 @@ function EmptyState({ cn, hint }: { cn: string; hint: string }) {
   );
 }
 
-/** 分组小标：一颗色点＋名字＋条数，不用横条，轻一点。 */
-function SectionLabel({ cn, count, dot }: { cn: string; count: number; dot?: string }) {
+/** 分区小标：等宽英文 ＋ 中点 ＋ 中文，字距放开、颜色极淡。 */
+function Sect({ en, cn }: { en: string; cn: string }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        padding: "8px 8px 10px",
-      }}
-    >
-      {dot ? <i style={{ width: 7, height: 7, borderRadius: 999, background: dot }} /> : null}
-      <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: ".16em", color: T.ink2 }}>
-        {cn}
-      </span>
+    <div style={{ display: "flex", alignItems: "baseline", gap: 7, padding: "11px 4px 9px" }}>
       <span
         style={{
-          fontFamily: EN,
+          fontFamily: LAT,
           fontSize: 9.5,
-          letterSpacing: ".12em",
-          color: T.ink3,
-          fontVariantNumeric: "tabular-nums",
+          letterSpacing: ".3em",
+          color: HZ.ink3,
+          textTransform: "uppercase",
         }}
       >
-        {String(count).padStart(2, "0")}
+        {en}
       </span>
+      <span style={{ fontFamily: LAT, fontSize: 9.5, color: HZ.ink3 }}>·</span>
+      <span style={{ fontSize: 11, letterSpacing: ".26em", color: HZ.ink2 }}>{cn}</span>
     </div>
   );
 }
 
-/** 单条会话卡（一个绑定一张）。
- *  有未读的卡整张铺粉、字走近黑（粉底黑字，对比够、又抢眼）；
- *  置顶是名字前一小枚蓝记号；头像留着，50 的圆，外圈一道细环。
- *  按下整张卡往里收一档、颜色压暗一点。 */
+/** 单条会话行（一个绑定一行）。
+ *  圆角方头像 ＋ 衬线名字（置顶走雾蓝）＋ 预览 ＋ 右侧时间与未读；
+ *  有未读：预览走近黑、未读是一枚雾蓝小药丸。
+ *  面具标签只在同名撞行时挂，贴着名字右侧，非常淡。 */
 function ConversationRow({
   row,
   onOpen,
@@ -519,93 +527,46 @@ function ConversationRow({
   const pinned = conv?.isPinned === true;
   const last = conv ? conv.messages[conv.messages.length - 1] : undefined;
 
-  const subColor = hot ? "rgba(20,19,24,.66)" : T.ink2;
-  const metaColor = hot ? "rgba(20,19,24,.58)" : T.ink3;
-
   return (
     <div
-      className="ml-card"
+      className="ml-row"
       onClick={onOpen}
       data-tap="true"
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 13,
-        padding: "13px 15px",
-        marginBottom: 10,
-        borderRadius: 20,
-        /* 整张卡从头到尾都要能点 —— 显式铺满，别只指望父级的拉伸 */
-        width: "100%",
-        boxSizing: "border-box",
-        /* 有未读的卡：铺一层**很淡的粉**（不是主粉）。
-           铺主粉 #E86A9B 的话，一片重色压下来，卡上的名字和预览反倒糊了、看不清。
-           换成淡粉底，一眼认得出「这条没读」，字还是清清楚楚。 */
-        background: hot ? T.pinkSoft : T.card,
-        boxShadow: hot
-          ? "0 14px 26px -20px rgba(232,106,155,.7)"
-          : "0 12px 26px -22px rgba(20,19,24,.7)",
-        cursor: "pointer",
-      }}
+      style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 16px", cursor: "pointer" }}
     >
-      {/* 头像：50 的圆＋一道细环（头像留着；不吃指针，点到哪儿都算点这张卡） */}
+      {/* 头像：42 的圆角方（有照片铺照片，没有就白底衬线首字） */}
       <div
+        className="ml-av"
         style={{
           flex: "none",
-          width: 50,
-          height: 50,
-          borderRadius: 999,
-          padding: 2,
-          background: hot ? "#FFFFFF" : T.pinkSoft,
+          width: 42,
+          height: 42,
+          borderRadius: 13,
+          background: d.photo ? `url(${d.photo}) center/cover` : "#FFFFFF",
+          color: HZ.accent,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontFamily: SERIF,
+          fontSize: 15,
+          fontWeight: 600,
+          overflow: "hidden",
           pointerEvents: "none",
         }}
       >
-        <div
-          style={{
-            width: "100%",
-            height: "100%",
-            borderRadius: 999,
-            background: d.photo ? `url(${d.photo}) center/cover` : AVATAR_GRADIENT,
-            color: "#FFF",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 17,
-            fontWeight: 600,
-            overflow: "hidden",
-          }}
-        >
-          {d.photo ? null : name.slice(0, 1)}
-        </div>
+        {d.photo ? null : name.slice(0, 1)}
       </div>
 
-      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 5, pointerEvents: "none" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
-          {/* 置顶：一小枚蓝记号（全界面蓝就用在这）。马卡龙蓝浅，字用深蓝才看得清 */}
-          {pinned ? (
-            <span
-              style={{
-                flex: "none",
-                background: T.blue,
-                color: T.blueDeep,
-                fontFamily: SANS,
-                fontSize: 8.5,
-                fontWeight: 600,
-                letterSpacing: ".12em",
-                padding: "2px 6px",
-                borderRadius: 999,
-                lineHeight: 1.3,
-              }}
-            >
-              置顶
-            </span>
-          ) : null}
+      <div style={{ flex: 1, minWidth: 0, pointerEvents: "none" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
           <span
             style={{
               minWidth: 0,
-              fontSize: 16,
-              fontWeight: hot ? 800 : 700,
-              letterSpacing: ".01em",
-              color: T.ink,
+              fontFamily: SERIF,
+              fontSize: 15.5,
+              fontWeight: 600,
+              letterSpacing: ".08em",
+              color: pinned ? HZ.accent : HZ.ink,
               whiteSpace: "nowrap",
               overflow: "hidden",
               textOverflow: "ellipsis",
@@ -615,12 +576,11 @@ function ConversationRow({
           </span>
 
           {conv?.isMuted ? (
-            <BellOff size={12} strokeWidth={2} color={metaColor} style={{ flex: "none" }} />
+            <BellOff size={12} strokeWidth={2} color={HZ.ink3} style={{ flex: "none" }} />
           ) : null}
 
-          {/* 面具标签（只在同名撞行时挂）：要在行的右边一点，而且非常淡——
-              所以它**贴着行的右端**待着（marginLeft auto），底色只是那支面具色的 10%，
-              字 72%，安静得几乎看不见。
+          {/* 面具标签（只在同名撞行时挂）：贴着名字右侧，非常淡——
+              底色只是那支面具色的 10%，字 72%，安静得几乎看不见。
               区分同名靠前面的**编号**：跟「我的」页面具册里的号一一对上。 */}
           {row.showBadge ? (
             <span
@@ -647,18 +607,19 @@ function ConversationRow({
           ) : null}
         </div>
 
-        <span
+        <div
           style={{
+            marginTop: 4,
             fontSize: 12.5,
             letterSpacing: ".02em",
-            color: subColor,
+            color: hot ? HZ.ink : HZ.ink2,
             whiteSpace: "nowrap",
             overflow: "hidden",
             textOverflow: "ellipsis",
           }}
         >
           {previewOf(last)}
-        </span>
+        </div>
       </div>
 
       {/* 右列：时间 ＋ 未读 */}
@@ -668,15 +629,15 @@ function ConversationRow({
           display: "flex",
           flexDirection: "column",
           alignItems: "flex-end",
-          gap: 7,
+          gap: 6,
           minWidth: 40,
         }}
       >
         <span
           style={{
-            fontSize: 10.5,
-            letterSpacing: ".04em",
-            color: metaColor,
+            fontFamily: LAT,
+            fontSize: 10,
+            color: HZ.ink3,
             fontVariantNumeric: "tabular-nums",
           }}
         >
@@ -685,36 +646,22 @@ function ConversationRow({
         {hot ? (
           <span
             style={{
-              /* 白药丸＋粉字，在淡粉卡上自己浮起来（加一点粉影，不靠加深底色）。
-                 数字不能小：字号 22／12.5。 */
-              display: "block",
-              minWidth: 22,
-              height: 22,
-              padding: "0 7px",
-              borderRadius: 999,
-              background: "#FFFFFF",
-              color: T.pink,
-              boxShadow: "0 2px 6px -2px rgba(232,106,155,.45)",
-              /* 数字要落在圆心。行盒怎么摆都白搭：
-                 上下留白之差 = (ascent − 数字高) − descent，**跟行高完全无关**，两种写法同一个位置。
-                 原因在字体：EN 是 Playfair 衬线体，ascent 1082／descent 276／数字高 700（千分），
-                 数字上方比下方多出 0.053em（12.5px 字号 ≈ 0.66px），天生下沉。
-                 所以**字体留着**，让数字自己往上抬 0.7px（值就是上面算出来的那 0.053em）。
-                 抬的是里层 span，圆底、白底、粉影都在外层，一点不动。 */
+              minWidth: 17,
+              height: 17,
+              padding: "0 5px",
+              borderRadius: 9,
+              background: HZ.accent,
+              color: "#FFFFFF",
+              fontFamily: LAT,
+              fontSize: 10,
+              fontWeight: 600,
+              lineHeight: "17px",
               textAlign: "center",
-              lineHeight: "22px",
-              fontFamily: EN,
-              fontSize: 12.5,
-              fontWeight: 800,
+              flex: "none",
               fontVariantNumeric: "tabular-nums",
             }}
           >
-            {/* 只把数字往上抬：inline 元素上的相对定位不改行盒布局，只挪它自己画在哪，
-                所以圆的尺寸、数字在行里的位置都不受影响，抬的就是「看着偏下」那一点。
-                抬到 -1px。 */}
-            <span style={{ position: "relative", top: "-1px" }}>
-              {unread > 99 ? "99+" : unread}
-            </span>
+            {unread > 99 ? "99+" : unread}
           </span>
         ) : null}
       </div>

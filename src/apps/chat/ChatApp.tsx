@@ -27,7 +27,7 @@ import MomentsPage from "./MomentsPage";
 import MinePage, { SIGNATURE_FALLBACK } from "./MinePage";
 import WalletView from "./WalletView";
 import ChatGlobalSettingsPanel from "./ChatGlobalSettingsPanel";
-import { AVATAR_GRADIENT, EN, SANS, T } from "./shared";
+import { AVATAR_GRADIENT, EN, HZ, LAT, SANS, T } from "./shared";
 import type { ArchiveEntry } from "@/types/contact";
 import type { ChatApiSettings, Conversation } from "@/types/chat";
 
@@ -268,6 +268,19 @@ export default function ChatApp() {
             showToast={showToast}
           />
         )
+      ) : null}
+
+      {/* 底部 tab（第二档：新图标 ＋ 英文小标）：只在四个主视图露着、
+          且没打开任何对话时出现；钱包／聊天全局设定这些次级页不挂它。 */}
+      {!openChat &&
+      (view === "list" || view === "contacts" || view === "moments" || view === "mine") ? (
+        <ChatTabBar
+          active={view}
+          onNavigate={(next) => {
+            setView(next);
+            setOpenChat(null);
+          }}
+        />
       ) : null}
 
       {/* 进过的对话全留着挂载，只有当前这一间露着：返回＝藏起来（display:none），
@@ -722,6 +735,164 @@ function ChatSidebar({
         <span>Stellasei — est. 2026</span>
         <span style={{ fontVariantNumeric: "tabular-nums" }}>v{APP_VERSION}</span>
       </div>
+    </div>
+  );
+}
+
+/* =======================================================================
+ * 底部 tab（第二档：新图标 ＋ 英文小标）
+ * 只在「消息／通讯人／动态／我的」四个主视图之间横切，导航的活还是侧边栏挑大梁，
+ * 这里是随手一点就能切的那排。图标是样张 I2 那套线稿：气泡／名片／微光／人像。
+ * ===================================================================== */
+
+/** 气泡：消息。 */
+function TabMsgIcon() {
+  return (
+    <svg
+      width={25}
+      height={25}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M4.6 8A2.6 2.6 0 017.2 5.4h9.6A2.6 2.6 0 0119.4 8v6.2a2.6 2.6 0 01-2.6 2.6h-6.1L6.5 20v-3.2H7.2A2.6 2.6 0 014.6 14.2z" />
+    </svg>
+  );
+}
+
+/** 名片：通讯人（人像已在「我的」用掉，这里用名片，不重复）。 */
+function TabPplIcon() {
+  return (
+    <svg
+      width={25}
+      height={25}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="3.2" y="5.8" width="17.6" height="12.4" rx="2.9" />
+      <circle cx="9" cy="11" r="2.05" />
+      <path d="M13.6 10.2h4.4M13.6 13.6h2.8" />
+    </svg>
+  );
+}
+
+/** 微光：动态（一大一小两颗四芒星）。 */
+function TabStarIcon() {
+  return (
+    <svg
+      width={25}
+      height={25}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M11.4 6.2c.62 4.371 1.829 5.58 6.2 6.2-4.371.62-5.58 1.829-6.2 6.2-.62-4.371-1.829-5.58-6.2-6.2 4.371-.62 5.58-1.829 6.2-6.2z" />
+      <path d="M17.4 5c.18 1.269.531 1.62 1.8 1.8-1.269.18-1.62.531-1.8 1.8-.18-1.269-.531-1.62-1.8-1.8 1.269-.18 1.62-.531 1.8-1.8z" />
+    </svg>
+  );
+}
+
+/** 人像：我的。 */
+function TabMeIcon() {
+  return (
+    <svg
+      width={25}
+      height={25}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="8.7" r="3.5" />
+      <path d="M5 19.6c.85-3.75 3.6-5.8 7-5.8s6.15 2.05 7 5.8" />
+    </svg>
+  );
+}
+
+const TAB_ITEMS = [
+  { view: "list", en: "Messages", Icon: TabMsgIcon },
+  { view: "contacts", en: "Contacts", Icon: TabPplIcon },
+  { view: "moments", en: "Moments", Icon: TabStarIcon },
+  { view: "mine", en: "Me", Icon: TabMeIcon },
+] as const;
+
+function ChatTabBar({
+  active,
+  onNavigate,
+}: {
+  active: "list" | "contacts" | "moments" | "mine";
+  onNavigate: (view: "list" | "contacts" | "moments" | "mine") => void;
+}) {
+  return (
+    <div
+      style={{
+        flex: "none",
+        display: "flex",
+        alignItems: "center",
+        borderTop: `1px solid ${HZ.line2}`,
+        padding: "13px 14px calc(var(--safe-area-bottom, 0px) + 11px)",
+        background: HZ.paper,
+      }}
+    >
+      <style>{`
+        .ctb-btn { transition: transform .16s ease, opacity .16s ease; }
+        .ctb-btn:active { transform: scale(.94); opacity: .7; }
+        @media (prefers-reduced-motion: reduce) { .ctb-btn { transition: none } }
+      `}</style>
+      {TAB_ITEMS.map(({ view, en, Icon }) => {
+        const on = view === active;
+        return (
+          <button
+            key={view}
+            type="button"
+            onClick={() => onNavigate(view)}
+            className="ctb-btn"
+            aria-label={en}
+            style={{
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 6,
+              border: "none",
+              background: "none",
+              padding: 0,
+              fontFamily: SANS,
+              color: on ? HZ.accent : HZ.ink3,
+              cursor: "pointer",
+            }}
+          >
+            <Icon />
+            <span
+              style={{
+                fontFamily: LAT,
+                fontSize: 8.5,
+                letterSpacing: ".12em",
+                paddingLeft: ".12em",
+                textTransform: "uppercase",
+              }}
+            >
+              {en}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }
