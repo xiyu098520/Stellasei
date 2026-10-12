@@ -1,7 +1,8 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono, Playfair_Display, Noto_Serif_SC } from "next/font/google";
-// 原三支自托管中文字体（霞鹜文楷／志莽行／朱雀仿宋）走 font-display:swap，
-// 冷启动必闪一下；已全部改用系统相近字体（楷体／行楷／仿宋），零下载、零闪。
+import { Geist, Geist_Mono, Playfair_Display } from "next/font/google";
+// 原几支自托管／下载的中文字体（霞鹜文楷／志莽行／朱雀仿宋／思源宋体）走
+// font-display:swap，冷启动必闪一下；已全部改用系统相近字体（宋体／楷体／
+// 行楷／仿宋），零下载、零闪。Playfair 只用于拉丁字母，体积小，仍保留。
 import "./globals.css";
 
 const geistSans = Geist({
@@ -19,13 +20,6 @@ const playfair = Playfair_Display({
   variable: "--font-playfair",
   subsets: ["latin"],
   weight: ["400", "500", "600"],
-});
-
-// 中文宋体（思源宋体）：档案深色保密页与杂志页的中文正文／标题。
-const notoSerifSC = Noto_Serif_SC({
-  variable: "--font-serif-sc",
-  subsets: ["latin"],
-  weight: ["300", "400", "500"],
 });
 
 export const metadata: Metadata = {
@@ -55,7 +49,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="zh-CN"
-      className={`${geistSans.variable} ${geistMono.variable} ${playfair.variable} ${notoSerifSC.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${playfair.variable} h-full antialiased`}
     >
       <body className="h-full overflow-hidden">{children}</body>
     </html>
