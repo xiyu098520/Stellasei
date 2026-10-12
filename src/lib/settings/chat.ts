@@ -745,11 +745,15 @@ export async function healStalePendingMedia(
     healedById.set(row.id, next);
     changed.push({ ...next, convId: convKey, seq: row.seq });
   }
-  if (changed.length === 0) return list[idx];
-  await msgPutAll(changed);
-  list[idx].updatedAt = new Date().toISOString();
-  await kvSet(CONVERSATIONS_KEY, list);
-  /* 回传的会话带上归位后的完整消息：调用方（聊天窗）会读它的 messages。 */
+  if (changed.length > 0) {
+    await msgPutAll(changed);
+    list[idx].updatedAt = new Date().toISOString();
+    await kvSet(CONVERSATIONS_KEY, list);
+  }
+  /* 回传的会话**无论有没有归位**都要带上完整消息：调用方（聊天窗）读它的 messages，
+     `?? created` 还会把 `getOrCreateConversation` 那份历史整个丢掉。
+     从前这里在「没要归位的」时直接回 list[idx]（骨架、messages 恒为 []），
+     于是「点进已有会话一片空白」——消息其实都在库里。 */
   list[idx].messages = rows.map((row) => healedById.get(row.id) ?? toChatMessage(row));
   return list[idx];
 }
