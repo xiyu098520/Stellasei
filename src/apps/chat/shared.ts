@@ -45,9 +45,29 @@ export const T = {
   lineSoft: "rgba(20,19,24,.05)", // 更淡的分隔
 } as const;
 
+/**
+ * 消息页「雾蓝白灰」板（简约大气定稿）。
+ * 与 T 并存 —— T 是聊天窗等旧板，这份只管消息列表页与底部 tab；
+ * 只是**新增**一套取值，T 一点没动。
+ */
+export const HZ = {
+  paper: "#FAF9F6", // 页面底
+  paper2: "#F2F3F1", // 气泡组的面
+  ink: "#3A4149", // 主文字
+  ink2: "#7A8A9E", // 次级（预览）
+  ink3: "#B3B8BE", // 淡（时间、小标）
+  line: "rgba(58,65,73,.13)", // 细边
+  line2: "rgba(58,65,73,.07)", // 更淡的分隔
+  accent: "#5A7391", // 雾蓝主色
+  accentSoft: "#E7ECF2", // 淡雾蓝
+} as const;
+
 /** 界面无衬线。新配色是干净现代的路子，主文字不用宋体。 */
 export const SANS =
   "var(--font-sans), -apple-system, 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif";
+
+/** 小字拉丁（分区小标、时间、未读数字、tab 英文）：等宽，冷静克制。 */
+export const LAT = 'ui-monospace, "SFMono-Regular", Consolas, monospace';
 
 /** 中文宋体（旧板 C 那一套还在用，留住）。 */
 export const SERIF = "var(--font-serif-sc), 'Songti SC', Georgia, serif";
