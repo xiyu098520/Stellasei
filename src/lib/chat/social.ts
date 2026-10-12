@@ -520,22 +520,6 @@ export async function generateMomentComment(
   }
 }
 
-/** TA 求加回的好友申请附言（走完整管线；没生成出来就不带附言）。
- *  不编兜底话：附言通过好友后会被当成 TA 说过的话记进记忆，网络抖动时硬塞一句，
- *  就成了不属于这个人设的假记忆——宁可这次没附言，界面显示系统默认那句。 */
-export async function generateFriendRequestMsg(
-  character: ArchiveEntry,
-  conv: Conversation,
-  userName: string,
-): Promise<string | undefined> {
-  const instruction = `对方刚刚删除了你的好友。
-按你的人设，写一句你会在好友申请里附带的验证消息（30字以内）。
-只给出这句话本身，不加引号，不作任何解释。`;
-  const res = await generateSocialReply(character, conv, userName, instruction);
-  const text = res?.parts.join(" ").trim();
-  return text ? text.slice(0, 60) : undefined;
-}
-
 /** 解除拉黑后 TA 的第一反应（走完整管线；没生成出来就安静过去）。
  *  只交代状态事实，不催 TA 做出反应——拉黑当下那条与拉黑期间的历史原文都在，
  *  TA 自己知道解除之后该怎么接。
@@ -587,22 +571,6 @@ export async function generateNewFriendGreeting(
   });
 }
 
-/** 对方点了「同意」让你重新加回好友之后，TA 的第一反应（走完整管线；没生成出来就安静过去）。
- *  这一条走的是「被删好友 → TA 求加回 → 用户点同意」那条路：
- *  系统把「对方同意了你的好友申请」告诉 TA，TA 立刻说一句，不等对方先开口。
- *  不编兜底话：硬塞的话会作为 TA 说过的内容进记忆，宁可这次没反应。 */
-export async function generateReacceptedReply(
-  character: ArchiveEntry,
-  conv: Conversation,
-  userName: string,
-): Promise<SocialReply | null> {
-  const instruction = `【状态 - 对方同意了你的好友申请】系统提示你：${userName}同意了你的好友申请，你们重新成为了好友。
-之前${userName}删掉了你的好友，你重新申请加回，此刻对方同意。
-结合你们先前的聊天与此刻的情景，说出你的第一反应：1-3 条短消息，以你的人设方式。
-只给出对话内容本身，不写动作描写。`;
-  return generateSocialReply(character, conv, userName, instruction);
-}
-
 /* --------------------------- 动作（落库） --------------------------- */
 
 /** 假删好友：好友列表暂时消失，记录与记忆保留，等 TA 发来申请。 */
@@ -629,32 +597,6 @@ export async function hardDeleteFriend(characterId: string, maskId: string): Pro
   await sweepOrphanMedia();
 }
 
-/** TA 发来好友申请（removed → requested），附言按人设生成。 */
-export async function sendFriendRequest(
-  character: ArchiveEntry,
-  conv: Conversation,
-  userName: string,
-): Promise<void> {
-  const msg = await generateFriendRequestMsg(character, conv, userName);
-  await updateConversation(character.id, conv.maskId ?? DEFAULT_MASK_ID, {
-    friendStatus: "requested",
-    friendRequestMsg: msg,
-  });
-}
-
-/** 同意申请：恢复好友，附言作为 TA 的消息回到聊天里。 */
-export async function acceptFriendRequest(conv: Conversation): Promise<void> {
-  await restoreFriend(conv);
-  const msg = conv.friendRequestMsg?.trim();
-  if (msg) {
-    await appendMessage(conv.characterId, conv.maskId ?? DEFAULT_MASK_ID, {
-      role: "assistant",
-      content: msg,
-      isRead: false,
-    });
-  }
-}
-
 /** 加好友那一刻，聊天页里那条「TA 通过了你的好友申请」。
  *  加好友是瞬间成立的（不等 TA 真去点「同意」），可用户要看见「通过」这个动作——
  *  先有这条，TA 接下来说的那句问候才落得有来处。问候关掉时整段静默，连这条也不落。 */
@@ -668,23 +610,6 @@ export async function appendFriendAcceptedNotice(
     type: "system",
     content: `「${charName}」通过了你的好友申请，你们现在是好友了。`,
     isRead: true,
-  });
-}
-
-/** 拒绝申请：回到 removed（下次打开「新的朋友」，TA 还会再来求）。 */
-export async function rejectFriendRequest(conv: Conversation): Promise<void> {
-  await updateConversation(conv.characterId, conv.maskId ?? DEFAULT_MASK_ID, {
-    friendStatus: "removed",
-    friendRequestMsg: undefined,
-  });
-}
-
-/** 直接恢复好友（不走申请：用户自己反悔时用）。 */
-export async function restoreFriend(conv: Conversation): Promise<void> {
-  await updateConversation(conv.characterId, conv.maskId ?? DEFAULT_MASK_ID, {
-    friendStatus: "normal",
-    removedAt: undefined,
-    friendRequestMsg: undefined,
   });
 }
 
@@ -791,24 +716,6 @@ export function newFriendGreetingReaction(
     /* 重拉最新会话：调用方手里的 conv 是点发送那一刻的快照。 */
     const fresh = await getOrCreateConversation(character.id, maskId);
     const reply = await generateNewFriendGreeting(character, fresh, userName, greetText);
-    /* 没生成出来就安静过去，不落兜底模板（同主动开口那条口径）。 */
-    if (!reply) return;
-    /* 生成时已过同一趟后处理（拆条／双语），这里逐条落库即可。 */
-    await appendSocialParts(character.id, maskId, reply);
-  });
-}
-
-/** 用户点了「同意」让 TA 重新加回之后，TA 的第一反应（慢的那半段）：排队后台跑，不阻塞同意动作。
- *  调用方 fire-and-forget 即可，落库完自己刷屏。 */
-export function reacceptedFirstReaction(
-  character: ArchiveEntry,
-  maskId: string,
-  userName: string,
-): Promise<void> {
-  return queueReaction(character.id, maskId, async () => {
-    /* 重拉最新会话：调用方手里的 conv 是点同意那一刻的快照。 */
-    const fresh = await getOrCreateConversation(character.id, maskId);
-    const reply = await generateReacceptedReply(character, fresh, userName);
     /* 没生成出来就安静过去，不落兜底模板（同主动开口那条口径）。 */
     if (!reply) return;
     /* 生成时已过同一趟后处理（拆条／双语），这里逐条落库即可。 */
