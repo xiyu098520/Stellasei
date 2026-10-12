@@ -131,7 +131,6 @@ import {
   hardDeleteFriend,
   isChatRefusal,
   isSocialTyping,
-  removeFriend,
   subscribeSocialAppend,
   subscribeSocialTyping,
   unblockFriend,
@@ -3801,14 +3800,7 @@ export default function ChatWindow({
     [character, conv, myName, refreshConv, showToast],
   );
 
-  const deleteFriendFromChat = useCallback(async () => {
-    await removeFriend(character.id, maskId);
-    onDataChange();
-    /* 删了好友这间屋子就彻底不要了：让外面把挂载撤掉（不是藏起来）。 */
-    (onDismiss ?? onBack)();
-  }, [character.id, maskId, onDataChange, onDismiss, onBack]);
-
-  /** 彻底删除：记录与记忆一并清掉，跟「暂时删除」同一个收尾（整间卸载）。 */
+  /** 删除好友：记录与记忆一并清掉，然后整间卸载（不是藏起来）。 */
   const hardDeleteFriendFromChat = useCallback(async () => {
     await hardDeleteFriend(character.id, maskId);
     onDataChange();
@@ -7241,7 +7233,6 @@ export default function ChatWindow({
             onUpdate={applyPatch}
             onClearMessages={clearMessages}
             onToggleBlocked={(next) => void toggleBlocked(next)}
-            onDeleteFriend={() => void deleteFriendFromChat()}
             onHardDeleteFriend={() => void hardDeleteFriendFromChat()}
             showToast={showToast}
           />

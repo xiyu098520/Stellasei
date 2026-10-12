@@ -1,9 +1,8 @@
 /**
- * 好友社交互动（假删／真删／拉黑）。
+ * 好友社交互动（删除／拉黑）。
  *
  * 这一层负责「互动」而不是「改档案」：
- * - 假删＝软删除：会话与记忆保留，TA 会发来好友申请求加回；
- * - 真删＝彻底删除：会话与记忆一并清掉，TA 不会再来求，也不留口子；
+ * - 删除＝彻底删除：会话与记忆一并清掉，TA 不会再出现在好友列表，也不留中间状态；
  * - 拉黑＝单向沉默：你发的消息 TA 都看得到；TA 发的消息在 TA 那边一律显示「发送失败」，
  *   但你照样看得见内容——拉黑期间 TA 会着急、道歉、求你别拉黑；解除后 TA 记得这段经历（blockCount 注入提示词）。
  *
@@ -573,20 +572,9 @@ export async function generateNewFriendGreeting(
 
 /* --------------------------- 动作（落库） --------------------------- */
 
-/** 假删好友：好友列表暂时消失，记录与记忆保留，等 TA 发来申请。 */
-export async function removeFriend(characterId: string, maskId: string): Promise<void> {
-  await updateConversation(characterId, maskId, {
-    friendStatus: "removed",
-    removedAt: new Date().toISOString(),
-    friendRequestMsg: undefined,
-  });
-}
-
-/** 彻底删除好友（真删）：会话与记忆一并清掉，TA 不会再来求加回。
- *
- *  这条不像 `removeFriend` 那样留 removed 状态
- *  （留着就会被「新的朋友」那条自动请求接上），而是把这一对「角色 × 面具」的
- *  绑定整个抹掉：会话（含聊天记录、每聊天设置、TA 发过的动态）＋记忆。
+/** 删除好友：把这一对「角色 × 面具」的绑定整个抹掉——
+ *  会话（含聊天记录、每聊天设置、TA 发过的动态）＋记忆，一并清掉，
+ *  不留 removed 之类的中间状态（旧版那套「假删等 TA 求加回」已经撤了）。
  *  角色档案本身不动，以后想聊可以自己从「添加朋友」再把他加回来。 */
 export async function hardDeleteFriend(characterId: string, maskId: string): Promise<void> {
   await deleteConversation(characterId, maskId);
