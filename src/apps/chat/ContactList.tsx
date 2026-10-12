@@ -68,15 +68,14 @@ const T = {
  * 皮：雾蓝（HZ 那一支），全 App 只有这一页用——所以不引 shared 的 T 板，
  * 就地起一份同形状的雾蓝取值（见文件头）。只换色，不动骨架。
  *
- * 观感——**一本名录**，不是「一人一张卡」：
- *   ① 页头：宋体「通讯人」＋编号条数＋一条细线拉到右端，最右是加号；
- *      底下一条**带下划线的搜索**（目录式的索引行），没有胶囊、没有底框。
- *   ② 名录条目：头像＋三行——上方小字昵称（备注）、中间宋体大名、
- *      下方一行灰签名；条目之间只压一条**从名字起头处划开的细线**。
- *   ③ 星标：靠**排版权重**区分——名字改斜体、字号更大、行距更松；
- *      不用五角星，也不用横滑头像带。
- *   ④ 分组小标：宋体小字＋英文小字＋细线＋两位条数（去掉编号方块与刊头）。
- * 一句话：消息列表是「一条一张卡」，通讯人是「一整张纸上的名录」。
+ * 观感——**同一本书的两页**：外壳（顶栏 G1／搜索条／分组小标／空态／加号菜单）
+ * 跟消息页**一套零件照搬**，翻过去不脱节；只有名录本体是这一页自己的样子：
+ *   ① 顶栏：跟消息页同一枚 G1——宋体「通讯人」压斜体「Contacts」居中，
+ *      加号钉右端（这页是底部 tab，左侧不留键）。
+ *   ② 名录条目：跟消息页的会话行同一套骨架——圆角方头像 42＋宋体名字＋一行副文；
+ *      副文这里放 TA 的签名，备注名做成一枚小胶囊贴在名字右侧。
+ *   ③ 星标：名字走**斜体、字号更大**（靠排版权重区分，不用五角星）。
+ *   ④ 条目之间只压一条**从名字起头处划开的细线**（名录自己的横向节奏）。
  * ===================================================================== */
 
 export default function ContactList({
@@ -396,70 +395,79 @@ export default function ContactList({
         }
       `}</style>
 
-      {/* 页头：宋体「通讯人」＋编号条数＋一条细线拉到右端，最右一枚加号（裸线稿，不是粉圆） */}
+      {/* 顶栏 G1（跟消息页同一套）：左右两键钉在两侧同一条中线，
+          「通讯人／Contacts」一体两行的标题块垂直居中卡在中间。
+          通讯人页是底部 tab，左侧不留键（消息页那儿是返回键）。 */}
       <div
         style={{
           flex: "none",
           zIndex: 20,
-          padding: "calc(var(--safe-area-top, 0px) + var(--sim-status-h, 0px) + 2px) 22px 0",
+          padding: "calc(var(--safe-area-top, 0px) + var(--sim-status-h, 0px) + 2px) 26px 0",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-          <h1
+        <div style={{ position: "relative", display: "flex", justifyContent: "center" }}>
+          {/* 中心标题块：中文压着斜体英文，两行一体（整组中心＝右键中线） */}
+          <div style={{ textAlign: "center" }}>
+            <span
+              style={{
+                fontFamily: SERIF,
+                fontSize: 22,
+                fontWeight: 600,
+                letterSpacing: ".2em",
+                paddingLeft: ".2em",
+                color: T.pink,
+                lineHeight: 1,
+              }}
+            >
+              通讯人
+            </span>
+            <div
+              style={{
+                fontFamily: SERIF,
+                fontStyle: "italic",
+                fontSize: 12.5,
+                letterSpacing: ".12em",
+                textIndent: ".12em",
+                color: T.ink3,
+                padding: "1px 0 0",
+              }}
+            >
+              Contacts
+            </div>
+          </div>
+
+          {/* 加号：钉在右侧中线上；按一下，两张卡从它底下错开摊出来 */}
+          <div
             style={{
-              margin: 0,
-              fontFamily: SERIF,
-              fontSize: 25,
-              fontWeight: 600,
-              letterSpacing: ".2em",
-              paddingLeft: ".2em",
-              lineHeight: 1,
-              color: T.pink,
+              position: "absolute",
+              right: 0,
+              top: "50%",
+              transform: "translateY(-50%)",
+              width: 24,
+              height: 24,
             }}
           >
-            通讯人
-          </h1>
-          {/* 名册条数：两位编号小字，不做色块 */}
-          <span
-            style={{
-              fontFamily: LAT,
-              fontSize: 11,
-              letterSpacing: ".08em",
-              color: T.ink3,
-              fontVariantNumeric: "tabular-nums",
-              marginTop: 3,
-            }}
-          >
-            {String(rows.length).padStart(2, "0")}
-          </span>
-
-          {/* 一条细线把标题和右端的加号连起来 */}
-          <i style={{ flex: 1, height: 1, background: T.line, minWidth: 14, marginTop: 1 }} />
-
-          {/* 加号：按一下，两张卡从它底下错开摊出来（裸线稿） */}
-          <div style={{ position: "relative", flex: "none" }}>
             <button
               type="button"
               onClick={() => setPlusOpen((v) => !v)}
               aria-label="更多"
               className="cl-hbtn"
               style={{
-                width: 30,
-                height: 30,
-                borderRadius: 999,
-                border: "none",
-                background: "none",
-                color: T.ink,
+                width: 24,
+                height: 24,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                cursor: "pointer",
+                border: "none",
+                background: "none",
                 padding: 0,
+                color: T.ink,
+                cursor: "pointer",
               }}
             >
               <Plus
-                size={21}
-                strokeWidth={1.9}
+                size={22}
+                strokeWidth={1.5}
                 style={{
                   transition: "transform .25s cubic-bezier(.22,1,.36,1)",
                   transform: plusOpen ? "rotate(45deg)" : "none",
@@ -467,22 +475,18 @@ export default function ContactList({
               />
             </button>
 
-            {/* 加号菜单：一小片浮起来的名录卡，两行（发起群聊／添加朋友） */}
+            {/* 加号菜单：两张浮起来的小卡（发起群聊／添加朋友），跟消息页同一套 */}
             <div
               style={{
                 position: "absolute",
                 top: 40,
                 right: 0,
-                width: 164,
+                width: 176,
                 zIndex: 30,
                 display: "flex",
                 flexDirection: "column",
-                background: T.card,
-                border: `1px solid ${T.line}`,
-                borderRadius: 12,
-                overflow: "hidden",
-                boxShadow: "0 22px 44px -26px rgba(58,65,73,.55)",
-                // 收起时容器不接点击，否则这块空盒子会挡住底下的条目
+                gap: 8,
+                // 收起时容器不接点击，否则这块 176 宽的空盒子会挡住底下的条目
                 pointerEvents: plusOpen ? "auto" : "none",
               }}
             >
@@ -505,18 +509,33 @@ export default function ContactList({
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    gap: 10,
-                    padding: "12px 14px",
-                    borderTop: i > 0 ? `1px solid ${T.lineSoft}` : "none",
+                    gap: 11,
+                    padding: "10px 12px",
+                    background: "#FFFFFF",
+                    borderRadius: 16,
+                    boxShadow: "0 18px 30px -18px rgba(58,65,73,.45)",
                     cursor: "pointer",
-                    transform: plusOpen ? "none" : "translateY(-6px)",
+                    transform: plusOpen ? "none" : "translateY(-12px) scale(.94)",
                     opacity: plusOpen ? 1 : 0,
                     pointerEvents: plusOpen ? "auto" : "none",
                     transitionDelay: plusOpen ? `${i * 45}ms` : "0ms",
                   }}
                 >
-                  <item.icon size={16} strokeWidth={1.9} color={T.pink} style={{ flex: "none" }} />
-                  <span style={{ flex: 1, fontSize: 13.5, letterSpacing: ".06em", color: T.ink }}>
+                  <span
+                    style={{
+                      flex: "none",
+                      width: 28,
+                      height: 28,
+                      borderRadius: 999,
+                      background: T.pinkSoft,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <item.icon size={15} strokeWidth={1.9} color={T.pink} />
+                  </span>
+                  <span style={{ flex: 1, fontSize: 13.5, letterSpacing: ".04em", color: T.ink }}>
                     {item.name}
                   </span>
                 </div>
@@ -526,32 +545,35 @@ export default function ContactList({
         </div>
       </div>
 
-      {/* 搜索：目录式的索引行——只有一条下划线，没有胶囊、没有底框 */}
-      <div style={{ flex: "none", padding: "0 22px", marginTop: 16 }}>
+      {/* 搜索条：跟消息页同一枚（圆角浅底＋放大镜＋占位字） */}
+      <div style={{ flex: "none", padding: "12px 26px 2px" }}>
         <div
           style={{
             display: "flex",
             alignItems: "center",
             gap: 9,
-            height: 34,
-            borderBottom: `1px solid ${T.line}`,
+            height: 38,
+            padding: "0 14px",
+            borderRadius: 12,
+            background: "linear-gradient(180deg,#F1F2F0,#EBEDEA)",
+            boxShadow: "inset 0 1px 0 rgba(255,255,255,.85), 0 1px 2px rgba(58,65,73,.05)",
           }}
         >
-          <Search size={14} strokeWidth={1.9} color={T.ink3} style={{ flex: "none" }} />
+          <Search size={16} strokeWidth={1.7} color={T.ink3} style={{ flex: "none" }} />
           <input
             type="text"
             className="cl-search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜索姓名、昵称或 ID"
+            placeholder="搜索姓名、昵称"
             style={{
               flex: 1,
               minWidth: 0,
               border: "none",
               outline: "none",
               background: "transparent",
-              fontSize: 13,
-              letterSpacing: ".05em",
+              fontSize: 13.5,
+              letterSpacing: ".16em",
               fontFamily: SANS,
               color: T.ink,
             }}
@@ -565,7 +587,7 @@ export default function ContactList({
           flex: 1,
           overflowY: "auto",
           overscrollBehavior: "none",
-          padding: "4px 22px calc(var(--safe-area-bottom, 0px) + 18px)",
+          padding: "13px 20px 18px",
         }}
       >
         {archives.length === 0 ? (
@@ -585,8 +607,8 @@ export default function ContactList({
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 10,
-                padding: "14px 2px",
+                gap: 14,
+                padding: "13px 2px",
                 borderBottom: `1px solid ${T.lineSoft}`,
                 cursor: "pointer",
               }}
@@ -594,7 +616,7 @@ export default function ContactList({
               <span
                 style={{
                   flex: "none",
-                  width: 46,
+                  width: 42,
                   display: "flex",
                   justifyContent: "center",
                   color: hasRequest ? T.pink : T.ink3,
@@ -607,15 +629,15 @@ export default function ContactList({
                 <div
                   style={{
                     fontFamily: SERIF,
-                    fontSize: 16,
+                    fontSize: 15.5,
                     fontWeight: 600,
-                    letterSpacing: ".12em",
+                    letterSpacing: ".08em",
                     color: T.ink,
                   }}
                 >
                   新的朋友
                 </div>
-                <div style={{ marginTop: 4, fontSize: 11.5, color: T.ink3, letterSpacing: ".03em" }}>
+                <div style={{ marginTop: 4, fontSize: 12.5, color: T.ink2, letterSpacing: ".02em" }}>
                   {hasRequest ? `${requestedConvs.length} 条好友申请` : "还没有新的申请"}
                 </div>
               </div>
@@ -627,7 +649,7 @@ export default function ContactList({
                 {/* 星标：靠排版权重区分——名字斜体、字号更大（不用五角星、不用横滑带） */}
                 {starred.length > 0 ? (
                   <div>
-                    <GroupLabel cn="星标" en="starred" count={starred.length} accent />
+                    <GroupLabel en="Starred" cn="星标" count={starred.length} />
                     {starred.map((row) => (
                       <ContactRow
                         key={row.archive.id}
@@ -643,7 +665,7 @@ export default function ContactList({
                 {/* 所有联系人：名字正体、字号收小，条目之间一条细线 */}
                 {normal.length > 0 ? (
                   <div>
-                    <GroupLabel cn="所有联系人" en="all" count={normal.length} />
+                    <GroupLabel en="All" cn="所有联系人" count={normal.length} />
                     {normal.map((row) => (
                       <ContactRow
                         key={row.archive.id}
@@ -1537,16 +1559,27 @@ const reqRestoreBtnStyle = {
   cursor: "pointer",
 } as const;
 
-/** 空状态：宋体一行大字＋英文小标＋一行提示——纯排版，不放图标、不铺色块。 */
+/** 空状态：跟消息页同一枚（一小撮雾蓝线起头＋宋体一行＋提示），中间多一行英文小标。 */
 function EmptyState({ cn, en, hint }: { cn: string; en: string; hint: string }) {
   return (
-    <div style={{ padding: "86px 30px 40px", textAlign: "center" }}>
-      <div style={{ fontFamily: SERIF, fontSize: 17, fontWeight: 600, letterSpacing: ".2em", color: T.ink }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        padding: "90px 34px 40px",
+        textAlign: "center",
+      }}
+    >
+      <span
+        style={{ width: 32, height: 4, borderRadius: 999, background: T.pink, opacity: 0.7, marginBottom: 20 }}
+      />
+      <div style={{ fontFamily: SERIF, fontSize: 17, fontWeight: 600, color: T.ink, letterSpacing: ".08em" }}>
         {cn}
       </div>
       <div
         style={{
-          marginTop: 10,
+          marginTop: 8,
           fontFamily: LAT,
           fontSize: 9,
           letterSpacing: ".26em",
@@ -1556,59 +1589,36 @@ function EmptyState({ cn, en, hint }: { cn: string; en: string; hint: string }) 
       >
         {en}
       </div>
-      <div style={{ marginTop: 12, fontSize: 12.5, color: T.ink2, letterSpacing: ".04em", lineHeight: 1.7 }}>
+      <div style={{ marginTop: 10, fontSize: 12.5, color: T.ink2, letterSpacing: ".04em", lineHeight: 1.6 }}>
         {hint}
       </div>
     </div>
   );
 }
 
-/** 分组小标：宋体小字＋英文小字＋一条细线拉到右端＋两位条数（星标那一节点雾蓝）。 */
-function GroupLabel({
-  cn,
-  en,
-  count,
-  accent,
-}: {
-  cn: string;
-  en: string;
-  count: number;
-  /** 星标那一节用雾蓝点一下，其余用墨色。 */
-  accent?: boolean;
-}) {
+/** 分组小标：跟消息页同一枚（等宽英文＋中点＋中文），右端补一枚淡条数。 */
+function GroupLabel({ en, cn, count }: { en: string; cn: string; count: number }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "24px 2px 8px" }}>
-      <span
-        style={{
-          fontFamily: SERIF,
-          fontSize: 12.5,
-          fontWeight: 600,
-          letterSpacing: ".22em",
-          color: accent ? T.pink : T.ink,
-          whiteSpace: "nowrap",
-        }}
-      >
-        {cn}
-      </span>
-      <span
-        style={{
-          fontFamily: LAT,
-          fontSize: 9,
-          letterSpacing: ".2em",
-          color: T.ink3,
-          textTransform: "uppercase",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {en}
-      </span>
-      {/* 一条细线从名字后面拉到右端 */}
-      <i style={{ flex: 1, height: 1, background: T.line, minWidth: 12 }} />
+    <div style={{ display: "flex", alignItems: "baseline", gap: 7, padding: "11px 4px 9px" }}>
       <span
         style={{
           fontFamily: LAT,
           fontSize: 9.5,
-          letterSpacing: ".12em",
+          letterSpacing: ".3em",
+          color: T.ink3,
+          textTransform: "uppercase",
+        }}
+      >
+        {en}
+      </span>
+      <span style={{ fontFamily: LAT, fontSize: 9.5, color: T.ink3 }}>·</span>
+      <span style={{ fontSize: 11, letterSpacing: ".26em", color: T.ink2 }}>{cn}</span>
+      <i style={{ flex: 1 }} />
+      <span
+        style={{
+          fontFamily: LAT,
+          fontSize: 9.5,
+          letterSpacing: ".1em",
           color: T.ink3,
           fontVariantNumeric: "tabular-nums",
         }}
@@ -1619,8 +1629,8 @@ function GroupLabel({
   );
 }
 
-/** 名录的一条：头像＋三行——上方小字昵称（备注）、中间宋体大名、下方一行灰签名。
- *  星标的人名字改斜体、字号更大（靠排版权重区分，不用五角星）。 */
+/** 名录的一条：跟消息页的会话行同一套骨架（圆角方头像 42＋宋体名字＋一行副文），
+ *  副文这里放的是 TA 的签名；星标那一节名字走斜体、字号更大（靠排版权重区分，不用五角星）。 */
 function ContactRow({
   archive,
   conv,
@@ -1646,60 +1656,45 @@ function ContactRow({
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 10,
-        padding: "14px 2px",
+        gap: 14,
+        padding: "13px 2px",
         cursor: "pointer",
       }}
     >
-      {/* 头像：一道极淡的墨圈，不铺色、不加影（子元素不吃指针，整行就是一块点击区） */}
+      {/* 头像：跟消息页同一枚 42 的圆角方（有照片铺照片，没有就白底衬线首字） */}
       <div
         style={{
           flex: "none",
-          width: 46,
-          height: 46,
-          borderRadius: 999,
-          border: `1px solid ${T.line}`,
-          overflow: "hidden",
+          width: 42,
+          height: 42,
+          borderRadius: 13,
+          background: d.photo ? `url(${d.photo}) center/cover` : "#FFFFFF",
+          color: T.pink,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          color: "#FFFFFF",
           fontFamily: SERIF,
-          fontSize: 18,
-          letterSpacing: ".04em",
-          background: d.photo ? `url(${d.photo}) center/cover` : AVATAR_GRADIENT,
+          fontSize: 15,
+          fontWeight: 600,
+          overflow: "hidden",
+          border: "1px solid rgba(255,255,255,.75)",
+          boxShadow: "0 1px 2px rgba(58,65,73,.07), inset 0 1px 0 rgba(255,255,255,.95)",
           pointerEvents: "none",
         }}
       >
-        {!d.photo ? name.charAt(0) : null}
+        {d.photo ? null : name.slice(0, 1)}
       </div>
 
-      {/* 三行：昵称（备注）／大名／签名 */}
+      {/* 名字（星标走斜体大字）＋备注小字并一行；下面一行签名 */}
       <div style={{ flex: 1, minWidth: 0, pointerEvents: "none" }}>
-        {nickname ? (
-          <div
-            style={{
-              fontSize: 10.5,
-              letterSpacing: ".14em",
-              color: T.ink3,
-              marginBottom: 4,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            {nickname}
-          </div>
-        ) : null}
-        <div style={{ display: "flex", alignItems: "baseline", gap: 6, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
           <span
             style={{
               fontFamily: SERIF,
-              fontSize: starred ? 19 : 16.5,
+              fontSize: starred ? 17 : 15.5,
               fontStyle: starred ? "italic" : "normal",
               fontWeight: 600,
-              letterSpacing: starred ? ".05em" : ".04em",
-              lineHeight: 1.2,
+              letterSpacing: ".08em",
               color: T.ink,
               whiteSpace: "nowrap",
               overflow: "hidden",
@@ -1708,19 +1703,39 @@ function ContactRow({
           >
             {name}
           </span>
+          {nickname ? (
+            <span
+              style={{
+                flex: "none",
+                maxWidth: 96,
+                fontSize: 9,
+                fontWeight: 600,
+                letterSpacing: ".08em",
+                padding: "2px 7px",
+                borderRadius: 999,
+                background: T.pinkSoft,
+                color: T.pink,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {nickname}
+            </span>
+          ) : null}
           {conv?.isMuted ? (
-            <BellOff size={12} strokeWidth={1.8} color={T.ink3} style={{ flex: "none", alignSelf: "center" }} />
+            <BellOff size={12} strokeWidth={2} color={T.ink3} style={{ flex: "none" }} />
           ) : null}
           {conv?.blocked ? (
-            <Ban size={12} strokeWidth={1.8} color={T.danger} style={{ flex: "none", alignSelf: "center" }} />
+            <Ban size={12} strokeWidth={2} color={T.danger} style={{ flex: "none" }} />
           ) : null}
         </div>
         <div
           style={{
             marginTop: 4,
-            fontSize: 11.5,
-            color: T.ink3,
-            letterSpacing: ".03em",
+            fontSize: 12.5,
+            letterSpacing: ".02em",
+            color: T.ink2,
             whiteSpace: "nowrap",
             overflow: "hidden",
             textOverflow: "ellipsis",
