@@ -39,8 +39,8 @@ const TONE = {
   fear: "#86AEC0",
 } as const;
 
-/** 宋体（思源宋）：这一页的骨——标题、页签、竖签、英文小标、脚注。 */
-const FP = "var(--font-serif-sc), 'Songti SC', 'STSong', 'SimSun', Georgia, serif";
+/** 宋体（系统宋体）：这一页的骨——标题、页签、竖签、英文小标、脚注。 */
+const FP = "'Songti SC', 'STSong', 'SimSun', Georgia, serif";
 
 /** 正文那一支（仿宋）：成句要读的字全归它。系统仿宋（iOS 自带，零下载、零闪）。 */
 const FK = "'FangSong', 'STFangsong', 'Songti SC', Georgia, serif";

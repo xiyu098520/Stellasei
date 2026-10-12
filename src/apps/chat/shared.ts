@@ -69,8 +69,9 @@ export const SANS =
 /** 小字拉丁（分区小标、时间、未读数字、tab 英文）：等宽，冷静克制。 */
 export const LAT = 'ui-monospace, "SFMono-Regular", Consolas, monospace';
 
-/** 中文宋体（旧板 C 那一套还在用，留住）。 */
-export const SERIF = "var(--font-serif-sc), 'Songti SC', Georgia, serif";
+/** 中文宋体（系统自带，零下载、零闪）：全 App 统一用它。
+    旧版这里是自托管／下载的「思源宋体」，冷启动会闪一下，已撤。 */
+export const SERIF = "'Songti SC', 'STSong', 'SimSun', Georgia, serif";
 /** 中文楷体（系统楷体，零下载、零闪）。自带笔锋，用在红封套这种中式卡面上。 */
 export const KAI =
   "'Kaiti SC', 'STKaiti', 'KaiTi', 'Songti SC', Georgia, serif";
