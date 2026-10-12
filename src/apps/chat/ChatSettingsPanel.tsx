@@ -26,7 +26,7 @@ const DEFAULT_TRANSLATE: TranslateSetting = {
 
 /* =======================================================================
  * 每聊天设定（跟随旧档案 ChatSettings）：背景／字号／置顶／免打扰／
- * 自定义头像／清空聊天记录／拉黑／删除好友（假删）。
+ * 自定义头像／清空聊天记录／拉黑／删除好友（真删）。
  * 角色生图参考与个别 API 配置在「角色设置」（通讯人 → 资料页）。
  *
  * 整页语言用 T：透粉白底／纯白卡／亮粉／无衬线／大圆角＋浮影。
@@ -188,7 +188,6 @@ export default function ChatSettingsPanel({
   onUpdate,
   onClearMessages,
   onToggleBlocked,
-  onDeleteFriend,
   onHardDeleteFriend,
   showToast,
 }: {
@@ -204,9 +203,7 @@ export default function ChatSettingsPanel({
   onClearMessages: () => Promise<void>;
   /** 拉黑／解除拉黑（外层负责落库与提示词注入）。 */
   onToggleBlocked: (next: boolean) => void;
-  /** 删除好友（假删：列表消失、记录保留，由外层收尾退出聊天）。 */
-  onDeleteFriend: () => void;
-  /** 彻底删除好友（真删：记录与记忆一并清掉，由外层收尾退出聊天）。 */
+  /** 删除好友（真删：记录与记忆一并清掉，由外层收尾退出聊天）。 */
   onHardDeleteFriend: () => void;
   showToast: (msg: string) => void;
 }) {
@@ -914,7 +911,7 @@ export default function ChatSettingsPanel({
           />
           <SettingRow
             title="删除好友"
-            desc="彻底删除会连记录与记忆一起清掉；暂时删除留着记录，TA 可能会请求加回"
+            desc="会把 TA 从好友列表移除，聊天记录与记忆一并清掉，无法恢复"
             danger
             onClick={() => setShowDelConfirm(true)}
           />
@@ -1010,7 +1007,7 @@ export default function ChatSettingsPanel({
         </>
       ) : null}
 
-      {/* 删除好友确认弹窗（两档：彻底删除＝真删；暂时删除＝假删，记录保留，TA 可能请求加回） */}
+      {/* 删除好友确认弹窗（一档：真删——记录与记忆一并清掉，TA 不会再来） */}
       {showDelConfirm ? (
         <>
           <div
@@ -1069,13 +1066,9 @@ export default function ChatSettingsPanel({
                   margin: "9px 0 0",
                 }}
               >
-                彻底删除：聊天记录与记忆一并清掉，「{charName}」不会再出现在好友列表，
-                也不会来请求加回。
-                <br />
-                暂时删除：记录留着，「{charName}」可能会来求加回。
+                「{charName}」会从好友列表消失，你们的聊天记录与记忆也会一并清掉，
+                无法恢复。
               </p>
-              {/* 跟联系人资料页同一层两档——彻底删除（真删，默认）与
-                  暂时删除（假删，留着给剧情用：TA 会来求加回）。 */}
               <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 18 }}>
                 <button
                   type="button"
@@ -1086,18 +1079,7 @@ export default function ChatSettingsPanel({
                     onHardDeleteFriend();
                   }}
                 >
-                  彻底删除
-                </button>
-                <button
-                  type="button"
-                  className="cs-fill"
-                  style={softDangerBtnStyle}
-                  onClick={() => {
-                    setShowDelConfirm(false);
-                    onDeleteFriend();
-                  }}
-                >
-                  暂时删除
+                  删除好友
                 </button>
                 <button
                   type="button"
@@ -1217,20 +1199,6 @@ const confirmDangerBtnStyle: CSSProperties = {
   background: T.danger,
   color: "#fff",
   border: "none",
-  cursor: "pointer",
-};
-
-/** 淡红底那档（「暂时删除」）：跟彻底删除拉开轻重，别让人误点。 */
-const softDangerBtnStyle: CSSProperties = {
-  width: "100%",
-  height: 44,
-  borderRadius: 14,
-  fontSize: 13,
-  fontWeight: 500,
-  letterSpacing: ".1em",
-  background: "rgba(229,72,77,.07)",
-  color: T.danger,
-  border: "1px solid rgba(229,72,77,.22)",
   cursor: "pointer",
 };
 
