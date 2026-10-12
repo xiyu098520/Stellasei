@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import {
   BellOff,
+  ChevronLeft,
   CreditCard,
   Plus,
   ScanLine,
@@ -47,6 +48,7 @@ export default function MessageList({
   conversations,
   masks,
   onOpenChat,
+  onExit,
   showToast,
 }: {
   archives: ArchiveEntry[];
@@ -54,6 +56,8 @@ export default function MessageList({
   conversations: Conversation[];
   masks: Mask[];
   onOpenChat: (characterId: string, maskId: string) => void;
+  /** 回小手机主屏幕（顶栏左上那枚返回键）。 */
+  onExit: () => void;
   showToast: (msg: string) => void;
 }) {
   const [plusOpen, setPlusOpen] = useState(false);
@@ -192,17 +196,37 @@ export default function MessageList({
         }
       `}</style>
 
-      {/* 顶栏 G1：左占位（原菜单钮已随侧边栏撤掉） / 居中「消息」22 衬线雾蓝 / 右加号；底下一行斜体 Messages */}
+      {/* 顶栏 G1：左返回键（回小手机主屏幕） / 居中「消息」22 衬线雾蓝 / 右加号；底下一行斜体 Messages */}
       <div
         style={{
           flex: "none",
           zIndex: 20,
-          padding: "calc(var(--safe-area-top, 0px) + var(--sim-status-h, 0px) + 12px) 26px 0",
+          padding: "calc(var(--safe-area-top, 0px) + var(--sim-status-h, 0px) + 6px) 26px 0",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          {/* 24×24 空占位：跟右边的加号对称，标题「消息」保持居中 */}
-          <span aria-hidden style={{ display: "block", width: 24, height: 24, flex: "none" }} />
+          {/* 返回主屏幕：接原来「菜单钮→侧栏→退出」的位置，24×24 跟右边加号对称、标题保持居中 */}
+          <button
+            type="button"
+            onClick={onExit}
+            aria-label="返回主屏幕"
+            className="ml-hbtn"
+            style={{
+              width: 24,
+              height: 24,
+              flex: "none",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              border: "none",
+              background: "none",
+              padding: 0,
+              color: HZ.ink,
+              cursor: "pointer",
+            }}
+          >
+            <ChevronLeft size={22} strokeWidth={1.5} />
+          </button>
 
           <span
             style={{
