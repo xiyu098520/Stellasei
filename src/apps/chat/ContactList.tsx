@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Ban,
   BellOff,
@@ -19,17 +19,11 @@ import {
 } from "lucide-react";
 import { appendMessage, updateCharChatSettings, updateConversation } from "@/lib/settings/chat";
 import {
-  acceptFriendRequest,
   appendFriendAcceptedNotice,
   blockFriend,
   blockedFirstReaction,
   hardDeleteFriend,
   newFriendGreetingReaction,
-  reacceptedFirstReaction,
-  rejectFriendRequest,
-  removeFriend,
-  restoreFriend,
-  sendFriendRequest,
   unblockFriend,
   unblockedFirstReaction,
 } from "@/lib/chat/social";
@@ -111,13 +105,8 @@ export default function ContactList({
   /* 分组：档案分类（家人／朋友…）从库里读；「全部」是内建那一档。 */
   const [categories, setCategories] = useState<ArchiveCategory[]>([]);
   const [group, setGroup] = useState<string>("all");
-  /* 新的朋友页：被假删角色的好友申请（同意恢复／拒绝等 TA 再来）。
-     1.12.67 起名录里那条入口已撤（改挂「群聊」），此页暂不可达——逻辑先留着。 */
-  const [newFriendsOpen, setNewFriendsOpen] = useState(false);
   /* 角色设置页（资料页进入）。 */
   const [charSettingsOpen, setCharSettingsOpen] = useState(false);
-  /* 申请生成中（角色 id 集合，页面里显示「正在申请…」）。 */
-  const [reqBusy, setReqBusy] = useState<Set<string>>(new Set());
   /* 拉黑／解除等社交动作进行中（资料页按钮防抖）。 */
   const [socialBusy, setSocialBusy] = useState(false);
   /* 添加朋友页：搜索 + 角色资料滑页 + 好友申请（验证消息／关闭问候）。 */
@@ -136,50 +125,6 @@ export default function ContactList({
         return archive ? [{ archive, conv }] : [];
       });
   }, [archives, conversations]);
-
-  /* 新的朋友：待处理的申请＋被删掉的角色（TA 会来求加回）。 */
-  const requestedConvs = useMemo(
-    () => conversations.filter((c) => c.friendStatus === "requested"),
-    [conversations],
-  );
-  const removedConvs = useMemo(
-    () => conversations.filter((c) => c.friendStatus === "removed"),
-    [conversations],
-  );
-
-  /* 打开「新的朋友」时：让每个被删的角色发来好友申请（生成一次即可）。 */
-  const reqFiredFor = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    if (!newFriendsOpen) return;
-    const pending = conversations.filter((c) => {
-      const key = `${c.characterId}::${c.maskId ?? ""}`;
-      return c.friendStatus === "removed" && !reqFiredFor.current.has(key);
-    });
-    if (pending.length === 0) return;
-    for (const c of pending) reqFiredFor.current.add(`${c.characterId}::${c.maskId ?? ""}`);
-    setReqBusy((prev) => {
-      const next = new Set(prev);
-      for (const c of pending) next.add(c.characterId);
-      return next;
-    });
-    void (async () => {
-      for (const c of pending) {
-        const archive = archives.find((a) => a.id === c.characterId);
-        if (!archive) continue;
-        try {
-          await sendFriendRequest(archive, c, maskName);
-        } catch {
-          // 生成失败留在 removed，下次打开页面 TA 再试
-        }
-        setReqBusy((prev) => {
-          const next = new Set(prev);
-          next.delete(c.characterId);
-          return next;
-        });
-        onDataChange();
-      }
-    })();
-  }, [newFriendsOpen, conversations, archives, maskName, onDataChange]);
 
   /* 读一次档案分类，给分组选择条用（家人／朋友…）；没有分类时只剩「全部」一枚。 */
   useEffect(() => {
@@ -280,23 +225,14 @@ export default function ContactList({
     onDataChange();
   };
 
-  /** 假删好友：好友列表暂时消失，记录与记忆保留，等 TA 发来申请加回。 */
-  const deleteFriend = async () => {
-    if (!profileId) return;
-    await removeFriend(profileId, maskId);
-    setProfileId(null);
-    onDataChange();
-    showToast("已删除好友，TA 也许会来请求加回");
-  };
-
-  /** 真删好友：会话与记忆一并清掉，不留 removed 状态 —— TA 不会再来请求加回。
+  /** 删除好友（真删）：会话与记忆一并清掉 —— TA 不会再出现在列表里，也回不来。
    *  角色档案本身不动，以后想聊可以自己去「添加朋友」把他加回来。 */
   const hardDeleteFriendNow = async () => {
     if (!profileId) return;
     await hardDeleteFriend(profileId, maskId);
     setProfileId(null);
     onDataChange();
-    showToast("已彻底删除，聊天记录与记忆都清掉了");
+    showToast("已删除好友，聊天记录与记忆都清掉了");
   };
 
   /** 拉黑：开关点了立刻生效（状态＋系统提示先落库）；TA 的第一反应在后台慢慢写，落库完再刷一次列表。 */
@@ -331,37 +267,6 @@ export default function ContactList({
       void unblockedFirstReaction(archive, conv, maskName).finally(() => onDataChange());
     },
     [maskName, onDataChange, showToast],
-  );
-
-  /** 同意好友申请：恢复好友，附言成为 TA 回到聊天的第一句话；随后 TA 知道「对方同意了」，立刻回应一句。 */
-  const doAccept = useCallback(
-    async (archive: ArchiveEntry, conv: Conversation) => {
-      await acceptFriendRequest(conv);
-      onDataChange();
-      showToast("已同意，你们重新成为了好友");
-      void reacceptedFirstReaction(archive, maskId, maskName).finally(() => onDataChange());
-    },
-    [maskId, maskName, onDataChange, showToast],
-  );
-
-  /** 拒绝申请：TA 消失在申请列表里，下次打开页面还会再来求。 */
-  const doReject = useCallback(
-    async (conv: Conversation) => {
-      await rejectFriendRequest(conv);
-      onDataChange();
-      showToast("已拒绝");
-    },
-    [onDataChange, showToast],
-  );
-
-  /** 反悔了：不走申请流程，直接恢复好友。 */
-  const doRestore = useCallback(
-    async (conv: Conversation) => {
-      await restoreFriend(conv);
-      onDataChange();
-      showToast("已恢复好友");
-    },
-    [onDataChange, showToast],
   );
 
   /** 打开添加朋友页（加号菜单入口）。 */
@@ -1031,266 +936,6 @@ export default function ContactList({
         </div>
       ) : null}
 
-      {/* 新的朋友页：被假删角色的好友申请（打开时 TA 逐个发来） */}
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          zIndex: 50,
-          background: T.bg,
-          display: "flex",
-          flexDirection: "column",
-          transform: newFriendsOpen ? "none" : "translateX(100%)",
-          transition: "transform .32s cubic-bezier(.22,1,.36,1)",
-          pointerEvents: newFriendsOpen ? "auto" : "none",
-        }}
-      >
-        {/* 页头：近黑圆返回钮＋一行英文小字 → 26/800 大标题（同添加朋友页） */}
-        <div
-          style={{
-            flex: "none",
-            padding: "calc(var(--safe-area-top, 0px) + var(--sim-status-h, 0px) + 10px) 16px 14px",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <button
-              type="button"
-              onClick={() => setNewFriendsOpen(false)}
-              aria-label="返回"
-              className="cl-soft"
-              style={headerBtnStyle}
-            >
-              <ChevronLeft size={19} strokeWidth={2.2} />
-            </button>
-            <span
-              style={{
-                fontFamily: EN,
-                fontSize: 9,
-                letterSpacing: ".26em",
-                color: T.ink3,
-                textTransform: "uppercase",
-              }}
-            >
-              new friends
-            </span>
-          </div>
-          <h1
-            style={{
-              margin: "14px 0 0",
-              fontSize: 26,
-              fontWeight: 800,
-              letterSpacing: "-.01em",
-              lineHeight: 1,
-              color: T.ink,
-            }}
-          >
-            新的朋友
-          </h1>
-        </div>
-
-        <div
-          style={{
-            flex: 1,
-            overflowY: "auto",
-            overscrollBehavior: "none",
-            padding: "0 16px calc(var(--safe-area-bottom, 0px) + 18px)",
-          }}
-        >
-          {requestedConvs.length === 0 && removedConvs.length === 0 ? (
-            <EmptyState
-              cn="还没有好友申请"
-              en="new friends"
-              hint="删除的好友想加回你时，申请会出现在这里"
-            />
-          ) : null}
-
-          {/* TA 发来的申请 */}
-          {requestedConvs.length > 0 ? (
-            <div>
-              <div style={addSectionTitleStyle}>好友申请</div>
-              {requestedConvs.map((conv) => {
-                const archive = archives.find((a) => a.id === conv.characterId);
-                if (!archive) return null;
-                const name = archive.data.name || archive.data.nickname || "未命名";
-                return (
-                  <div
-                    key={conv.id}
-                    className="cl-card"
-                    style={{
-                      padding: "13px 15px",
-                      marginBottom: 10,
-                      borderRadius: 20,
-                      background: T.card,
-                      boxShadow: "0 12px 26px -22px rgba(58,65,73,.7)",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
-                      {/* 头像：48 的圆＋一道淡粉细环 */}
-                      <div
-                        style={{
-                          flex: "none",
-                          width: 48,
-                          height: 48,
-                          borderRadius: 999,
-                          padding: 2,
-                          background: T.pinkSoft,
-                        }}
-                      >
-                        <div
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            borderRadius: 999,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            color: "#FFF",
-                            fontSize: 17,
-                            fontWeight: 600,
-                            background: archive.data.photo
-                              ? `url(${archive.data.photo}) center/cover`
-                              : AVATAR_GRADIENT,
-                            overflow: "hidden",
-                          }}
-                        >
-                          {!archive.data.photo ? name.charAt(0) : null}
-                        </div>
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 15.5, fontWeight: 700, color: T.ink, letterSpacing: ".01em" }}>{name}</div>
-                        <div
-                          style={{
-                            marginTop: 4,
-                            fontSize: 12,
-                            color: T.ink2,
-                            lineHeight: 1.6,
-                            letterSpacing: ".03em",
-                          }}
-                        >
-                          <i
-                            style={{
-                              fontStyle: "normal",
-                              fontFamily: EN,
-                              fontSize: 12,
-                              color: "rgba(90,115,145,.55)",
-                            }}
-                          >
-                            “
-                          </i>
-                          {conv.friendRequestMsg || "请求添加你为好友"}
-                          <i
-                            style={{
-                              fontStyle: "normal",
-                              fontFamily: EN,
-                              fontSize: 12,
-                              color: "rgba(90,115,145,.55)",
-                            }}
-                          >
-                            ”
-                          </i>
-                        </div>
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", gap: 10, marginTop: 12, paddingLeft: 61 }}>
-                      <button
-                        type="button"
-                        onClick={() => void doReject(conv)}
-                        style={reqGhostBtnStyle}
-                      >
-                        拒绝
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void doAccept(archive, conv)}
-                        style={reqSolidBtnStyle}
-                      >
-                        同意
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : null}
-
-          {/* 已删除的好友（TA 正在申请／被拒绝后等 TA 再来；可直接恢复） */}
-          {removedConvs.length > 0 ? (
-            <div>
-              <div style={addSectionTitleStyle}>已删除的好友</div>
-              {removedConvs.map((conv) => {
-                const archive = archives.find((a) => a.id === conv.characterId);
-                if (!archive) return null;
-                const name = archive.data.name || archive.data.nickname || "未命名";
-                const busy = reqBusy.has(conv.characterId);
-                return (
-                  <div
-                    key={conv.id}
-                    className="cl-card"
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 13,
-                      padding: "13px 15px",
-                      marginBottom: 10,
-                      borderRadius: 20,
-                      background: T.card,
-                      boxShadow: "0 12px 26px -22px rgba(58,65,73,.7)",
-                    }}
-                  >
-                    <div
-                      style={{
-                        flex: "none",
-                        width: 48,
-                        height: 48,
-                        borderRadius: 999,
-                        padding: 2,
-                        background: T.lineSoft,
-                        opacity: 0.9,
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          borderRadius: 999,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          color: "#FFF",
-                          fontSize: 17,
-                          fontWeight: 600,
-                          background: archive.data.photo
-                            ? `url(${archive.data.photo}) center/cover`
-                            : AVATAR_GRADIENT,
-                          overflow: "hidden",
-                        }}
-                      >
-                        {!archive.data.photo ? name.charAt(0) : null}
-                      </div>
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 15.5, fontWeight: 700, color: T.ink, letterSpacing: ".01em" }}>{name}</div>
-                      <div style={{ marginTop: 4, fontSize: 11.5, color: T.ink3, letterSpacing: ".04em" }}>
-                        {busy ? "正在向你申请……" : "TA 还会再来求你的"}
-                      </div>
-                    </div>
-                    {!busy ? (
-                      <button
-                        type="button"
-                        onClick={() => void doRestore(conv)}
-                        style={reqRestoreBtnStyle}
-                      >
-                        恢复好友
-                      </button>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-          ) : null}
-        </div>
-      </div>
-
       {/* 角色设置页（资料页进入）：个别 API／语音参数／参考图 */}
       <div
         style={{
@@ -1569,7 +1214,6 @@ export default function ContactList({
             onOpenCharSettings={() => setCharSettingsOpen(true)}
             onBlock={() => void doBlock(selected, selectedConv)}
             onUnblock={() => void doUnblock(selected, selectedConv)}
-            onDeleteFriend={() => void deleteFriend()}
             onHardDeleteFriend={() => void hardDeleteFriendNow()}
             showToast={showToast}
           />
@@ -1604,51 +1248,6 @@ const addSectionTitleStyle = {
   color: T.ink2,
   letterSpacing: ".16em",
   fontWeight: 700,
-} as const;
-
-/** 新的朋友页：拒绝（幽灵钮）。 */
-const reqGhostBtnStyle = {
-  flex: 1,
-  padding: "8px 0",
-  borderRadius: 999,
-  border: `1px solid ${T.line}`,
-  background: "transparent",
-  color: T.ink2,
-  fontSize: 12.5,
-  fontFamily: SANS,
-  letterSpacing: ".14em",
-  cursor: "pointer",
-} as const;
-
-/** 新的朋友页：同意（实心粉钮）。 */
-const reqSolidBtnStyle = {
-  flex: 1,
-  padding: "8px 0",
-  borderRadius: 999,
-  border: "none",
-  background: T.pink,
-  color: "#FFFFFF",
-  fontSize: 12.5,
-  fontWeight: 600,
-  fontFamily: SANS,
-  letterSpacing: ".14em",
-  cursor: "pointer",
-  boxShadow: "0 10px 20px -14px rgba(90,115,145,.95)",
-} as const;
-
-/** 新的朋友页：恢复好友（淡粉小胶囊）。 */
-const reqRestoreBtnStyle = {
-  flex: "none",
-  padding: "7px 14px",
-  borderRadius: 999,
-  border: "none",
-  background: T.pinkSoft,
-  color: T.pink,
-  fontSize: 11.5,
-  fontWeight: 600,
-  fontFamily: SANS,
-  letterSpacing: ".08em",
-  cursor: "pointer",
 } as const;
 
 /** 空状态：跟消息页同一枚（一小撮雾蓝线起头＋宋体一行＋提示），中间多一行英文小标。 */
@@ -2021,7 +1620,6 @@ function ContactProfile({
   onOpenCharSettings,
   onBlock,
   onUnblock,
-  onDeleteFriend,
   onHardDeleteFriend,
   showToast,
 }: {
@@ -2039,9 +1637,7 @@ function ContactProfile({
   onBlock: () => void;
   /** 解除拉黑（直接执行，TA 会立刻说点什么）。 */
   onUnblock: () => void;
-  /** 假删（记录与记忆保留，TA 可能请求加回）。 */
-  onDeleteFriend: () => void;
-  /** 真删（会话与记忆一并清掉，TA 不会再来求）。 */
+  /** 删除好友（真删：会话与记忆一并清掉，TA 不会再来）。 */
   onHardDeleteFriend: () => void;
   showToast: (msg: string) => void;
 }) {
@@ -2586,8 +2182,7 @@ function ContactProfile({
             <div style={{ fontSize: 16, letterSpacing: ".06em", color: T.ink, fontWeight: 700 }}>
               删除好友
             </div>
-            {/* 这一层给两个档：彻底删除（真删，默认）与暂时删除
-                （假删，留着给剧情用：TA 会来求加回）。 */}
+            {/* 只有一种删法：真删（会话与记忆一并清掉，TA 不会再来） */}
             <div
               style={{
                 marginTop: 10,
@@ -2597,11 +2192,9 @@ function ContactProfile({
                 letterSpacing: ".04em",
               }}
             >
-              彻底删除：聊天记录与记忆一并清掉，
+              删除后，TA 会从好友列表消失，
               <br />
-              TA 不会再出现在好友列表，也不会来请求加回。
-              <br />
-              暂时删除：记录留着，TA 可能会来求加回。
+              你们的聊天记录与记忆也会一并清掉，无法恢复。
             </div>
             <div style={{ height: 1, background: T.lineSoft, margin: "16px 0 12px" }} />
             <button
@@ -2623,26 +2216,7 @@ function ContactProfile({
                 cursor: "pointer",
               }}
             >
-              彻底删除
-            </button>
-            <button
-              type="button"
-              onClick={onDeleteFriend}
-              style={{
-                width: "100%",
-                padding: "11px 0",
-                marginTop: 8,
-                border: "1px solid rgba(229,72,77,.22)",
-                borderRadius: 999,
-                background: "rgba(229,72,77,.07)",
-                color: T.danger,
-                fontSize: 13.5,
-                letterSpacing: ".18em",
-                fontFamily: SANS,
-                cursor: "pointer",
-              }}
-            >
-              暂时删除
+              删除好友
             </button>
             <button
               type="button"
