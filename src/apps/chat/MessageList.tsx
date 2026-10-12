@@ -196,8 +196,8 @@ export default function MessageList({
         }
       `}</style>
 
-      {/* 顶栏 G1：左返回键（回小手机主屏幕） / 居中「消息」22 衬线雾蓝 / 右加号；底下一行斜体 Messages。
-          标题块整体上提（顶距压到 2px），斜体英文跟搜索条的间距同步收紧，不悬空。 */}
+      {/* 顶栏 G1：左右两键钉在两侧同一条中线，「消息／Messages」一体两行的标题块
+          垂直居中卡在中间——组的中心正对箭头和加号的中心。 */}
       <div
         style={{
           flex: "none",
@@ -205,17 +205,50 @@ export default function MessageList({
           padding: "calc(var(--safe-area-top, 0px) + var(--sim-status-h, 0px) + 2px) 26px 0",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          {/* 返回主屏幕：接原来「菜单钮→侧栏→退出」的位置，24×24 跟右边加号对称、标题保持居中 */}
+        <div style={{ position: "relative", display: "flex", justifyContent: "center" }}>
+          {/* 中心标题块：中文压着斜体英文，两行一体（整组中心＝两键中线） */}
+          <div style={{ textAlign: "center" }}>
+            <span
+              style={{
+                fontFamily: SERIF,
+                fontSize: 22,
+                fontWeight: 600,
+                letterSpacing: ".2em",
+                paddingLeft: ".2em",
+                color: HZ.accent,
+                lineHeight: 1.15,
+              }}
+            >
+              消息
+            </span>
+            <div
+              style={{
+                fontFamily: SERIF,
+                fontStyle: "italic",
+                fontSize: 12.5,
+                letterSpacing: ".12em",
+                textIndent: ".12em",
+                color: HZ.ink3,
+                padding: "2px 0 0",
+              }}
+            >
+              Messages
+            </div>
+          </div>
+
+          {/* 返回主屏幕：钉在左侧中线上，接原来「菜单钮→侧栏→退出」的位置 */}
           <button
             type="button"
             onClick={onExit}
             aria-label="返回主屏幕"
             className="ml-hbtn"
             style={{
+              position: "absolute",
+              left: 0,
+              top: "50%",
+              transform: "translateY(-50%)",
               width: 24,
               height: 24,
-              flex: "none",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -229,21 +262,17 @@ export default function MessageList({
             <ChevronLeft size={22} strokeWidth={1.5} />
           </button>
 
-          <span
+          {/* 加号：钉在右侧中线上；按一下，四张卡从它底下错开摊出来 */}
+          <div
             style={{
-              fontFamily: SERIF,
-              fontSize: 22,
-              fontWeight: 600,
-              letterSpacing: ".2em",
-              paddingLeft: ".2em",
-              color: HZ.accent,
+              position: "absolute",
+              right: 0,
+              top: "50%",
+              transform: "translateY(-50%)",
+              width: 24,
+              height: 24,
             }}
           >
-            消息
-          </span>
-
-          {/* 加号：按一下，四张卡从它底下错开摊出来 */}
-          <div style={{ position: "relative", flex: "none", width: 24, height: 24 }}>
             <button
               type="button"
               onClick={() => setPlusOpen((v) => !v)}
@@ -332,21 +361,6 @@ export default function MessageList({
               ))}
             </div>
           </div>
-        </div>
-
-        <div
-          style={{
-            textAlign: "center",
-            fontFamily: SERIF,
-            fontStyle: "italic",
-            fontSize: 12.5,
-            letterSpacing: ".12em",
-            textIndent: ".12em",
-            color: HZ.ink3,
-            padding: "3px 30px 0",
-          }}
-        >
-          Messages
         </div>
       </div>
 
