@@ -49,6 +49,12 @@ next-env.d.ts
 # 手改前留的备份，不进仓库（真历史在 git 里）
 *.bak
 
+# 头脑风暴可视化伴侣的临时小样（本机对话用，不进仓库）
+/.superpowers/
+
+# 设计阶段样张（public/ 会被打进公开部署，这些只在本机预览：不进仓库、不上公开站）
+/public/*.html
+
 # Local Netlify folder
 .netlify
 /dist/
