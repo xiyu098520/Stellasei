@@ -5,6 +5,9 @@ export const runtime = "nodejs";
 /**
  * 跨域图片代取：百炼等接口返回的是 OSS 远程链接，浏览器直接 fetch 会被 CORS 拦掉，
  * 于是改由服务端去取（服务端没有同源限制），前端拿到字节后就能存成文件。
+ *
+ * ⚠️ 这里不是 src/app 下的路由，Next 不会把它编进静态站点（GitHub Pages 无服务端）。
+ *    它是给「将来挂到 Cloudflare Worker 当代理层」留的现成代码，别在本地 fetch 它。
  */
 export async function GET(req: NextRequest) {
   const target = req.nextUrl.searchParams.get("url");

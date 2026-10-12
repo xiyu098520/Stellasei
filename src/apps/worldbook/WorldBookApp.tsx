@@ -151,7 +151,8 @@ function runningOf(book: WorldBook) {
    frame-3.webp 是 1856×2464 的 PNG 压来的：尺寸收到 1024×1359、WebP q88（377 KB，省 77%）。
    敢收尺寸是因为牌宽才 139 CSS px，3x 屏上金框只占 435 个物理像素，1024 宽还有 2.35 倍余量。
    原 PNG 没删，还在 `public/arcana/frame-3.png`（要重裁重压时用得着）。 */
-const ARCANA_FRAME = "/arcana/frame-3.webp";
+/* GitHub Pages 子路径部署要带 basePath；本地开发该变量为空。 */
+const ARCANA_FRAME = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/arcana/frame-3.webp`;
 
 /** 那张金线框，铺在牌面上。lit＝这一册还有条目在跑。 */
 function ArcanaFrame({ lit }: { lit: boolean }) {
