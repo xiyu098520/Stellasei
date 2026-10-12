@@ -251,6 +251,8 @@ export default function ChatApp() {
             conversations={conversations}
             masks={masks}
             onOpenChat={(characterId, maskId) => openChatWith(characterId, maskId)}
+            /* 顶栏左上返回键：离开聊天 App、回小手机主屏幕。 */
+            onExit={closeApp}
             showToast={showToast}
           />
         )
