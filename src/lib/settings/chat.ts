@@ -107,9 +107,6 @@ export type ConversationPatch = Partial<
     | "apiOverrides"
     | "voiceOverride"
     | "voicePromptOverride"
-    | "proactiveOn"
-    | "proactiveBaseMin"
-    | "proactiveQuiet"
   >
 >;
 
@@ -258,38 +255,6 @@ export function clampBubbleMax(value: number | undefined): number {
 export function bubbleCapOf(conv: Conversation | null | undefined): number {
   if (!conv || conv.bubbleLimit === false) return 0;
   return clampBubbleMax(conv.bubbleMax);
-}
-
-/* --------------------------- 主动找我（每聊天） --------------------------- */
-
-/** 主动找我的基础间隔默认值（分钟）：6 小时——跟老引擎 4~8 小时的平均一个量级。 */
-export const DEFAULT_PROACTIVE_BASE_MIN = 360;
-/** 基础间隔可设范围（分钟）：15 分钟到 24 小时。 */
-export const PROACTIVE_BASE_FLOOR = 15;
-export const PROACTIVE_BASE_CEIL = 24 * 60;
-
-/** 基础间隔：取整并夹进 15–1440，脏数据（NaN／小数／越界）一律拉回合法值。 */
-export function clampProactiveBaseMin(value: number | undefined): number {
-  const n =
-    typeof value === "number" && Number.isFinite(value)
-      ? Math.round(value)
-      : DEFAULT_PROACTIVE_BASE_MIN;
-  return Math.min(PROACTIVE_BASE_CEIL, Math.max(PROACTIVE_BASE_FLOOR, n));
-}
-
-/** 这个角色要不要主动找我（来消息、发动态）：单聊天没单独设过＝跟随全局默认。 */
-export function proactiveOnOf(conv: Conversation | null | undefined): boolean {
-  return conv?.proactiveOn ?? chatPrefsSnapshot().proactiveOn;
-}
-
-/** 这场对话的主动基础间隔（分钟）：单聊天没单独设过＝跟随全局默认。 */
-export function proactiveBaseMinOf(conv: Conversation | null | undefined): number {
-  return clampProactiveBaseMin(conv?.proactiveBaseMin ?? chatPrefsSnapshot().proactiveBaseMin);
-}
-
-/** 这场对话深夜要不要安静：单聊天没单独设过＝跟随全局默认。 */
-export function proactiveQuietOf(conv: Conversation | null | undefined): boolean {
-  return conv?.proactiveQuiet ?? chatPrefsSnapshot().proactiveQuiet;
 }
 
 /* ----------------------------- 线下场合（每聊天） ----------------------------- */
@@ -1229,17 +1194,6 @@ const VOICE_PROMPT_TEXT_MIGRATED_V2_KEY = "chat-prefs-voice-default-v2";
 /** 对话行为偏好（全局一份，不分角色与面具；每聊天设定在 Conversation 上）。 */
 export interface ChatPrefs {
   /**
-   * 主动找我（全局默认）：TA 会不会自己来找你（**来消息**）。这是**全局默认**，
-   * 单个聊天没单独设过时就按它走；单聊天设过的以单聊天为准。
-   * 默认开——「角色有自己的生活」是星绥的底色。
-   * 注意：**只管私聊主动消息**。
-   */
-  proactiveOn: boolean;
-  /** 主动找我的基础间隔（分钟）全局默认，单聊天没设过时按它走。 */
-  proactiveBaseMin: number;
-  /** 深夜静默全局默认：开着＝深夜不打扰，单聊天没设过时按它走。**只管私聊**。 */
-  proactiveQuiet: boolean;
-  /**
    * 时间感知：打开后把「此刻的真实时间」注入本轮提示词，TA 在「现在几点」
    * 这件事上就不会乱编（在此之前 TA 只能从聊天内容猜，同一晚前后能说反）。
    * 关掉＝完全不注入，行为与从前一致。
@@ -1324,9 +1278,6 @@ const LEGACY_VOICE_PROMPT_TEXT_V1 =
   "说话时带上当下的口吻，让声音有情绪：在这句台词最前面加一个英文半角方括号标签，例如 [whispers]（气声低语）、[laughs]（笑）、[sighs]（叹气）、[excited]（兴奋）、[sad]（低落）、[angry]（生气）、[sarcastic]（揶揄）、[softly]（轻声）、[nervous]（紧张）、[curious]（好奇）。一句话最多一个标签；平常闲聊不必每句都加，只在情绪明显、或想让声音换个语气时才加，挑最贴当下情境的那一个。标签不会显示给对方看，只影响声音听起来的样子。";
 
 export const DEFAULT_CHAT_PREFS: ChatPrefs = {
-  proactiveOn: true,
-  proactiveBaseMin: DEFAULT_PROACTIVE_BASE_MIN,
-  proactiveQuiet: true,
   timeAware: true,
   autoGenerateImage: true,
   autoGenerateVoice: true,
@@ -1339,21 +1290,9 @@ export const DEFAULT_CHAT_PREFS: ChatPrefs = {
   voicePromptText: DEFAULT_VOICE_PROMPT_TEXT,
 };
 
-/* 全局偏好的内存快照：主动引擎的判定是同步的（proactive*Of），读不了异步存档，
-   于是 getChatPrefs／saveChatPrefs 顺手在这里留一份最新的，供同步回落使用。 */
-let prefsSnapshot: ChatPrefs | null = null;
-
-/** 同步取全局偏好最新快照；还没读过存档时给出厂默认（不会误关任何东西）。 */
-export function chatPrefsSnapshot(): ChatPrefs {
-  return prefsSnapshot ?? DEFAULT_CHAT_PREFS;
-}
-
 /** 把存档补全成一份合法偏好（缺漏栏位补预设值，方便日后加开关）。 */
 function normalizePrefs(saved: Partial<ChatPrefs>): ChatPrefs {
   return {
-    proactiveOn: saved.proactiveOn ?? DEFAULT_CHAT_PREFS.proactiveOn,
-    proactiveBaseMin: clampProactiveBaseMin(saved.proactiveBaseMin),
-    proactiveQuiet: saved.proactiveQuiet ?? DEFAULT_CHAT_PREFS.proactiveQuiet,
     timeAware: saved.timeAware ?? DEFAULT_CHAT_PREFS.timeAware,
     autoGenerateImage: saved.autoGenerateImage ?? DEFAULT_CHAT_PREFS.autoGenerateImage,
     autoGenerateVoice: saved.autoGenerateVoice ?? DEFAULT_CHAT_PREFS.autoGenerateVoice,
@@ -1393,7 +1332,6 @@ export async function getChatPrefs(): Promise<ChatPrefs> {
     }
     await kvSet(VOICE_PROMPT_TEXT_MIGRATED_V2_KEY, true);
   }
-  prefsSnapshot = prefs;
   return prefs;
 }
 
@@ -1401,7 +1339,6 @@ export async function getChatPrefs(): Promise<ChatPrefs> {
 export async function saveChatPrefs(patch: Partial<ChatPrefs>): Promise<ChatPrefs> {
   const next = normalizePrefs({ ...(await getChatPrefs()), ...patch });
   await kvSet(CHAT_PREFS_KEY, next);
-  prefsSnapshot = next;
   /* 喊一声：挂在别处的界面（根层按 smoothMode 给 <html> 挂类）跟着重读，
      不必刷新页面（1.9.6）。 */
   if (typeof window !== "undefined") {

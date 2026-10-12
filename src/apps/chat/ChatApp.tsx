@@ -51,7 +51,7 @@ export default function ChatApp() {
     void (async () => {
       try {
         await ensureAssistant().catch(() => undefined);
-        /* 顺手把全局聊天偏好读进内存快照：主动引擎的同步回落要用（见 chatPrefsSnapshot）。 */
+        /* 顺手把全局聊天偏好读一遍：触发一次性迁移（见 getChatPrefs）。 */
         await getChatPrefs().catch(() => undefined);
         const [a, c, s, legacy, ms] = await Promise.all([
           getArchives(),
@@ -252,8 +252,8 @@ export default function ChatApp() {
             showToast={showToast}
           />
         ) : view === "chat-global" ? (
-          /* 聊天全局设定：全局默认那一层（主动找我、对话偏好）。 */
-          <ChatGlobalSettingsPanel onBack={() => setView("mine")} showToast={showToast} />
+          /* 聊天全局设定：全局默认那一层（对话偏好）。 */
+          <ChatGlobalSettingsPanel onBack={() => setView("mine")} />
         ) : (
           <MessageList
             archives={archives}

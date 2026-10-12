@@ -9,8 +9,6 @@ import { HomeScreen } from "@/components/phone/home/HomeScreen";
 import { AppWindow } from "@/components/phone/AppWindow";
 import { installTapFallback } from "@/lib/tapFallback";
 import { getChatPrefs } from "@/lib/settings/chat";
-import { startProactive } from "@/lib/chat/proactive";
-import { startMomentSocial } from "@/lib/chat/moment-social";
 
 /**
  * 系统层：开屏 → 主屏幕（双页）＋状态栏＋Dock，App 以覆盖层打开。
@@ -48,16 +46,6 @@ function PhoneOs() {
     window.addEventListener("stellasei:prefs-changed", apply);
     return () => window.removeEventListener("stellasei:prefs-changed", apply);
   }, []);
-
-  /* 主动引擎（1.10.29）：手机开着的时候，没人喊 TA 也会自己主动发消息。
-     挂在系统层——不管当前开着哪个 App，引擎都在跑；关了页面自然停，
-     再打开由第一轮 tick 错峰补上（详见 lib/chat/proactive.ts）。 */
-  useEffect(() => startProactive(), []);
-
-  /* 动态互动引擎（1.10.42）：TA 看见我的动态会立刻点赞／评论。
-     首跑只标 seen 不补赞，之后每分钟一轮；回前台也补一轮。挂系统层——不在动态页
-     它照样在跑，赞／评到点落库、由动态页的 `moments-updated` 订阅接住刷新。 */
-  useEffect(() => startMomentSocial(), []);
 
   return (
     <PhoneFrame>

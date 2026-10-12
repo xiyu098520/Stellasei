@@ -13,8 +13,7 @@
  * - 通知的 `id` 是 `动态uid::kind::谁`（谁＝动手的那个人），所以**同一个人对同一条**怎么推
  *   都只留一条；换个人来赞／评，各算一条。
  *
- * 现在接上的真渠道：「角色赞了我的动态／评论了我的动态」——`moment-social.ts` 到点了推一条。
- * 形（kind）按两种分好。**角色自己发新帖不算我的通知。**
+ * 通知按形（kind）分好：赞／评。**角色自己发新帖不算我的通知。**
  */
 
 import { kvGet, kvSet } from "@/lib/db/idb";
@@ -39,9 +38,6 @@ export interface MomentNotice {
 const NOTICES_KEY = "moments-notices";
 const SEEN_KEY = "moments-seen-at";
 
-/** 最多留这么多条：通知是「一眼扫过」的东西，堆着没意义。 */
-const MAX_NOTICES = 20;
-
 export async function getMomentNotices(): Promise<MomentNotice[]> {
   return (await kvGet<MomentNotice[]>(NOTICES_KEY)) ?? [];
 }
@@ -53,16 +49,6 @@ export async function getMomentsSeenAt(): Promise<string> {
 
 export async function setMomentsSeenAt(iso: string): Promise<void> {
   await kvSet(SEEN_KEY, iso);
-}
-
-/** 推几条进来（新→旧，老的往后排）。id 重复的自动丢掉。 */
-export async function pushMomentNotices(list: MomentNotice[]): Promise<void> {
-  if (list.length === 0) return;
-  const old = await getMomentNotices();
-  const had = new Set(old.map((n) => n.id));
-  const fresh = list.filter((n) => !had.has(n.id));
-  if (fresh.length === 0) return;
-  await kvSet(NOTICES_KEY, [...fresh, ...old].slice(0, MAX_NOTICES));
 }
 
 /** 全清。 */

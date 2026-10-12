@@ -13,10 +13,10 @@
  * 【只读】点条目不进聊天；
  * 赞／评从 2026-10-05 起接真数据（我赞／取消赞、平铺评论 ＋ 二级回复、@ 点名）；
  * 转发那枚仍是占位（点了报「还在做」），角色侧的赞/评由后续步骤接。
- * 【通知】**封面下沿那枚玻璃气泡**（2026-10-05 接真渠道回来了）：**只收「角色对你做的事」**
- * ——角色赞／评论／回复我的动态时，引擎 `lib/chat/moment-social.ts` 往
- * `lib/chat/moments-notice.ts` 那个仓库推一条，这一页读出来、按 `moments-seen-at`
- * 算未读、滤掉人已不在页上的几条，摆成气泡。**角色自己发新帖不算我的通知。**
+ * 【通知】**封面下沿那枚玻璃气泡**：**只收「角色对你做的事」**
+ * ——角色赞／评论／回复我的动态时，往 `lib/chat/moments-notice.ts` 那个仓库推一条，
+ * 这一页读出来、按 `moments-seen-at` 算未读、滤掉人已不在页上的几条，摆成气泡。
+ * **角色自己发新帖不算我的通知。**
  * 点气泡＝认下这几条（记「看过了」、随手收起）；真正的「全部通知栏」入口
  * 与点击跳转留到后面那步再开。
  *
@@ -113,7 +113,6 @@ import {
   setMomentsSeenAt,
   type MomentNotice,
 } from "@/lib/chat/moments-notice";
-import { kickMomentSocial } from "@/lib/chat/moment-social";
 
 /** 摊平后的一条动态（正文＋作者信息＋配图状态）。 */
 interface FeedItem {
@@ -274,9 +273,8 @@ export default function MomentsPage({
   const [selfMoments, setSelfMoments] = useState<SelfMoment[]>([]);
   useEffect(() => {
     let alive = true;
-    /* 我这一册动态会被好几处改：我发／删、我在别处手动赞评、以及 `moment-social`
-       那边角色来赞我（它会广播 `moments-updated`）。所以不能只读一次——
-       跟着事件重读，页面上的赞名单／通知才跟得上。 */
+    /* 我这一册动态会被好几处改：我发／删、我在别处手动赞评。所以不能只读一次——
+       跟着 `moments-updated` 事件重读，页面上的赞名单才跟得上。 */
     const reload = () => {
       void getSelfMoments(maskId).then((list) => {
         if (alive) setSelfMoments(list);
@@ -401,9 +399,8 @@ export default function MomentsPage({
   const [, setGenTick] = useState(0);
   useEffect(() => subscribeMomentImage(() => setGenTick((n) => n + 1)), []);
 
-  /* ── 通知气泡（2026-10-05 接真渠道）。**只收「角色对我做的事」**：
-        角色赞／评论／回复我的动态时，引擎（`moment-social.ts`）会往
-        `moments-notice.ts` 那个仓库推一条；这里读出来，只留**上次看动态页之后**的
+  /* ── 通知气泡。**只收「角色对我做的事」**：
+        往 `moments-notice.ts` 那个仓库推一条后，这里读出来，只留**上次看动态页之后**的
         （`moments-seen-at`），再滤掉人已经不在这一页上的（换面具／朋友被假删之后
         不该再冒出来）。角色自己发新帖不算我的通知。 */
   const [notices, setNotices] = useState<MomentNotice[]>([]);
@@ -739,9 +736,6 @@ export default function MomentsPage({
         visibleWorlds: draft.visibleWorlds,
       });
       setSelfMoments(await getSelfMoments(maskId));
-      /* 刚发的这条立刻摇一下引擎：给看得见的人排上「过 2～15 分钟来赞」那件，
-         别干等下一分钟那一轮 tick（引擎自带首跑标记与去重，摇多少次都只排一次）。 */
-      kickMomentSocial();
       setComposer(null);
       setImgPick(null);
       setTextDraft("");
@@ -1313,8 +1307,8 @@ export default function MomentsPage({
           </div>
         )}
 
-      {/* ── 动态通知气泡（2026-10-05 接真渠道回来了）：头像 ＋ 一行字 ＋ `›` 的玻璃胶囊。
-             **只收「角色对我做的事」**——角色赞／评论／回复我的动态时，引擎往
+      {/* ── 动态通知气泡：头像 ＋ 一行字 ＋ `›` 的玻璃胶囊。
+             **只收「角色对我做的事」**——角色赞／评论／回复我的动态时，往
              `moments-notice.ts` 推一条，这里读出来（见上面那段注释）。
              位置的口径：**它属于封面那一块**——挂在滚动格里面、`top` 钉死在封面下沿
              （封面高 `272`）再往下一点，往下滑就跟封面一起滚走。
