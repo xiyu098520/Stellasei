@@ -33,12 +33,12 @@ import {
   unblockFriend,
   unblockedFirstReaction,
 } from "@/lib/chat/social";
-import { formatUid } from "@/lib/settings/contact";
+import { formatUid, getCategories } from "@/lib/settings/contact";
 import { copyText } from "@/lib/clipboard";
 import { Switch } from "./widgets";
 import CharacterSettingsPanel from "./CharacterSettingsPanel";
 import { AVATAR_GRADIENT, EN, HZ, LAT, SANS, SERIF, defaultSignature, momentTime } from "./shared";
-import type { ArchiveEntry } from "@/types/contact";
+import type { ArchiveCategory, ArchiveEntry } from "@/types/contact";
 import type { Conversation } from "@/types/chat";
 
 /** 通讯人页统一皮：雾蓝（跟消息页同一支主色，只这一页用）。
@@ -71,10 +71,10 @@ const T = {
  * 观感——**同一本书的两页**：外壳（顶栏 G1／搜索条／分组小标／空态／加号菜单）
  * 跟消息页**一套零件照搬**，翻过去不脱节；只有名录本体是这一页自己的样子：
  *   ① 顶栏：跟消息页同一枚 G1——宋体「通讯人」压斜体「Contacts」居中，
- *      加号钉右端（这页是底部 tab，左侧不留键）。
+ *      左上返回主屏幕键、右上加号（跟消息页同一套位置）。
  *   ② 名录条目：跟消息页的会话行同一套骨架——圆角方头像 42＋宋体名字＋一行副文；
- *      副文这里放 TA 的签名，备注名做成一枚小胶囊贴在名字右侧。
- *   ③ 星标：名字走**斜体、字号更大**（靠排版权重区分，不用五角星）。
+ *      副文这里放 TA 的签名，备注在前当大名、本名以弱化小字缀在其后（不再是胶囊）。
+ *   ③ 星标：名字**正体、字号不变**，只走雾蓝（人与群共用这一条区分规矩，不用五角星）。
  *   ④ 条目之间只压一条**从名字起头处划开的细线**（名录自己的横向节奏）。
  * ===================================================================== */
 
@@ -83,6 +83,8 @@ export default function ContactList({
   conversations,
   maskId,
   maskName,
+  onExit,
+  onOpenGroups,
   onOpenChat,
   onDataChange,
   showToast,
@@ -94,6 +96,10 @@ export default function ContactList({
   maskId: string;
   /** 当前面具的名字（添加朋友页展示）。 */
   maskName: string;
+  /** 回小手机主屏幕（顶栏左上那枚返回键）。 */
+  onExit: () => void;
+  /** 打开群聊页（名录头一条「群聊」入口）。 */
+  onOpenGroups: () => void;
   onOpenChat: (characterId: string) => void;
   onDataChange: () => void;
   showToast: (msg: string) => void;
@@ -102,7 +108,11 @@ export default function ContactList({
   const [plusOpen, setPlusOpen] = useState(false);
   const [profileId, setProfileId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
-  /* 新的朋友页：被假删角色的好友申请（同意恢复／拒绝等 TA 再来）。 */
+  /* 分组：档案分类（家人／朋友…）从库里读；「全部」是内建那一档。 */
+  const [categories, setCategories] = useState<ArchiveCategory[]>([]);
+  const [group, setGroup] = useState<string>("all");
+  /* 新的朋友页：被假删角色的好友申请（同意恢复／拒绝等 TA 再来）。
+     1.12.67 起名录里那条入口已撤（改挂「群聊」），此页暂不可达——逻辑先留着。 */
   const [newFriendsOpen, setNewFriendsOpen] = useState(false);
   /* 角色设置页（资料页进入）。 */
   const [charSettingsOpen, setCharSettingsOpen] = useState(false);
@@ -170,6 +180,13 @@ export default function ContactList({
       }
     })();
   }, [newFriendsOpen, conversations, archives, maskName, onDataChange]);
+
+  /* 读一次档案分类，给分组选择条用（家人／朋友…）；没有分类时只剩「全部」一枚。 */
+  useEffect(() => {
+    void getCategories()
+      .then(setCategories)
+      .catch(() => undefined);
+  }, []);
 
   /* 可添加的角色：已唤醒但当前面具还没绑定过的（支持 ID／姓名／昵称搜索）。 */
   const available = useMemo(() => {
@@ -242,15 +259,19 @@ export default function ContactList({
     () =>
       filtered
         .filter((r) => r.conv?.isPinned !== true)
+        /* 分组选择条：选中的分类只留归档在这一类的人；「全部」不过滤。 */
+        .filter((r) => group === "all" || r.archive.categoryId === group)
         .sort((a, b) => (b.conv?.updatedAt ?? "").localeCompare(a.conv?.updatedAt ?? "")),
-    [filtered],
+    [filtered, group],
   );
 
   const selected = archives.find((a) => a.id === profileId) ?? null;
   const selectedConv = conversations.find((c) => c.characterId === profileId);
 
-  /** 有没有待处理的好友申请：决定「新的朋友」那条索引带是实粉还是淡粉。 */
-  const hasRequest = requestedConvs.length > 0;
+  /* 分组选择条：跟着选中的分类换「所有联系人」那一节的标题与条数。 */
+  const activeCategory = categories.find((c) => c.id === group) ?? null;
+  const groupCn = activeCategory ? activeCategory.name : "所有联系人";
+  const groupEn = activeCategory ? "Group" : "All";
 
   /** 星标／免打扰写回当前面具的会话，并刷新上层数据。 */
   const toggleConv = async (patch: { isPinned?: boolean; isMuted?: boolean }) => {
@@ -382,6 +403,11 @@ export default function ContactList({
         .cl-row { transition: transform .16s ease, background-color .16s ease; }
         .cl-row:active { background-color: ${T.pinkSoft}; transition-duration: .06s; }
         .cl-search::placeholder { color: ${T.ink3}; }
+        /* 分组选择条：横滑但不露滚动条（触屏一样能滑） */
+        .cl-gsel { -ms-overflow-style: none; scrollbar-width: none; }
+        .cl-gsel::-webkit-scrollbar { display: none; }
+        /* 备注反转后的本名小字：前面缀一枚淡淡的间隔点 */
+        .cl-aka::before { content: '·'; margin-right: 6px; opacity: .55; }
         /* 名录条目：按住整行压暗一档；条目之间压一条**从名字起头处划开**的细线 */
         .cl-entry { position: relative; transition: filter .16s ease; }
         .cl-entry:active { filter: brightness(.96); }
@@ -396,8 +422,7 @@ export default function ContactList({
       `}</style>
 
       {/* 顶栏 G1（跟消息页同一套）：左右两键钉在两侧同一条中线，
-          「通讯人／Contacts」一体两行的标题块垂直居中卡在中间。
-          通讯人页是底部 tab，左侧不留键（消息页那儿是返回键）。 */}
+          「通讯人／Contacts」一体两行的标题块垂直居中卡在中间。 */}
       <div
         style={{
           flex: "none",
@@ -406,6 +431,32 @@ export default function ContactList({
         }}
       >
         <div style={{ position: "relative", display: "flex", justifyContent: "center" }}>
+          {/* 返回主屏幕：钉在左侧中线上（跟消息页同一枚） */}
+          <button
+            type="button"
+            onClick={onExit}
+            aria-label="返回主屏幕"
+            className="cl-hbtn"
+            style={{
+              position: "absolute",
+              left: 0,
+              top: "50%",
+              transform: "translateY(-50%)",
+              width: 24,
+              height: 24,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              border: "none",
+              background: "none",
+              padding: 0,
+              color: T.ink,
+              cursor: "pointer",
+            }}
+          >
+            <ChevronLeft size={22} strokeWidth={1.5} />
+          </button>
+
           {/* 中心标题块：中文压着斜体英文，两行一体（整组中心＝右键中线） */}
           <div style={{ textAlign: "center" }}>
             <span
@@ -596,11 +647,11 @@ export default function ContactList({
           <EmptyState cn="还没有朋友" en="no friends yet" hint="点右上角「＋」，选择「添加朋友」开始聊天" />
         ) : (
           <>
-            {/* 新的朋友：名录里的头一条——图标占头像那一位，下面一行小字说有几个申请 */}
+            {/* 群聊入口：名录里的头一条——跟下面的人同一套骨架，但不加卡、不留额外分隔线 */}
             <div
               onClick={() => {
                 setPlusOpen(false);
-                setNewFriendsOpen(true);
+                onOpenGroups();
               }}
               data-tap="true"
               className="cl-entry"
@@ -609,7 +660,6 @@ export default function ContactList({
                 alignItems: "center",
                 gap: 14,
                 padding: "13px 2px",
-                borderBottom: `1px solid ${T.lineSoft}`,
                 cursor: "pointer",
               }}
             >
@@ -619,11 +669,11 @@ export default function ContactList({
                   width: 42,
                   display: "flex",
                   justifyContent: "center",
-                  color: hasRequest ? T.pink : T.ink3,
+                  color: T.ink3,
                   pointerEvents: "none",
                 }}
               >
-                <UserPlus size={19} strokeWidth={1.7} />
+                <Users size={19} strokeWidth={1.7} />
               </span>
               <div style={{ flex: 1, minWidth: 0, pointerEvents: "none" }}>
                 <div
@@ -635,18 +685,60 @@ export default function ContactList({
                     color: T.ink,
                   }}
                 >
-                  新的朋友
+                  群聊
                 </div>
                 <div style={{ marginTop: 4, fontSize: 12.5, color: T.ink2, letterSpacing: ".02em" }}>
-                  {hasRequest ? `${requestedConvs.length} 条好友申请` : "还没有新的申请"}
+                  还没有群聊
                 </div>
               </div>
               <ChevronRight size={15} strokeWidth={1.9} color={T.ink3} style={{ flex: "none" }} />
             </div>
 
+            {/* 分组选择条：全部＋各分类，点了筛下面「所有联系人」那一节 */}
+            <div
+              className="cl-gsel"
+              style={{ display: "flex", gap: 22, overflowX: "auto", padding: "14px 4px 4px" }}
+            >
+              {[{ id: "all", name: "全部" }, ...categories].map((c) => {
+                const on = group === c.id;
+                return (
+                  <span
+                    key={c.id}
+                    onClick={() => setGroup(c.id)}
+                    data-tap="true"
+                    style={{
+                      position: "relative",
+                      flex: "none",
+                      fontSize: 12.5,
+                      letterSpacing: ".16em",
+                      color: on ? T.pink : T.ink2,
+                      paddingBottom: 7,
+                      cursor: "pointer",
+                      transition: "color .16s ease",
+                    }}
+                  >
+                    {c.name}
+                    {on ? (
+                      <span
+                        style={{
+                          position: "absolute",
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          height: 1.5,
+                          borderRadius: 2,
+                          background: T.pink,
+                        }}
+                      />
+                    ) : null}
+                  </span>
+                );
+              })}
+            </div>
+
             {starred.length > 0 || normal.length > 0 ? (
               <>
-                {/* 星标：靠排版权重区分——名字斜体、字号更大（不用五角星、不用横滑带） */}
+                {/* 星标：名字正体、字号不变，只走雾蓝（不用五角星、不用横滑带） */}
                 {starred.length > 0 ? (
                   <div>
                     <GroupLabel en="Starred" cn="星标" count={starred.length} />
@@ -662,10 +754,10 @@ export default function ContactList({
                   </div>
                 ) : null}
 
-                {/* 所有联系人：名字正体、字号收小，条目之间一条细线 */}
+                {/* 所有联系人：名字正体、字号收小，条目之间一条细线；标题跟分组选择条走 */}
                 {normal.length > 0 ? (
                   <div>
-                    <GroupLabel en="All" cn="所有联系人" count={normal.length} />
+                    <GroupLabel en={groupEn} cn={groupCn} count={normal.length} />
                     {normal.map((row) => (
                       <ContactRow
                         key={row.archive.id}
@@ -1629,8 +1721,9 @@ function GroupLabel({ en, cn, count }: { en: string; cn: string; count: number }
   );
 }
 
-/** 名录的一条：跟消息页的会话行同一套骨架（圆角方头像 42＋宋体名字＋一行副文），
- *  副文这里放的是 TA 的签名；星标那一节名字走斜体、字号更大（靠排版权重区分，不用五角星）。 */
+/** 名录的一条：跟消息页的会话行同一套骨架（圆角方头像 42＋宋体名字＋一行副文）。
+ *  副文这里放的是 TA 的签名；备注在前当大名、本名以弱化小字缀在其后（不再是胶囊）；
+ *  星标那一节名字**正体、字号不变**，只走雾蓝（人与群共用这一条区分规矩，不用五角星）。 */
 function ContactRow({
   archive,
   conv,
@@ -1639,13 +1732,17 @@ function ContactRow({
 }: {
   archive: ArchiveEntry;
   conv?: Conversation;
-  /** 星标那一节：名字斜体、字号更大。 */
+  /** 星标那一节：名字走雾蓝（正体、字号不变）。 */
   starred?: boolean;
   onClick: () => void;
 }) {
   const d = archive.data;
-  const name = d.name || d.nickname || "未命名";
-  const nickname = d.nickname && d.nickname !== d.name ? d.nickname : "";
+  /* 备注反转：有备注（且与本名不同）就拿它当大名，本名退成后面那行小字；
+     没备注就还是本名当大名、不重复显示。头像首字依旧取本名。 */
+  const realName = d.name || d.nickname || "未命名";
+  const remark = d.nickname && d.nickname !== d.name ? d.nickname : "";
+  const primary = remark || realName;
+  const secondary = remark ? realName : "";
   const signature = conv?.signature?.trim() || defaultSignature(d);
 
   return (
@@ -1682,45 +1779,40 @@ function ContactRow({
           pointerEvents: "none",
         }}
       >
-        {d.photo ? null : name.slice(0, 1)}
+        {d.photo ? null : realName.slice(0, 1)}
       </div>
 
-      {/* 名字（星标走斜体大字）＋备注小字并一行；下面一行签名 */}
+      {/* 大名（有备注时是备注；星标走雾蓝）＋本名弱化小字缀其后；下面一行签名 */}
       <div style={{ flex: 1, minWidth: 0, pointerEvents: "none" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
           <span
             style={{
               fontFamily: SERIF,
-              fontSize: starred ? 17 : 15.5,
-              fontStyle: starred ? "italic" : "normal",
+              fontSize: 15.5,
               fontWeight: 600,
               letterSpacing: ".08em",
-              color: T.ink,
+              color: starred ? T.pink : T.ink,
               whiteSpace: "nowrap",
               overflow: "hidden",
               textOverflow: "ellipsis",
             }}
           >
-            {name}
+            {primary}
           </span>
-          {nickname ? (
+          {secondary ? (
             <span
+              className="cl-aka"
               style={{
                 flex: "none",
-                maxWidth: 96,
-                fontSize: 9,
-                fontWeight: 600,
-                letterSpacing: ".08em",
-                padding: "2px 7px",
-                borderRadius: 999,
-                background: T.pinkSoft,
-                color: T.pink,
+                fontSize: 11.5,
+                letterSpacing: ".09em",
+                color: T.ink3,
                 whiteSpace: "nowrap",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
               }}
             >
-              {nickname}
+              {secondary}
             </span>
           ) : null}
           {conv?.isMuted ? (

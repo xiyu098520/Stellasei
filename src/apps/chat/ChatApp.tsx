@@ -9,6 +9,7 @@ import { DEFAULT_MASK_ID, ensureMasks, migrateLegacySignature, saveMasks, type M
 import MessageList from "./MessageList";
 import ChatWindow from "./ChatWindow";
 import ContactList from "./ContactList";
+import GroupList from "./GroupList";
 import MomentsPage from "./MomentsPage";
 import MinePage, { SIGNATURE_FALLBACK } from "./MinePage";
 import WalletView from "./WalletView";
@@ -35,10 +36,11 @@ export default function ChatApp() {
      返回只是把这间屋子藏起来，TA 那一轮回复／配图／记忆照跑，回来接着看）。
      彻底不要了（删好友）才从这张表里剔掉。 */
   const [visitedChats, setVisitedChats] = useState<{ characterId: string; maskId: string }[]>([]);
-  /** 应用内视图：消息列表 ⇄ 通讯人 ⇄ 动态 ⇄ 我的 ⇄ 钱包 ⇄ 聊天全局设定（钱包／设定从「我的」进）。 */
-  const [view, setView] = useState<"list" | "contacts" | "moments" | "mine" | "wallet" | "chat-global">(
-    "list",
-  );
+  /** 应用内视图：消息列表 ⇄ 通讯人 ⇄ 群聊 ⇄ 动态 ⇄ 我的 ⇄ 钱包 ⇄ 聊天全局设定
+   *  （群聊从通讯人页进；钱包／设定从「我的」进）。 */
+  const [view, setView] = useState<
+    "list" | "contacts" | "groups" | "moments" | "mine" | "wallet" | "chat-global"
+  >("list");
   const [failed, setFailed] = useState(false);
   const [toast, setToast] = useState("");
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -197,10 +199,17 @@ export default function ChatApp() {
             conversations={scopedConversations}
             maskId={scopeMaskId}
             maskName={effectiveName}
+            /* 顶栏左上返回键：离开聊天 App、回小手机主屏幕。 */
+            onExit={closeApp}
+            /* 名录头一条「群聊」入口：进群聊页。 */
+            onOpenGroups={() => setView("groups")}
             onOpenChat={(characterId) => openChatWith(characterId, scopeMaskId)}
             onDataChange={reloadConversations}
             showToast={showToast}
           />
+        ) : view === "groups" ? (
+          /* 群聊页：还没有数据模型，先传空数组走空态。返回键回通讯人页。 */
+          <GroupList groups={[]} onBack={() => setView("contacts")} showToast={showToast} />
         ) : view === "moments" ? (
           <MomentsPage
             archives={archives}
