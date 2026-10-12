@@ -14,6 +14,10 @@ export const runtime = "nodejs";
  *
  * ⚠️ 请勿手设 Content-Type 为 multipart/form-data：NovelAI 的解析器会因此报
  *    「missing multipart boundary」，这里发的是 JSON，靠 fetch 自动带 header。
+ *
+ * ⚠️ 这里不是 src/app 下的路由，Next 不会把它编进静态站点（GitHub Pages 无服务端）。
+ *    它是给「将来挂到 Cloudflare Worker 当代理层」留的现成代码（依赖 node:zlib，
+ *    Worker 上要开 nodejs_compat），别在本地 fetch 它。
  */
 
 /** 一个 NovelAI 请求需要的参数（前端从设置里凑齐后 POST 过来）。 */
