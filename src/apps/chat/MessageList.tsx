@@ -206,7 +206,8 @@ export default function MessageList({
         }}
       >
         <div style={{ position: "relative", display: "flex", justifyContent: "center" }}>
-          {/* 中心标题块：中文压着斜体英文，两行一体（整组中心＝两键中线） */}
+          {/* 中心标题块：中文压着斜体英文，两行一体（整组中心＝两键中线）；
+              中英文贴近（行高 1、上距 0），只留字面自己的呼吸缝 */}
           <div style={{ textAlign: "center" }}>
             <span
               style={{
@@ -216,7 +217,7 @@ export default function MessageList({
                 letterSpacing: ".2em",
                 paddingLeft: ".2em",
                 color: HZ.accent,
-                lineHeight: 1.15,
+                lineHeight: 1,
               }}
             >
               消息
@@ -229,7 +230,7 @@ export default function MessageList({
                 letterSpacing: ".12em",
                 textIndent: ".12em",
                 color: HZ.ink3,
-                padding: "2px 0 0",
+                padding: "1px 0 0",
               }}
             >
               Messages
