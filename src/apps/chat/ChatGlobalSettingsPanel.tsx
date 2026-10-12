@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { ChevronLeft, ChevronRight, Minus, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { RegexManager } from "@/components/phone/apps/RegexManager";
 import {
-  clampProactiveBaseMin,
   DEFAULT_CHAT_PREFS,
   getChatPrefs,
   saveChatPrefs,
@@ -16,7 +15,6 @@ import { EN, SANS, T } from "./shared";
  * 聊天全局设定（从聊天通讯侧边栏进入）。
  *
  * 这里收的是**全局默认**——管所有角色、所有面具的那一层：
- *   · TA 主动找我：会不会来、多久来一次、深夜安不安静；
  *   · 对话：流畅模式、时间感知、显示思维链、正则规则、语音提示词。
  *
  * 三层关系：全局默认（本页）＜ 角色设置 ＜ 单个聊天。越细越优先，
@@ -26,14 +24,6 @@ import { EN, SANS, T } from "./shared";
  * 整页沿用聊天板的 T 语言（透粉白底／纯白卡／亮粉／无衬线／大圆角＋浮影），
  * 页头＝「一行英文小字＋26/800 近黑大标题＋近黑圆返回钮」，跟单聊天设置同一套。
  * ===================================================================== */
-
-/** 主动基础时间的显示文案：不足 1 小时说分钟，整点说小时，否则「X 小时 Y 分」。 */
-function fmtGapMin(min: number): string {
-  if (min < 60) return `${min} 分钟`;
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  return m === 0 ? `${h} 小时` : `${h} 小时 ${m} 分`;
-}
 
 /** 页头：一行英文小字起头，下面压一条 26/800 近黑大标题（跟单聊天设置同款）。 */
 function PageHeader({ en, title, onBack }: { en: string; title: string; onBack: () => void }) {
@@ -90,13 +80,7 @@ function PageHeader({ en, title, onBack }: { en: string; title: string; onBack: 
   );
 }
 
-export default function ChatGlobalSettingsPanel({
-  onBack,
-  showToast,
-}: {
-  onBack: () => void;
-  showToast: (msg: string) => void;
-}) {
+export default function ChatGlobalSettingsPanel({ onBack }: { onBack: () => void }) {
   const [prefs, setPrefs] = useState<ChatPrefs>(DEFAULT_CHAT_PREFS);
   const [sub, setSub] = useState<"main" | "regex" | "voice-prompt">("main");
 
@@ -110,22 +94,10 @@ export default function ChatGlobalSettingsPanel({
     void saveChatPrefs(next);
   };
 
-  const toggleProactive = (next: boolean) => {
-    patch({ proactiveOn: next });
-    if (!next) showToast("已关掉主动找我（单个聊天可单独开回来）");
-  };
-
   /* 流畅模式：当场给 <html> 挂／摘 `.smooth-mode`（样式见 globals.css），再落库。 */
   const toggleSmooth = (next: boolean) => {
     document.documentElement.classList.toggle("smooth-mode", next);
     patch({ smoothMode: next });
-  };
-
-  const stepProactiveBase = (delta: number) => {
-    const step = prefs.proactiveBaseMin < 60 ? 15 : prefs.proactiveBaseMin < 240 ? 30 : 60;
-    const next = clampProactiveBaseMin(prefs.proactiveBaseMin + delta * step);
-    if (next === prefs.proactiveBaseMin) return;
-    patch({ proactiveBaseMin: next });
   };
 
   /* 语音提示词正文：打字只更新界面，离开输入框（失焦）时才落库，免得每敲一下写一次库。 */
@@ -170,31 +142,6 @@ export default function ChatGlobalSettingsPanel({
       <PageHeader en="global settings" title="聊天全局设定" onBack={onBack} />
 
       <div style={scrollStyle}>
-        <GroupTitle title="TA 主动找我" en="proactive" />
-        <p style={hintStyle}>
-          全局默认。单个聊天里单独设过的那几项，以那一处为准；没设过的都跟着这里走。
-        </p>
-        <SettingRow
-          title="主动找我"
-          desc="TA 会自己来消息、发动态"
-          right={<Switch on={prefs.proactiveOn} onClick={() => toggleProactive(!prefs.proactiveOn)} />}
-        />
-        {/* 主动是总闸：关着时下面这两行整行收起（只是不显示，调好的数还留着）。 */}
-        {prefs.proactiveOn ? (
-          <>
-            <SettingRow
-              title="基础时间"
-              desc="大约每隔这么久来找你一次"
-              right={<StepCount value={fmtGapMin(prefs.proactiveBaseMin)} onStep={stepProactiveBase} />}
-            />
-            <SettingRow
-              title="深夜模式"
-              desc="23:00 – 08:00 不打扰"
-              right={<Switch on={prefs.proactiveQuiet} onClick={() => patch({ proactiveQuiet: !prefs.proactiveQuiet })} />}
-            />
-          </>
-        ) : null}
-
         <GroupTitle title="对话" en="dialogue" />
         <SettingRow
           title="流畅模式"
@@ -278,20 +225,6 @@ const textareaStyle: CSSProperties = {
   boxSizing: "border-box",
 };
 
-const stepBtnStyle: CSSProperties = {
-  width: 32,
-  height: 32,
-  borderRadius: "50%",
-  border: "1px solid rgba(232,106,155,.22)",
-  background: "rgba(232,106,155,.08)",
-  color: T.pink,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  cursor: "pointer",
-  flex: "none",
-};
-
 const ANIM_CSS = `
   .cgs-soft { transition: transform .16s ease, opacity .16s ease; }
   .cgs-soft:active { transform: scale(.93); opacity: .7; }
@@ -303,32 +236,6 @@ const ANIM_CSS = `
 /* --------------------- 本地零件 ---------------------
    跟 ChatSettingsPanel 末尾那几件同款（T 语言：亮粉、无衬线、大圆角）。
    不动 widgets.tsx 里那份（那份还带着「角色设置／通讯人」两个页面）。 */
-
-/** 条数步进器（与单聊天设置同款手感）：− 数字 ＋。 */
-function StepCount({ value, onStep }: { value: ReactNode; onStep: (delta: number) => void }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-      <button type="button" aria-label="减少" onClick={() => onStep(-1)} style={stepBtnStyle}>
-        <Minus size={15} strokeWidth={2} />
-      </button>
-      <span
-        style={{
-          fontFamily: SANS,
-          fontSize: 13.5,
-          color: T.ink,
-          minWidth: 58,
-          textAlign: "center",
-          fontVariantNumeric: "tabular-nums",
-        }}
-      >
-        {value}
-      </span>
-      <button type="button" aria-label="增加" onClick={() => onStep(1)} style={stepBtnStyle}>
-        <Plus size={15} strokeWidth={2} />
-      </button>
-    </div>
-  );
-}
 
 /** 胶囊开关：开＝亮粉底，关＝近黑极淡底。 */
 function Switch({ on, onClick }: { on: boolean; onClick: () => void }) {

@@ -12,13 +12,11 @@
 import {
   appendMessage,
   bubbleCapOf,
-  clampProactiveBaseMin,
   deleteConversation,
   getApiBundle,
   getChatPrefs,
   getConversationMessages,
   getOrCreateConversation,
-  proactiveBaseMinOf,
   updateConversation,
 } from "@/lib/settings/chat";
 import { buildInjection, deleteMemory, getMemory } from "@/lib/chat/memory";
@@ -92,8 +90,6 @@ export interface SocialReply {
   /** 思维链（思考型模型服务端给的推理过程）：与线上主聊天一样只挂在第一条气泡上，
    *  只展示、不回喂——见 appendSocialParts。 */
   reasoningText?: string;
-  /** 主动开口时 TA 自己排的下次间隔（分钟）：写回这个角色的「基础时间」，不进正文。 */
-  nextGapMin?: number;
 }
 
 /** 这一轮「照线上主聊天那样发送」的可选口径（目前只有加好友问候用得上）。
@@ -128,10 +124,7 @@ interface SocialContext {
  *  （关键词世界书按它触发），又当这一轮真正发给模型的 user 内容；`turn` 传了 userInput
  *  时改用那一份当 user 内容（问候：对方刚发来的申请附言）。
  *  `allowImage`：这一趟允不允许 TA 配图（目前只有「自己发动态」为 true；且图文接口真能用
- *  时才真给——见下）。
- *  `light`：朋友圈点赞／评论那两条轻量路径专用——底子照旧（对方档案、世界书、人设、
- *  记忆、最近的聊天一样不少，所以朋友圈里也记得线上说过的事），只**砍掉输出格式／
- *  富媒体那一长套**：一句「赞／不赞」或一句评论不需要被交代怎么用〔图片〕〔语音〕标记。 */
+ *  时才真给——见下）。 */
 async function buildSocialContext(
   character: ArchiveEntry,
   conv: Conversation,
@@ -139,7 +132,6 @@ async function buildSocialContext(
   instruction: string,
   turn?: SocialTurn,
   allowImage = false,
-  light = false,
 ): Promise<SocialContext> {
   const maskId = conv.maskId ?? DEFAULT_MASK_ID;
   const d = character.data;
@@ -219,11 +211,7 @@ async function buildSocialContext(
      离本轮最近；没有就保持逐字不变。 */
   const tailNote = (turn?.tailNote ?? "").trim();
   const tail = tailNote ? (socialPrompt ? `${socialPrompt}\n\n${tailNote}` : tailNote) : socialPrompt;
-  /* light＝点赞／评论：只吃 built.stable（对方档案＋世界书常驻＋人设＋记忆），
-     不铺 stylePrompt／styleRules／langRule 那套输出格式长规则。 */
-  const stable = light
-    ? built.stable
-    : stylePrompt + "\n\n" + built.stable + "\n\n" + styleRules + langRule;
+  const stable = stylePrompt + "\n\n" + built.stable + "\n\n" + styleRules + langRule;
   /* 回喂历史：线上把「本轮那条 user」切掉（它已单独作 input，留着就重复了），这里同口径。
      问候这一轮末尾那条 user 就是对方的申请附言，其后可能还跟着刚落下的「通过」系统提示，
      一并摘掉（系统提示本就不进上下文）。其余社交反应没有「刚发来的 user」，原样回喂。 */
@@ -249,28 +237,6 @@ async function buildSocialContext(
     pairMode,
     turnInput,
   };
-}
-
-/** 摘掉主动开口末尾那句〔下次〕提示（TA 自己排的下次间隔分钟数），返回剥净的正文。
- *  这个标记没登记进 extractMetaMarkers，只在这一趟自己认，免得污染通用标记管线。 */
-function parseNextGapHint(text: string): { text: string; minutes?: number } {
-  let minutes: number | undefined;
-  const full = "０１２３４５６７８９";
-  const clean = text.replace(
-    /* 数字写在括号里（〔下次50〕）或括号外（〔下次〕50）都得认——指令里的例子正是后者。 */
-    /[〔【（(]\s*下次\s*[：:]?\s*[)）】〕]\s*([0-9０-９]+)?\s*分?钟?|[〔【（(]\s*下次\s*[：:]?\s*([0-9０-９]+)?\s*分?钟?\s*[)）】〕]/g,
-    (_m, after: string | undefined, inside: string | undefined) => {
-      const n = after ?? inside;
-      if (n) {
-        const v = Number(
-          n.replace(/[０-９]/g, (d) => String(full.indexOf(d))),
-        );
-        if (Number.isFinite(v) && v > 0) minutes = v;
-      }
-      return "";
-    },
-  );
-  return { text: clean.trim(), minutes };
 }
 
 /** 走完整管线生成一次社交反应，再过与线上同一趟后处理（心声／标记／拆条／双语劈分）。
@@ -311,8 +277,7 @@ async function generateSocialReply(
     }
     const voice = extractInnerVoice(reply);
     const extracted = extractMetaMarkers(voice.clean, ctx.charName);
-    /* 主动开口时 TA 会在末尾附一句〔下次〕提示（它自己排的下次间隔）：剥掉，只回传给引擎。 */
-    const { text: clean, minutes: nextGapMin } = parseNextGapHint(extracted.clean.trim());
+    const clean = extracted.clean.trim();
     if (!clean || isChatRefusal(clean)) return null;
     /* 正文空、思考兜底当正文的那一轮：reasoning 与 reply 一模一样，那是正文不是思考，
        挂上去就是同一段字两头重复（同线上主聊天的把关口径）。 */
@@ -337,7 +302,6 @@ async function generateSocialReply(
       innerVoice: voice.innerVoice,
       snapshot: voice.snapshot,
       reasoningText,
-      ...(nextGapMin !== undefined ? { nextGapMin } : {}),
     };
   } catch {
     return null;
@@ -404,120 +368,6 @@ export function isChatRefusal(reply: string): boolean {
 }
 
 /* --------------------------- TA 的话（生成） --------------------------- */
-
-/** 动态作者在提示词里怎么称呼：你本人叫「对方」，别的角色直呼其名。 */
-function momentAuthorWho(moment: { authorName: string; isSelfAuthor: boolean }, myName: string) {
-  return moment.isSelfAuthor
-    ? { who: `你聊天的那个人（${myName}）本人`, rel: "对方" }
-    : { who: `你认识的「${moment.authorName}」`, rel: `「${moment.authorName}」` };
-}
-
-/** TA 看到一条动态、自己判断要不要顺手点个赞（2026-10-05）。
- *
- *  走 `buildSocialContext` 的 **light** 档：人设、世界书、记忆、最近的聊天一样不少
- *  （所以朋友圈里也记得线上说过的事），只砍掉输出格式／富媒体那套长规则——
- *  一个「赞／不赞」用不上〔图片〕〔语音〕标记。
- *  · 仍然**不走** `queueReaction`——那会亮聊天窗的「正在输入」灯，可点赞不该亮灯
- *    （调度与到点执行都在 moment-social.ts 那一层）。
- *  返回值：true＝赞；false＝不赞；null＝说不清／接口没配／请求失败——一律当不赞处理。 */
-export async function generateMomentLikeDecision(
-  character: ArchiveEntry,
-  conv: Conversation,
-  userName: string,
-  moment: { authorName: string; isSelfAuthor: boolean; content: string },
-): Promise<boolean | null> {
-  try {
-    const myName = userName.trim() || "对方";
-    /* 作者是谁：可能是你聊天的那个人本人，也可能是你认识的另一个角色。 */
-    const { who, rel } = momentAuthorWho(moment, myName);
-    const instruction = `【任务 - 要不要给这条动态点赞】
-你刷到了${who}发的一条动态：
-「${moment.content.trim()}」
-
-按你的人设、你与${rel}的关系，以及这条内容，判断你会不会顺手点个赞。
-只回〔赞〕或〔不赞〕这两个字的标记，不写别的话。`;
-    const ctx = await buildSocialContext(character, conv, userName, instruction, undefined, false, true);
-    const { api } = ctx;
-    if (!(api.enabled && api.baseUrl.trim() && api.model.trim())) return null;
-    let reply = "";
-    try {
-      reply = await fetchAIReply(
-        api,
-        { stable: ctx.stable, tail: ctx.tail },
-        ctx.apiHistory,
-        ctx.turnInput + (ctx.volatile ? `\n\n${ctx.volatile}` : ""),
-        undefined,
-        24,
-        0.6,
-      );
-    } catch {
-      return null;
-    }
-    /* 心声不进决策；只认正文里最后出现的那个标记（模型偶尔会把指令抄一遍）。 */
-    const clean = extractInnerVoice(reply).clean;
-    const noLike = clean.lastIndexOf("〔不赞〕");
-    const like = clean.lastIndexOf("〔赞〕");
-    if (noLike < 0 && like < 0) return null;
-    return like > noLike;
-  } catch {
-    return null;
-  }
-}
-/** TA 刷到一条动态、在评论区留言（2026-10-05）。
- *
- *  跟 `generateMomentLikeDecision` 同一路数，走 `buildSocialContext` 的 **light** 档：
- *  人设、世界书、记忆、最近的聊天一样不少——一句评论也得跟线上是同一个人；
- *  只砍掉输出格式／富媒体那套长规则。**不走** `queueReaction`（不亮聊天窗的
- *  「正在输入」灯，评论也不该亮灯）。
- *  返回值：一到三条评论（TA 可以连发，像真人刷屏）；null＝接口没配／请求失败／产出空——一律当「没评」处理。 */
-export async function generateMomentComment(
-  character: ArchiveEntry,
-  conv: Conversation,
-  userName: string,
-  moment: { authorName: string; isSelfAuthor: boolean; content: string },
-): Promise<string[] | null> {
-  try {
-    const myName = userName.trim() || "对方";
-    const { who, rel } = momentAuthorWho(moment, myName);
-    const instruction = `【任务 - 要不要给这条动态写评论】
-你刷到了${who}发的一条动态：
-「${moment.content.trim()}」
-
-按你的人设、你与${rel}的关系，以及这条动态的内容，判断你要不要去评论。想评就在评论区留言；不想评就什么都不输出。
-
-【格式】
-每条 20 字以内，一行一条；可以只留一条，也可以连着留几条，最多 3 条。
-只给出评论本身，不加引号，不作解释，不带你的名字。`;
-    const ctx = await buildSocialContext(character, conv, userName, instruction, undefined, false, true);
-    const { api } = ctx;
-    if (!(api.enabled && api.baseUrl.trim() && api.model.trim())) return null;
-    let reply = "";
-    try {
-      reply = await fetchAIReply(
-        api,
-        { stable: ctx.stable, tail: ctx.tail },
-        ctx.apiHistory,
-        ctx.turnInput + (ctx.volatile ? `\n\n${ctx.volatile}` : ""),
-        undefined,
-        120,
-        0.85,
-      );
-    } catch {
-      return null;
-    }
-    /* 心声不进评论；正文可以是一行，也可以是连着的几行（TA 连发几条）。 */
-    const clean = extractInnerVoice(reply).clean;
-    const out = clean
-      .split(/\n+/)
-      .map((s) => s.replace(/^["'“”「『]+|["'“”」』]+$/g, "").trim())
-      .filter(Boolean)
-      .slice(0, 3)
-      .map((s) => s.slice(0, 60));
-    return out.length ? out : null;
-  } catch {
-    return null;
-  }
-}
 
 /** 解除拉黑后 TA 的第一反应（走完整管线；没生成出来就安静过去）。
  *  只交代状态事实，不催 TA 做出反应——拉黑当下那条与拉黑期间的历史原文都在，
@@ -743,77 +593,5 @@ export function unblockedFirstReaction(
     if (!reply) return;
     /* 生成时已过同一趟后处理（拆条／双语），这里逐条落库即可。 */
     await appendSocialParts(character.id, maskId, reply);
-  });
-}
-
-/* --------------------------- 主动（没人喊也会自己来） --------------------------- */
-
-/** 「{对方}上一条消息已经是约 X 前」里的那截时长。 */
-function elapsedLabel(fromIso: string, nowMs: number): string {
-  const min = Math.max(0, Math.round((nowMs - new Date(fromIso).getTime()) / 60000));
-  if (min < 60) return `${min} 分钟`;
-  if (min < 60 * 24) return `${Math.round(min / 60)} 小时`;
-  return `${Math.round(min / (60 * 24))} 天`;
-}
-
-/** TA 主动开口的指令：交给完整管线时，既当这轮的 userInput、也当真的发出去的那句话。
- *  照参考项目「固定时间主动消息」那股写法：先摆时间事实，再让 TA 依性格、关系、最近聊天与
- *  当前时间决定要不要发；发的话给一串开场方向。
- *  「别解释为什么发消息」是防 AI 腔的老毛病——真人不会说「我主动来找你聊聊」。
- *  `baseMin`＝恩熙给这个角色设的基础间隔（分钟）：让 TA 参考它、再照当下的情景自己定多久来下一次。
- *  `elapsed`＝对方上一条消息距今多久（没说过话时为 null，那行就不出现）。 */
-function proactiveChatInstruction(baseMin: number, userName: string, elapsed: string | null): string {
-  const human =
-    baseMin < 60
-      ? `${baseMin} 分钟`
-      : baseMin % 60 === 0
-        ? `${baseMin / 60} 小时`
-        : `${Math.floor(baseMin / 60)} 小时 ${baseMin % 60} 分`;
-  const since = elapsed ? `${userName} 上一条消息已经是约 ${elapsed} 前。\n` : "";
-  return `${since}现在请根据你的性格、你们的关系、最近聊天上下文和当前时间，决定要不要主动发消息。
-如果主动发消息，内容要像你自然想起 ${userName} 后主动开口。可以关心、撒娇、分享近况、轻轻试探、邀请继续聊天，或任何符合你性格的主动开场。
-内容必须自然，符合你的角色状态和你们当前关系。
-若决定不发，就不要输出任何内容。
-不解释你为什么发消息；「主动」「系统」「提醒」「提示」「通知」这类字眼，正文里不出现，<think> 里的心里话也不出现——那些念头都是你自己想到的，不是从别处得知的。
-1-3 条短消息；只给出对话内容本身，不写动作描写。
-最后另起一行写〔下次〕加上一个整数分钟数，表示你打算过多久再主动找对方一次；参考值约 ${human}，你可以按你们的情景和此刻的心情自己浮动，这行不会发给对方。`;
-}
-
-/** TA 主动开口（手机开着时由主动引擎在后台触发）。
- *  `expectedLastId`＝调度那一刻会话最后一条消息的 id：轮到这里时若它变了，
- *  说明对方刚又说了话（主聊天那条路正接上），这趟就让掉，免得一前一后回两遍。
- *  落库带未读红点——用户多半不在这间，列表要能看到。 */
-export function proactiveMessageReaction(
-  character: ArchiveEntry,
-  maskId: string,
-  userName: string,
-  expectedLastId?: string,
-): Promise<void> {
-  return queueReaction(character.id, maskId, async () => {
-    const fresh = await getOrCreateConversation(character.id, maskId);
-    const last = fresh.messages[fresh.messages.length - 1];
-    if (expectedLastId !== undefined && last?.id !== expectedLastId) return;
-    /* 「对方上一条消息」＝TA 之前收到的最后一句用户的话；没有就退回最后一条，再没有就 null。 */
-    let lastUser: ChatMessage | undefined;
-    for (let i = fresh.messages.length - 1; i >= 0; i -= 1) {
-      if (fresh.messages[i].role === "user") {
-        lastUser = fresh.messages[i];
-        break;
-      }
-    }
-    const anchor = lastUser ?? last;
-    const elapsed = anchor ? elapsedLabel(anchor.createdAt, Date.now()) : null;
-    const instruction = proactiveChatInstruction(proactiveBaseMinOf(fresh), userName, elapsed);
-    const reply = await generateSocialReply(character, fresh, userName, instruction);
-    /* 主动开口失败（接口没配／拒答）就安静过去，不落兜底模板——没人要的东西不该硬塞。 */
-    if (!reply) return;
-    /* TA 自己排的下次＝以后的基础节奏：写进这个角色的「基础时间」，设置页里的数跟着变。
-       先写库再落消息——落完消息会摇铃，聊天窗回去重拉，那一刻基础时间已是新值。 */
-    if (reply.nextGapMin !== undefined) {
-      await updateConversation(character.id, maskId, {
-        proactiveBaseMin: clampProactiveBaseMin(reply.nextGapMin),
-      });
-    }
-    await appendSocialParts(character.id, maskId, reply, { bumpUnread: true });
   });
 }

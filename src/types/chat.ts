@@ -771,13 +771,6 @@ export interface Conversation {
   voiceOverride?: VoiceApiExtras;
   /** 角色设置：个别语音提示词（不存在则跟随全局；存在＝这个角色单独用这份规矩）。 */
   voicePromptOverride?: VoicePromptConfig;
-  /** 主动找我（1.10.30）：TA 没被喊也会自己来消息、自己发动态（未设＝默认开，见 settings/chat.ts 的 proactiveOnOf）。 */
-  proactiveOn?: boolean;
-  /** 主动找我的基础间隔（分钟；未设＝默认 360，见 proactiveBaseMinOf）。
-   *  这只是个标称值，TA 会按你们的情景自己浮动多久再来。 */
-  proactiveBaseMin?: number;
-  /** 深夜模式（1.10.30）：开（默认）则 23:00-08:00 不主动来消息；关掉则深夜也照发。见 proactiveQuietOf。 */
-  proactiveQuiet?: boolean;
 }
 
 /** API 设定：填好并启用后才会请求真后端。 */
