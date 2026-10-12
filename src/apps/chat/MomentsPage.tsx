@@ -44,7 +44,6 @@ import {
   Image as ImageIcon,
   Loader2,
   Lock,
-  Menu,
   MessageCircle,
   Plus,
   Share2,
@@ -254,7 +253,6 @@ export default function MomentsPage({
   maskName,
   maskAvatar,
   signature,
-  onOpenSidebar,
   showToast,
 }: {
   /** 全部角色档案（用来把动态的作者名／头像补上）。 */
@@ -269,7 +267,6 @@ export default function MomentsPage({
   maskAvatar: string;
   /** 我：个性签名（名片上那行小字）。 */
   signature: string;
-  onOpenSidebar: () => void;
   showToast: (msg: string) => void;
 }) {
   /* 我发过的动态：按面具读一册（跟 TA 的动态分开存，见 settings/chat.ts 的 self。）。
@@ -1438,29 +1435,6 @@ export default function MomentsPage({
           transition: "background .18s ease, border-color .18s ease",
         }}
       >
-        <button
-          type="button"
-          className="mp-act"
-          onClick={onOpenSidebar}
-          aria-label="打开侧边栏"
-          style={{
-            flex: "none",
-            width: 34,
-            height: 34,
-            /* 它浮在封面上，不属于下面那些方卡，圆角跟封面一套。 */
-            borderRadius: 11,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            border: `1px solid ${stuck ? "rgba(20,19,24,.12)" : "rgba(91,42,64,.18)"}`,
-            background: stuck ? "rgba(20,19,24,.055)" : "rgba(255,255,255,.62)",
-            color: stuck ? T.ink : COVER_INK,
-            cursor: "pointer",
-          }}
-        >
-          <Menu size={16} strokeWidth={1.9} />
-        </button>
-
         {/* ── 标题：中文在上、英文小字在下（字距拉到 .3em）。
               名称与英文留在这两行里。
               但**期号不回来**（不要 `No. 00X` 那种）。 ── */}

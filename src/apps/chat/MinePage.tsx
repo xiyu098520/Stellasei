@@ -11,29 +11,28 @@ import {
 } from "@/lib/settings/mask";
 import { copyText } from "@/lib/clipboard";
 import { uuid } from "@/lib/uuid";
+import { APP_VERSION } from "@/lib/version";
 import { AVATAR_GRADIENT, EN, SANS, T } from "./shared";
 
 /* =======================================================================
- * 「我的」页（侧边栏头像进入）
- * 当前使用的面具卡 → 面具列表（默认面具置顶，不可删）→ 新增／编辑／切换
- * 名字由使用中的面具决定；全空时 TA 眼中只有「我」
+ * 「我的」页（底部 tab 进入，微信「我」的骨架）
+ * 顶部资料块（当前面具：头像＋名字＋签名，整块点进编辑）→ 面具册入口卡（进子页）
+ * → 分组卡片行（收藏／钱包／聊天全局设定 · 在线状态／拍一拍 · 检查更新／帮助 · 退出）。
+ * 原侧边栏（已撤）的入口全部收进这页；导航大梁换成了底部 tab。
  *
- * 皮是 T：透粉白底、纯白卡、无衬线，黑只落在大标题与返回钮上，不整页翻黑；
- * 页头是「近黑圆返回钮＋一行英文小字起头＋28/800 近黑大标题＋通栏册页线」。
- * 骨给这一页自己的样子——「我的」讲的是面具，首屏就摆**一张名片**：
- * 当前面具是一张粉白渐变的大卡（左上角一根粉色小色标、右上角实粉「使用中」小牌、
- * 白环包住头像、ID 做成可点复制的小胶囊、人设摘要压在底下），右下角一行粉色「编辑 ›」。
- * 跟通讯人页的纯白方格墙一眼分得开：那页是名册，这页是名片。
- * 面具册（其他面具）去卡内分隔线，改用留白撑开一列圆角行；
- * 「使用」＝淡粉底粉字小胶囊，「新增面具」＝一条淡粉实底通栏行（不再是虚框）。
+ * 面具不再摊在主页：**面具册是一张卡**，点进去才见名片（当前面具）＋列表＋新增。
+ * 编辑（新增／既有）＝再下一层：主页 ⇄ 面具册 ⇄ 编辑。
+ * 名字由使用中的面具决定；全空时 TA 眼中只有「我」。
+ *
+ * 皮是 T：透粉白底、纯白卡、无衬线，黑只落在大标题与子页返回钮上，不整页翻黑；
+ * 页头是「英文小字起头＋28/800 近黑大标题＋通栏册页线」（子页多一枚近黑圆返回钮）。
  * 零件（MaskAvatar／MenuItem／GroupLabel）在文件末尾本地改，**不动 `widgets.tsx`**。
  *
  * 签名并进面具：签名是面具自己的一个栏位——
- * 名片卡上多一行签名（点它直接改），面具编辑页在「名字」下面多一个「签名」输入框，
- * 「设置」分组里不再有签名入口。
+ * 资料块上那行就是它（点整块进编辑改），面具编辑页在「名字」下面也有「签名」输入框。
  * ===================================================================== */
 
-/** 签名兜底文案（侧边栏／名片卡都用它；旧档案同款）。 */
+/** 签名兜底文案（资料块／名片卡／动态页都用它）。 */
 export const SIGNATURE_FALLBACK = "所有心事都寄存在黄昏里";
 
 /** 生日下拉的年份范围：1930 ～ 今年。 */
@@ -48,19 +47,28 @@ export default function MinePage({
   masks,
   onSignatureChange,
   onMasksChange,
-  onBack,
+  onOpenWallet,
+  onOpenChatGlobal,
+  onExit,
   showToast,
 }: {
   signature: string;
   masks: Mask[];
   onSignatureChange: (next: string) => void;
   onMasksChange: (next: Mask[]) => void;
-  onBack: () => void;
+  /* 我的钱包（原侧边栏入口，现从这页进）。 */
+  onOpenWallet: () => void;
+  /* 聊天全局设定（同上）。 */
+  onOpenChatGlobal: () => void;
+  /* 退出星绥通讯（原侧边栏「退出」）。 */
+  onExit: () => void;
   showToast: (msg: string) => void;
 }) {
-  /* ---------- 面具编辑 ---------- */
+  /* ---------- 页内层级 ---------- */
   /** null＝主页；"new"＝新增；Mask＝编辑既有。 */
   const [maskEdit, setMaskEdit] = useState<Mask | "new" | null>(null);
+  /** 面具册子页（主页 ⇄ 面具册 ⇄ 编辑）。 */
+  const [maskRoster, setMaskRoster] = useState(false);
   const [mUid, setMUid] = useState("");
   const [mName, setMName] = useState("");
   const [mSignature, setMSignature] = useState("");
@@ -274,11 +282,16 @@ export default function MinePage({
       ? { cn: "新增面具", en: "new mask" }
       : maskEdit
         ? { cn: "编辑面具", en: "edit mask" }
-        : { cn: "我的", en: "the masks" };
+        : maskRoster
+          ? { cn: "面具册", en: "mask book" }
+          : { cn: "我的", en: "me" };
+
+  /** 只在子页（面具册／编辑）露返回钮；主页是 tab 根视图，不设返回。 */
+  const showBackBtn = maskEdit !== null || maskRoster;
 
   const handleBack = () => {
     if (maskEdit) setMaskEdit(null);
-    else onBack();
+    else if (maskRoster) setMaskRoster(false);
   };
 
   /** 其他面具（当前面具之外的那些）。 */
@@ -315,9 +328,9 @@ export default function MinePage({
         }
       `}</style>
 
-      {/* 页头：近黑圆返回钮＋一行英文小字起头，下面压一条 28/800 近黑大标题，
+      {/* 页头：子页多一枚近黑圆返回钮＋一行英文小字起头，下面压一条 28/800 近黑大标题，
           底下一根通栏粉线（同设置面板／通讯人页）。
-          这枚钮在任何子页都先退一层（面具编辑 → 主页 → 侧边栏），不是一步回主屏 */}
+          返回钮一层一层退（编辑 → 面具册 → 主页），主页是 tab 根视图、不设返回 */}
       <header
         style={{
           position: "relative",
@@ -367,15 +380,17 @@ export default function MinePage({
         </span>
 
         <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 12 }}>
-          <button
-            type="button"
-            onClick={handleBack}
-            aria-label="返回"
-            className="mp-hbtn"
-            style={headerBtnStyle}
-          >
-            <ChevronLeft size={19} strokeWidth={2.2} />
-          </button>
+          {showBackBtn ? (
+            <button
+              type="button"
+              onClick={handleBack}
+              aria-label="返回"
+              className="mp-hbtn"
+              style={headerBtnStyle}
+            >
+              <ChevronLeft size={19} strokeWidth={2.2} />
+            </button>
+          ) : null}
           <span
             style={{
               fontFamily: EN,
@@ -631,9 +646,9 @@ export default function MinePage({
               </button>
             ) : null}
           </div>
-        ) : (
+        ) : maskRoster ? (
           <>
-            {/* ==================== 名片：当前使用的面具（整卡点一下编辑） ==================== */}
+            {/* ==================== 面具册子页：名片（当前使用的面具，整卡点一下编辑） ==================== */}
             {current ? (
               <div
                 onClick={() => openMaskEdit(current)}
@@ -970,27 +985,181 @@ export default function MinePage({
               </div>
             </div>
 
-            {/* ==================== 设置分组 ==================== */}
-            <div style={{ marginTop: 24 }}>
-              <GroupLabel cn="设置" en="settings" count={2} dot={T.ink} />
-              <div style={{ ...cardGroupStyle, padding: 4 }}>
-                <MenuItem
-                  icon="status"
-                  label="在线状态"
-                  desc="在线"
-                  color={T.blueDeep}
-                  bg={T.blueSoft}
-                  onClick={() => showToast("在线状态 · 预览")}
-                />
-                <MenuItem
-                  icon="pat"
-                  label="拍一拍"
-                  desc="设置拍一拍文案"
-                  color={T.pink}
-                  bg={T.pinkSoft}
-                  onClick={() => showToast("拍一拍 · 预览")}
+          </>
+        ) : (
+          <>
+            {/* ==================== 资料块：当前面具（微信「我」顶格那一块，整块点进编辑） ==================== */}
+            {current ? (
+              <div
+                onClick={() => openMaskEdit(current)}
+                data-tap="true"
+                className="mp-card"
+                style={{
+                  ...cardGroupStyle,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 16,
+                  padding: "20px 16px",
+                  cursor: "pointer",
+                }}
+              >
+                {/* 头像：白环托起，白环外套一圈细粉线（同名片卡那颗的做法） */}
+                <div
+                  style={{
+                    flex: "none",
+                    padding: 3,
+                    borderRadius: 999,
+                    background: "#FFFFFF",
+                    boxShadow: "0 0 0 1px rgba(232,106,155,.30), 0 14px 28px -18px rgba(20,19,24,.5)",
+                    pointerEvents: "none",
+                  }}
+                >
+                  <MaskAvatar mask={current} size={64} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0, pointerEvents: "none" }}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 7, minWidth: 0 }}>
+                    <span style={maskNoStyle}>{maskNoOf(current.id)}</span>
+                    <span
+                      style={{
+                        minWidth: 0,
+                        fontSize: 21,
+                        fontWeight: 800,
+                        letterSpacing: ".01em",
+                        color: T.ink,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {current.name.trim() || "我"}
+                    </span>
+                    <span style={currentBadgeStyle}>使用中</span>
+                  </div>
+                  {/* 签名：这张面具自己的那句话（点整块进编辑改） */}
+                  <div
+                    style={{
+                      marginTop: 7,
+                      fontSize: 12.5,
+                      color: T.ink2,
+                      letterSpacing: ".04em",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {signature.trim() || SIGNATURE_FALLBACK}
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 5,
+                      fontSize: 10.5,
+                      color: T.ink3,
+                      letterSpacing: ".06em",
+                      fontVariantNumeric: "tabular-nums",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    ID · {current.uid || "未设置"}
+                  </div>
+                </div>
+                <ChevronRight
+                  size={18}
+                  strokeWidth={2.2}
+                  color={T.ink3}
+                  style={{ flex: "none", pointerEvents: "none" }}
                 />
               </div>
+            ) : null}
+
+            {/* ==================== 面具册：一张卡（进子页，不再摊在主页） ==================== */}
+            <div style={{ ...cardGroupStyle, padding: 4, marginTop: 14 }}>
+              <MenuItem
+                icon="mask"
+                label="面具册"
+                desc={`使用中 ${current?.name.trim() || "我"} · 共 ${masks.length} 张`}
+                color={T.pink}
+                bg={T.pinkSoft}
+                onClick={() => setMaskRoster(true)}
+              />
+            </div>
+
+            {/* ==================== 收藏／钱包／聊天全局设定（原侧边栏入口） ==================== */}
+            <div style={{ ...cardGroupStyle, padding: 4, marginTop: 14 }}>
+              <MenuItem
+                icon="bookmark"
+                label="我的收藏"
+                color="#B8712E"
+                bg="#F7EDE2"
+                onClick={() => showToast("我的收藏 · 预览")}
+              />
+              <MenuItem
+                icon="wallet"
+                label="我的钱包"
+                color="#2F9E8F"
+                bg="#E3F2EF"
+                onClick={onOpenWallet}
+              />
+              <MenuItem
+                icon="settings"
+                label="聊天全局设定"
+                color={T.blueDeep}
+                bg={T.blueSoft}
+                onClick={onOpenChatGlobal}
+              />
+            </div>
+
+            {/* ==================== 在线状态／拍一拍 ==================== */}
+            <div style={{ ...cardGroupStyle, padding: 4, marginTop: 14 }}>
+              <MenuItem
+                icon="status"
+                label="在线状态"
+                desc="在线"
+                color={T.blueDeep}
+                bg={T.blueSoft}
+                onClick={() => showToast("在线状态 · 预览")}
+              />
+              <MenuItem
+                icon="pat"
+                label="拍一拍"
+                desc="设置拍一拍文案"
+                color={T.pink}
+                bg={T.pinkSoft}
+                onClick={() => showToast("拍一拍 · 预览")}
+              />
+            </div>
+
+            {/* ==================== 检查更新／帮助与反馈 ==================== */}
+            <div style={{ ...cardGroupStyle, padding: 4, marginTop: 14 }}>
+              {/* iOS 主屏幕 App 从快照复活、不重新加载页面，改版后可能一直跑旧代码；
+                  这里给一个手动重载入口兜底（原侧边栏同款）。 */}
+              <MenuItem
+                icon="update"
+                label="检查更新"
+                desc={`当前版本 v${APP_VERSION}`}
+                color="#8A6FD0"
+                bg="#EFEBF8"
+                onClick={() => window.location.reload()}
+              />
+              <MenuItem
+                icon="help"
+                label="帮助与反馈"
+                color="#4E7FC4"
+                bg="#E9F0FA"
+                onClick={() => showToast("帮助与反馈 · 预览")}
+              />
+            </div>
+
+            {/* ==================== 退出（原侧边栏「退出」） ==================== */}
+            <div style={{ ...cardGroupStyle, padding: 4, marginTop: 14 }}>
+              <MenuItem
+                icon="exit"
+                label="退出星绥通讯"
+                color={T.danger}
+                bg="rgba(229,72,77,.08)"
+                onClick={onExit}
+              />
             </div>
           </>
         )}
@@ -1234,6 +1403,66 @@ function MenuItem({
 function MenuIcon({ type, color }: { type: string; color: string }) {
   const common = { width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: color, strokeWidth: 1.5 } as const;
   switch (type) {
+    /* 面具：舞台脸谱（两张孔＋笑口，罩在盾形轮廓里）。 */
+    case "mask":
+      return (
+        <svg {...common} strokeLinejoin="round">
+          <path d="M5 4.5h14v6.5a7 7 0 0 1-14 0z" />
+          <path d="M8.9 9.3c.55-.75 1.5-.75 2.05 0M13.05 9.3c.55-.75 1.5-.75 2.05 0" strokeLinecap="round" />
+          <path d="M9.4 12.8c.65.85 1.6 1.35 2.6 1.35s1.95-.5 2.6-1.35" strokeLinecap="round" />
+        </svg>
+      );
+    /* 收藏：书签。 */
+    case "bookmark":
+      return (
+        <svg {...common} strokeLinejoin="round">
+          <path d="M7 4h10v16l-5-3-5 3z" />
+        </svg>
+      );
+    /* 钱包：圆角票夹＋右侧一枚扣眼。 */
+    case "wallet":
+      return (
+        <svg {...common} strokeLinejoin="round">
+          <rect x="3.5" y="6" width="17" height="13" rx="2.6" />
+          <path d="M14 12.5h6.5" strokeLinecap="round" />
+          <circle cx="15.6" cy="12.5" r="1" />
+        </svg>
+      );
+    /* 聊天全局设定：滑杆（三道横线各挂一颗珠）。 */
+    case "settings":
+      return (
+        <svg {...common} strokeLinecap="round">
+          <path d="M5 7.5h14M5 12h14M5 16.5h14" />
+          <circle cx="9.5" cy="7.5" r="1.9" />
+          <circle cx="14.5" cy="12" r="1.9" />
+          <circle cx="8" cy="16.5" r="1.9" />
+        </svg>
+      );
+    /* 检查更新：回环箭头。 */
+    case "update":
+      return (
+        <svg {...common} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M20 12a8 8 0 1 1-2.34-5.66" />
+          <path d="M20 4v4h-4" />
+        </svg>
+      );
+    /* 帮助与反馈：问号圈。 */
+    case "help":
+      return (
+        <svg {...common} strokeLinecap="round">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M9.6 9.3a2.5 2.5 0 0 1 4.9.6c0 1.7-2.5 2.2-2.5 3.6" />
+          <circle cx="12" cy="16.9" r="0.5" fill={color} stroke="none" />
+        </svg>
+      );
+    /* 退出：门＋出箭。 */
+    case "exit":
+      return (
+        <svg {...common} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M14 4.5h3.5A1.5 1.5 0 0 1 19 6v12a1.5 1.5 0 0 1-1.5 1.5H14" />
+          <path d="M4.5 12h10M11 8.5l3.5 3.5-3.5 3.5" />
+        </svg>
+      );
     case "signature":
       return (
         <svg {...common}>

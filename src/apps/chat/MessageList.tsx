@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import {
   BellOff,
   CreditCard,
-  Menu,
   Plus,
   ScanLine,
   Search,
@@ -48,7 +47,6 @@ export default function MessageList({
   conversations,
   masks,
   onOpenChat,
-  onOpenSidebar,
   showToast,
 }: {
   archives: ArchiveEntry[];
@@ -56,7 +54,6 @@ export default function MessageList({
   conversations: Conversation[];
   masks: Mask[];
   onOpenChat: (characterId: string, maskId: string) => void;
-  onOpenSidebar: () => void;
   showToast: (msg: string) => void;
 }) {
   const [plusOpen, setPlusOpen] = useState(false);
@@ -195,7 +192,7 @@ export default function MessageList({
         }
       `}</style>
 
-      {/* 顶栏 G1：左菜单 / 居中「消息」22 衬线雾蓝 / 右加号；底下一行斜体 Messages */}
+      {/* 顶栏 G1：左占位（原菜单钮已随侧边栏撤掉） / 居中「消息」22 衬线雾蓝 / 右加号；底下一行斜体 Messages */}
       <div
         style={{
           flex: "none",
@@ -204,27 +201,8 @@ export default function MessageList({
         }}
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <button
-            type="button"
-            onClick={onOpenSidebar}
-            aria-label="打开侧边栏"
-            className="ml-hbtn"
-            style={{
-              width: 24,
-              height: 24,
-              flex: "none",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              border: "none",
-              background: "none",
-              padding: 0,
-              color: HZ.ink,
-              cursor: "pointer",
-            }}
-          >
-            <Menu size={22} strokeWidth={1.5} />
-          </button>
+          {/* 24×24 空占位：跟右边的加号对称，标题「消息」保持居中 */}
+          <span aria-hidden style={{ display: "block", width: 24, height: 24, flex: "none" }} />
 
           <span
             style={{

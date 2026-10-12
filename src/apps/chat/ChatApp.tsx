@@ -1,25 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
-import {
-  Bookmark,
-  ChevronDown,
-  ChevronRight,
-  Clock,
-  HelpCircle,
-  LogOut,
-  MessageCircle,
-  RefreshCw,
-  Settings,
-  Users,
-  Wallet,
-} from "lucide-react";
 import { usePhone } from "@/context/PhoneContext";
 import { getArchives } from "@/lib/settings/contact";
 import { getApiSettings, getChatPrefs, getConversations, ensureAssistant } from "@/lib/settings/chat";
 import { getMyIdentity, saveMyIdentity } from "@/lib/settings/identity";
 import { DEFAULT_MASK_ID, ensureMasks, migrateLegacySignature, saveMasks, type Mask } from "@/lib/settings/mask";
-import { APP_VERSION } from "@/lib/version";
 import MessageList from "./MessageList";
 import ChatWindow from "./ChatWindow";
 import ContactList from "./ContactList";
@@ -27,13 +13,14 @@ import MomentsPage from "./MomentsPage";
 import MinePage, { SIGNATURE_FALLBACK } from "./MinePage";
 import WalletView from "./WalletView";
 import ChatGlobalSettingsPanel from "./ChatGlobalSettingsPanel";
-import { AVATAR_GRADIENT, EN, HZ, LAT, SANS, T } from "./shared";
+import { EN, HZ, LAT, SANS, T } from "./shared";
 import type { ArchiveEntry } from "@/types/contact";
 import type { ChatApiSettings, Conversation } from "@/types/chat";
 
 /* =======================================================================
- * 星绥通讯 App：视图管理（列表 ⇄ 对话）＋侧边栏
- * （API 设定在主屏幕「设置」App 里，聊天内不再放入口）
+ * 星绥通讯 App：视图管理（列表 ⇄ 对话）
+ * （API 设定在主屏幕「设置」App 里，聊天内不再放入口；
+ *   导航走底部 tab，次级入口（钱包／聊天全局设定／退出等）收进「我的」页）
  * ===================================================================== */
 
 export default function ChatApp() {
@@ -48,11 +35,10 @@ export default function ChatApp() {
      返回只是把这间屋子藏起来，TA 那一轮回复／配图／记忆照跑，回来接着看）。
      彻底不要了（删好友）才从这张表里剔掉。 */
   const [visitedChats, setVisitedChats] = useState<{ characterId: string; maskId: string }[]>([]);
-  /** 应用内视图：消息列表 ⇄ 通讯人 ⇄ 动态 ⇄ 我的 ⇄ 钱包 ⇄ 聊天全局设定（侧边栏进入）。 */
+  /** 应用内视图：消息列表 ⇄ 通讯人 ⇄ 动态 ⇄ 我的 ⇄ 钱包 ⇄ 聊天全局设定（钱包／设定从「我的」进）。 */
   const [view, setView] = useState<"list" | "contacts" | "moments" | "mine" | "wallet" | "chat-global">(
     "list",
   );
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [failed, setFailed] = useState(false);
   const [toast, setToast] = useState("");
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -212,7 +198,6 @@ export default function ChatApp() {
             maskId={scopeMaskId}
             maskName={effectiveName}
             onOpenChat={(characterId) => openChatWith(characterId, scopeMaskId)}
-            onOpenSidebar={() => setSidebarOpen(true)}
             onDataChange={reloadConversations}
             showToast={showToast}
           />
@@ -226,7 +211,6 @@ export default function ChatApp() {
             maskAvatar={currentMask?.avatar ?? ""}
             /* 签名跟「我的」页同一口径：没写就用兜底那句 */
             signature={currentMask?.signature?.trim() || SIGNATURE_FALLBACK}
-            onOpenSidebar={() => setSidebarOpen(true)}
             showToast={showToast}
           />
         ) : view === "mine" ? (
@@ -243,7 +227,10 @@ export default function ChatApp() {
               void saveMasks(nextMasks);
             }}
             onMasksChange={setMasks}
-            onBack={() => setView("list")}
+            /* 次级入口都从这页进：钱包／聊天全局设定／退出 App（原侧边栏的活）。 */
+            onOpenWallet={() => setView("wallet")}
+            onOpenChatGlobal={() => setView("chat-global")}
+            onExit={closeApp}
             showToast={showToast}
           />
         ) : view === "wallet" ? (
@@ -252,19 +239,18 @@ export default function ChatApp() {
             ownerId={scopeMaskId}
             ownerName={effectiveName}
             ownerAvatar={currentMask?.avatar ?? ""}
-            onBack={() => setView("list")}
+            onBack={() => setView("mine")}
             showToast={showToast}
           />
         ) : view === "chat-global" ? (
           /* 聊天全局设定：全局默认那一层（主动找我、对话偏好）。 */
-          <ChatGlobalSettingsPanel onBack={() => setView("list")} showToast={showToast} />
+          <ChatGlobalSettingsPanel onBack={() => setView("mine")} showToast={showToast} />
         ) : (
           <MessageList
             archives={archives}
             conversations={conversations}
             masks={masks}
             onOpenChat={(characterId, maskId) => openChatWith(characterId, maskId)}
-            onOpenSidebar={() => setSidebarOpen(true)}
             showToast={showToast}
           />
         )
@@ -318,30 +304,6 @@ export default function ChatApp() {
         );
       })}
 
-      {/* 侧边栏遮罩：一层深色纱，黑底侧栏压在下面那片粉白上 */}
-      {sidebarOpen ? (
-        <div
-          onClick={() => setSidebarOpen(false)}
-          style={{ position: "absolute", inset: 0, background: "rgba(20,19,24,.42)", zIndex: 90 }}
-        />
-      ) : null}
-
-      <ChatSidebar
-        open={sidebarOpen}
-        activeView={view}
-        mineName={effectiveName}
-        mineAvatar={currentMask?.avatar ?? ""}
-        mineSignature={currentMask?.signature ?? ""}
-        onClose={() => setSidebarOpen(false)}
-        onNavigate={(next) => {
-          setSidebarOpen(false);
-          setView(next);
-          setOpenChat(null);
-        }}
-        onExit={closeApp}
-        showToast={showToast}
-      />
-
       {/* toast：一行小提示，落在输入区上方 */}
       {toast ? (
         <div
@@ -384,365 +346,9 @@ const rootStyle: CSSProperties = {
 };
 
 /* =======================================================================
- * 侧边栏＝黑底菜单：整条侧栏底色直接压成近黑，字走粉白的大字号，
- * 色彩要出彩但顺眼，重点是排版、不要主题。
- * 当前那一项是一枚粉胶囊包住整行（一推开侧栏，黑＋粉＋白就全在眼前）。
- * 上面一块是你的头像＋名字＋签名，底下是菜单。按任一行的反馈见上面的 css。
- * ===================================================================== */
-
-function ChatSidebar({
-  open,
-  activeView,
-  mineName,
-  mineAvatar,
-  mineSignature,
-  onClose,
-  onNavigate,
-  onExit,
-  showToast,
-}: {
-  open: boolean;
-  activeView: "list" | "contacts" | "moments" | "mine" | "wallet" | "chat-global";
-  /** 名字（使用中的面具决定）；空串以「我」展示。 */
-  mineName: string;
-  /** 头像（使用中的面具；空串用渐变底＋首字）。 */
-  mineAvatar: string;
-  /** 签名（「我的」页设定）；空串用预设文案。 */
-  mineSignature: string;
-  onClose: () => void;
-  onNavigate: (view: "list" | "contacts" | "moments" | "mine" | "wallet" | "chat-global") => void;
-  onExit: () => void;
-  showToast: (msg: string) => void;
-}) {
-  const name = mineName.trim() || "我";
-  const signature = mineSignature.trim() || SIGNATURE_FALLBACK;
-  const menuItems: { name: string; icon: typeof MessageCircle; action: () => void; active?: boolean }[] = [
-    { name: "消息", icon: MessageCircle, action: () => onNavigate("list"), active: activeView === "list" },
-    { name: "通讯人", icon: Users, action: () => onNavigate("contacts"), active: activeView === "contacts" },
-    { name: "动态", icon: Clock, action: () => onNavigate("moments"), active: activeView === "moments" },
-    { name: "我的收藏", icon: Bookmark, action: () => { onClose(); showToast("我的收藏 · 预览"); } },
-    { name: "我的钱包", icon: Wallet, action: () => onNavigate("wallet"), active: activeView === "wallet" },
-    { name: "聊天全局设定", icon: Settings, action: () => onNavigate("chat-global"), active: activeView === "chat-global" },
-    /* iOS 主屏幕 App 从快照复活、不重新加载页面，改版后可能一直跑旧代码；
-       这里给一个手动重载入口兜底。 */
-    { name: "检查更新", icon: RefreshCw, action: () => { onClose(); window.location.reload(); } },
-    { name: "帮助与反馈", icon: HelpCircle, action: () => { onClose(); showToast("帮助与反馈 · 预览"); } },
-  ];
-
-  return (
-    <div
-      style={{
-        position: "absolute",
-        top: 0,
-        left: 0,
-        bottom: 0,
-        zIndex: 100,
-        width: "min(304px,80%)",
-        background: T.ink,
-        // 收起时（translateX(-102%)）不能留投影：偏移＋模糊会往右渗出约 56px，
-        // 在消息列表左边压出一道常驻暗边。只在展开时给影。
-        boxShadow: open ? "24px 0 60px -28px rgba(20,19,24,.7)" : "none",
-        transform: open ? "translateX(0)" : "translateX(-102%)",
-        transition: "transform .3s ease-out",
-        display: "flex",
-        flexDirection: "column",
-        paddingTop: "calc(var(--safe-area-top, 0px) + var(--sim-status-h, 0px) + 14px)",
-        fontFamily: SANS,
-        color: "#FFFFFF",
-        overflow: "hidden",
-      }}
-    >
-      {/* 交互：按下整行收一档；当前那一项是一枚粉胶囊（整行包住） */}
-      <style>{`
-        .csb-item { transition: transform .16s ease, background-color .16s ease, filter .16s ease; }
-        .csb-item:active { transform: scale(.985); }
-        .csb-item:not(.is-active):active { background: rgba(255,255,255,.1); }
-        .csb-item.is-active:active { filter: brightness(.94); }
-        @media (prefers-reduced-motion: reduce) {
-          .csb-item { transition: none }
-        }
-      `}</style>
-      {/* 头部：一行小字（刊号＋版本）压一条大标题 */}
-      <div style={{ position: "relative", zIndex: 1, flex: "none", padding: "0 20px" }}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            fontFamily: EN,
-            fontSize: 9,
-            letterSpacing: ".26em",
-            color: "rgba(255,255,255,.42)",
-            textTransform: "uppercase",
-          }}
-        >
-          <span>Stellasei</span>
-          <span style={{ fontVariantNumeric: "tabular-nums" }}>v{APP_VERSION}</span>
-        </div>
-        <div
-          style={{
-            marginTop: 12,
-            fontSize: 26,
-            fontWeight: 800,
-            letterSpacing: "-.01em",
-            lineHeight: 1,
-            color: "#FFFFFF",
-          }}
-        >
-          星绥通讯
-        </div>
-      </div>
-
-      {/* 你：头像（进「我的」）＋名字＋签名，紫粉环的黑底头像一方块 */}
-      <div
-        style={{
-          position: "relative",
-          zIndex: 1,
-          flex: "none",
-          padding: "18px 20px 14px",
-          marginTop: 18,
-          borderTop: "1px solid rgba(255,255,255,.1)",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <div style={{ position: "relative", flex: "none" }}>
-            <div
-              onClick={() => onNavigate("mine")}
-              style={{
-                width: 54,
-                height: 54,
-                padding: 2,
-                background: "rgba(255,255,255,.14)",
-                borderRadius: 18,
-                cursor: "pointer",
-              }}
-            >
-              <div
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  borderRadius: 16,
-                  background: AVATAR_GRADIENT,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "#FFF",
-                  fontSize: 19,
-                  fontWeight: 700,
-                  overflow: "hidden",
-                }}
-              >
-                {mineAvatar ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={mineAvatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                ) : (
-                  name.charAt(0)
-                )}
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => showToast("切换账号 · 预览")}
-              aria-label="切换账号"
-              style={{
-                position: "absolute",
-                right: -6,
-                bottom: -6,
-                width: 22,
-                height: 22,
-                padding: 0,
-                borderRadius: 999,
-                background: T.ink,
-                border: "1px solid rgba(255,255,255,.24)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "rgba(255,255,255,.7)",
-                cursor: "pointer",
-              }}
-            >
-              <ChevronDown size={12} strokeWidth={2.2} />
-            </button>
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div
-              style={{
-                fontSize: 20,
-                fontWeight: 800,
-                letterSpacing: ".01em",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                color: "#FFFFFF",
-              }}
-            >
-              {name}
-            </div>
-            <div
-              style={{
-                marginTop: 7,
-                fontSize: 12.5,
-                lineHeight: 1.5,
-                color: "rgba(255,255,255,.55)",
-                letterSpacing: ".02em",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
-              {signature}
-            </div>
-            {/* 在线小签：粉点＋在线（粉在黑上就这一小处） */}
-            <div
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                marginTop: 10,
-                padding: "3px 10px",
-                borderRadius: 999,
-                background: "rgba(255,255,255,.1)",
-                fontSize: 10.5,
-                color: "rgba(255,255,255,.72)",
-                letterSpacing: ".1em",
-              }}
-            >
-              <i style={{ width: 6, height: 6, borderRadius: 999, background: T.pink }} />
-              <span>在线</span>
-            </div>
-          </div>
-        </div>
-        <div
-          className="csb-item"
-          onClick={() => showToast("拍一拍设置 · 预览")}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            marginTop: 14,
-            padding: "10px 14px",
-            borderRadius: 14,
-            background: "rgba(255,255,255,.07)",
-            color: "rgba(255,255,255,.72)",
-            fontSize: 13,
-            letterSpacing: ".04em",
-            cursor: "pointer",
-          }}
-        >
-          <span>拍一拍设置</span>
-          <ChevronRight size={15} strokeWidth={2} />
-        </div>
-      </div>
-
-      {/* 菜单小标：一行极淡的英文起头 */}
-      <div style={{ position: "relative", zIndex: 1, flex: "none", padding: "18px 22px 8px" }}>
-        <span
-          style={{
-            fontFamily: EN,
-            fontSize: 9,
-            letterSpacing: ".26em",
-            color: "rgba(255,255,255,.38)",
-            textTransform: "uppercase",
-          }}
-        >
-          Menu
-        </span>
-      </div>
-
-      {/* 菜单：一行一项，当前那一项整行包成粉胶囊（黑字压在上面，最跳也最读得清） */}
-      <div
-        style={{
-          position: "relative",
-          zIndex: 1,
-          flex: 1,
-          overflowY: "auto",
-          overscrollBehavior: "none",
-          padding: "4px 14px 0",
-        }}
-      >
-        {menuItems.map((item) => (
-          <div
-            key={item.name}
-            className={`csb-item${item.active ? " is-active" : ""}`}
-            onClick={item.action}
-            data-tap="true"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              padding: "12px 14px",
-              marginBottom: 4,
-              borderRadius: 999,
-              background: item.active ? T.pink : "transparent",
-              color: item.active ? T.ink : "rgba(255,255,255,.78)",
-              fontSize: 16,
-              fontWeight: item.active ? 700 : 500,
-              letterSpacing: ".04em",
-              cursor: "pointer",
-            }}
-          >
-            <item.icon size={17} strokeWidth={2} style={{ flex: "none" }} />
-            <span style={{ flex: 1, minWidth: 0 }}>{item.name}</span>
-            {item.active ? <ChevronRight size={15} strokeWidth={2.4} style={{ flex: "none" }} /> : null}
-          </div>
-        ))}
-
-        {/* 退出：黑底上最轻的一条，只在按下去时浮一层淡粉 */}
-        <button
-          type="button"
-          className="csb-item"
-          onClick={onExit}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 11,
-            width: "100%",
-            textAlign: "left",
-            padding: "13px 16px",
-            marginTop: 8,
-            borderRadius: 999,
-            color: "rgba(255,255,255,.55)",
-            fontSize: 15,
-            fontWeight: 500,
-            cursor: "pointer",
-            background: "transparent",
-            border: "none",
-            fontFamily: SANS,
-          }}
-        >
-          <LogOut size={17} strokeWidth={1.8} style={{ flex: "none" }} />
-          <span style={{ flex: 1 }}>退出</span>
-        </button>
-      </div>
-
-      {/* 版权页脚注：版本号压在最底下那行小字里 */}
-      <div
-        style={{
-          position: "relative",
-          zIndex: 1,
-          flex: "none",
-          padding: "12px 20px calc(var(--safe-area-bottom, 0px) + 14px)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          fontFamily: EN,
-          fontSize: 8,
-          letterSpacing: ".2em",
-          color: "rgba(255,255,255,.3)",
-          textTransform: "uppercase",
-        }}
-      >
-        <span>Stellasei — est. 2026</span>
-        <span style={{ fontVariantNumeric: "tabular-nums" }}>v{APP_VERSION}</span>
-      </div>
-    </div>
-  );
-}
-
-/* =======================================================================
  * 底部 tab（第二档：新图标 ＋ 英文小标）
- * 只在「消息／通讯人／动态／我的」四个主视图之间横切，导航的活还是侧边栏挑大梁，
- * 这里是随手一点就能切的那排。图标是样张 I2 那套线稿：气泡／名片／微光／人像。
+ * 在「消息／通讯人／动态／我的」四个主视图之间横切（侧边栏已撤，导航全靠这一排）。
+ * 图标是样张 I2 那套线稿：气泡／名片／微光／人像。
  * ===================================================================== */
 
 /** 气泡：消息。 */

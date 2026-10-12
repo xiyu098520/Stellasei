@@ -8,7 +8,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Copy,
-  Menu,
   Plus,
   Search,
   Send,
@@ -83,7 +82,6 @@ export default function ContactList({
   maskId,
   maskName,
   onOpenChat,
-  onOpenSidebar,
   onDataChange,
   showToast,
 }: {
@@ -95,7 +93,6 @@ export default function ContactList({
   /** 当前面具的名字（添加朋友页展示）。 */
   maskName: string;
   onOpenChat: (characterId: string) => void;
-  onOpenSidebar: () => void;
   onDataChange: () => void;
   showToast: (msg: string) => void;
 }) {
@@ -398,7 +395,7 @@ export default function ContactList({
         }
       `}</style>
 
-      {/* 册头：菜单钮＋刊号小字 → 大标题「通讯人」＋粉色条数小牌；底下压一条通栏册页线 */}
+      {/* 册头：刊号小字 → 大标题「通讯人」＋粉色条数小牌；底下压一条通栏册页线 */}
       <div
         style={{
           flex: "none",
@@ -407,28 +404,6 @@ export default function ContactList({
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <button
-            type="button"
-            onClick={onOpenSidebar}
-            aria-label="打开侧边栏"
-            className="cl-hbtn"
-            style={{
-              width: 36,
-              height: 36,
-              flex: "none",
-              borderRadius: 999,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              border: `1px solid ${T.line}`,
-              background: T.card,
-              color: T.ink,
-              cursor: "pointer",
-              boxShadow: "0 6px 16px -12px rgba(20,19,24,.5)",
-            }}
-          >
-            <Menu size={17} strokeWidth={1.9} />
-          </button>
           <span
             style={{
               fontFamily: EN,
