@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "dev:vinext": "vite dev --port 3001",
+    "build:vinext": "vite build",
+    "start:vinext": "vite preview",
+    "deploy:vinext": "vinext-cloudflare deploy"
   },
   "dependencies": {
     "jsqr": "^1.4.0",
@@ -14,7 +18,10 @@
     "next": "16.3.5",
     "qrcode": "^1.5.4",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "vinext": "latest",
+    "react-server-dom-webpack": "19.2.8",
+    "@vinext/cloudflare": "latest"
   },
   "devDependencies": {
     "@netlify/plugin-nextjs": "^5.16.2",
@@ -26,6 +33,18 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.5",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vite": "8.3.0",
+    "@vitejs/plugin-react": "latest",
+    "@vitejs/plugin-rsc": "latest",
+    "@cloudflare/vite-plugin": "beta",
+    "cf": "latest",
+    "vite-css-modules": "latest",
+    "postcss": "latest"
+  },
+  "type": "module",
+  "allowScripts": {
+    "workerd@1.20261006.1": true,
+    "unrs-resolver@1.12.2": true
   }
 }
