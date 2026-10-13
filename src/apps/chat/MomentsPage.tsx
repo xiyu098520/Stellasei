@@ -1430,21 +1430,22 @@ export default function MomentsPage({
     };
   }, []);
 
-  /* 整页浮层（发布／编辑／看图／换封面单…）开合上报给上一层：底部的四个 tab 按钮是
-     ChatApp 的兄弟节点，这一页里的浮层够不着它们——浮层一开就让上一层把 tab 收起来
-     （视觉上就跟「盖住」一样）。组件卸载时也要收回，免得换页后 tab 还躲着。 */
+  /* **整页／居中浮层**开合上报给上一层：底部的四个 tab 按钮是 ChatApp 的兄弟节点，
+     这一页里的浮层够不着它们——浮层一开就让上一层把 tab 收起来（视觉上就跟「盖住」一样）。
+     组件卸载时也要收回，免得换页后 tab 还躲着。
+     ⚠︎ 2026-10-13 恩熙：**从底部冒出来的单子一律不再收 tab**——底单就贴在 tab 栏
+     上沿往外浮（这页 `overflow:hidden`、底边正好是 tab 顶边，天然裁得干净），
+     取消时单子滑走、tab 自始至终没动过，不再「收掉又长回来」闪一下。
+     所以这里只留**真·整页**（发布页）与**居中弹／看图**（它们要盖住整条屏幕、含 tab）：
+     editor／moreItem／momentSet／visSheet／coverSheet／coverDraft／remindSheet 这些
+     底单统统不在此列。
+     ⚠︎ 发布页用 `composerState`（**原始开合**）而不是 `composer`（退场保留的那个）：
+     整页往外滑的那 220ms 里 tab 就该回来了，滑开时底下正好接上，不再「滑完猛地补一下」。 */
   const anyOverlay =
-    composer !== null ||
+    composerState !== null ||
     imgPick !== null ||
     viewer !== null ||
-    editor !== null ||
-    confirmDelete !== null ||
-    moreItem !== null ||
-    momentSet !== null ||
-    visSheet !== null ||
-    coverSheetOpen ||
-    coverDraft !== null ||
-    remindSheetOpen;
+    confirmDelete !== null;
   /* 用 `useLayoutEffect` 而不是 `useEffect`：上报必须赶在**这一帧画出去之前**完成，
      让上一层在同一个提交里就把底 tab 收掉。否则晚一帧——第一帧先按「tab 还在、
      页面矮一截」画出去，第二帧页面才长高，贴着页底的那些浮层（尤是上滑的底单）
@@ -1532,10 +1533,11 @@ export default function MomentsPage({
     showToast("封面还原了");
   };
 
-  /* 选择单里点「手机相册」：先把单子收掉，再开系统选图（iOS 要用户手势那一下，
-     两者隔一帧不碍事；单子收掉才不会盖在系统选图上）。 */
+  /* 选择单里点「手机相册」：**单子不收**，直接开系统选图（iOS 要用户手势那一下）。
+     2026-10-13 恩熙：单子要一直留着，等真选好、按确定回来才收——中途取消回来，
+     单子还在原地，不用重新点一次封面。回收单子挪进 input 的 onChange（拿到图才收）。
+     「重选」按钮也走这条：那会儿单子本就没开，点了只当「再开一次系统选图」。 */
   const pickCoverFromDevice = () => {
-    setCoverSheet(false);
     coverInput.current?.click();
   };
 
@@ -1624,16 +1626,20 @@ export default function MomentsPage({
         @keyframes mpSheetDown { from { transform: translateY(0) } to { transform: translateY(100%) } }
         @keyframes mpPopIn { from { opacity: 0; transform: scale(.94) } to { opacity: 1; transform: scale(1) } }
         @keyframes mpPopOut { from { opacity: 1; transform: scale(1) } to { opacity: 0; transform: scale(.96) } }
-        @keyframes mpPageIn { from { opacity: 0; transform: translateY(16px) } to { opacity: 1; transform: translateY(0) } }
-        @keyframes mpPageOut { from { opacity: 1; transform: translateY(0) } to { opacity: 0; transform: translateY(16px) } }
+        /* 整页发布页（草稿 .m-post 同款）：**整面从屏幕底升上来／再整面落回去**
+           （2026-10-13 恩熙：要像微信那样「从下面长出来、取消时往下收走」，
+           不再只是往上飘 16px + 淡入）。只走位移、**不带 opacity**——免得半透明时
+           透出底下的动态页。全局只有发布页用这一对。 */
+        @keyframes mpPageIn { from { transform: translateY(100%) } to { transform: translateY(0) } }
+        @keyframes mpPageOut { from { transform: translateY(0) } to { transform: translateY(100%) } }
         .mp-bd-in { animation: mpFadeIn .22s ease backwards; }
         .mp-bd-out { animation: mpFadeOut .18s ease forwards; }
         .mp-sh-in { animation: mpSheetUp .32s cubic-bezier(.2,.85,.25,1) backwards; }
         .mp-sh-out { animation: mpSheetDown .22s cubic-bezier(.4,0,1,1) forwards; }
         .mp-pop-in { animation: mpPopIn .22s cubic-bezier(.2,.85,.25,1) backwards; }
         .mp-pop-out { animation: mpPopOut .16s ease forwards; }
-        .mp-page-in { animation: mpPageIn .28s cubic-bezier(.2,.85,.25,1) backwards; }
-        .mp-page-out { animation: mpPageOut .2s ease forwards; }
+        .mp-page-in { animation: mpPageIn .32s cubic-bezier(.2,.85,.25,1) backwards; }
+        .mp-page-out { animation: mpPageOut .22s cubic-bezier(.4,0,1,1) forwards; }
         @keyframes spin { to { transform: rotate(360deg); } }
         @media (prefers-reduced-motion: reduce) {
           .mp-act { transition: none }
@@ -1921,7 +1927,13 @@ export default function MomentsPage({
             const file = e.target.files?.[0] ?? null;
             /* 选完立刻清空：同一张图连选两次也得能触发 onChange。 */
             e.target.value = "";
-            if (file) startCoverDraft(file);
+            /* 2026-10-13 恩熙：**「手机相册」那张单一直留着**，直到这里真拿到图
+               ——才发现图、才收单、才进试穿。取消回来（file 为空）什么都不做，
+               单子原样开着。 */
+            if (file) {
+              setCoverSheet(false);
+              startCoverDraft(file);
+            }
           }}
         />
 
