@@ -69,9 +69,12 @@ export const SANS =
 /** 小字拉丁（分区小标、时间、未读数字、tab 英文）：等宽，冷静克制。 */
 export const LAT = 'ui-monospace, "SFMono-Regular", Consolas, monospace';
 
-/** 中文宋体（系统自带，零下载、零闪）：全 App 统一用它。
-    旧版这里是自托管／下载的「思源宋体」，冷启动会闪一下，已撤。 */
-export const SERIF = "'Songti SC', 'STSong', 'SimSun', Georgia, serif";
+/** 中文宋体：全 App 统一用它。
+    「思源宋体」现自托管在 `public/fonts/siyuan/`（按 unicode-range 分成 101 片、
+    `font-display:block`，见 globals.css 末尾），开屏本就会等 document.fonts.ready，
+    故不会再有「先系统宋体、再跳思源」的换装闪；系统宋体降级为字体就绪前的兜底。 */
+export const SERIF =
+  "'Noto Serif SC', 'Songti SC', 'STSong', 'SimSun', Georgia, serif";
 /** 中文楷体（系统楷体，零下载、零闪）。自带笔锋，用在红封套这种中式卡面上。 */
 export const KAI =
   "'Kaiti SC', 'STKaiti', 'KaiTi', 'Songti SC', Georgia, serif";

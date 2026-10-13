@@ -1,9 +1,21 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Playfair_Display } from "next/font/google";
-// 原几支自托管／下载的中文字体（霞鹜文楷／志莽行／朱雀仿宋／思源宋体）走
-// font-display:swap，冷启动必闪一下；已全部改用系统相近字体（宋体／楷体／
-// 行楷／仿宋），零下载、零闪。Playfair 只用于拉丁字母，体积小，仍保留。
+// 中文「思源宋体」现自托管在 public/fonts/siyuan/（unicode-range 101 片 +
+// font-display:block），并在此预载最常用的几片——开屏（SplashScreen）本就会等
+// document.fonts.ready，故不再有换装闪。@font-face 由 siyuan-font.ts 按 basePath
+// 拼好路径后内联进 <head>（Next 不会给 CSS 里 url() 的绝对路径补 basePath）。
+// Playfair 只用于拉丁字母，体积小，仍由 next/font 自托管。
 import "./globals.css";
+import { siyuanFontCss } from "./siyuan-font";
+
+/* GitHub Pages 是子路径站点（构建时注入 NEXT_PUBLIC_BASE_PATH="/Stellasei"），
+   字体文件的绝对地址得带上 basePath；本地开发该变量为空。 */
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+
+/* 预载最常用的思源宋体分片：096 收「的一」，095 收「是不了你是我」，
+   094 收「星他」——先把这几片与 JS 并行抢下来，开屏一过即见宋体、不留空窗。
+   其余分片按 unicode-range 在用到时自动取，不必预载（省流量）。 */
+const FONT_PRELOAD = ["094", "095", "096"];
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -51,7 +63,27 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="zh-CN"
       className={`${geistSans.variable} ${geistMono.variable} ${playfair.variable} h-full antialiased`}
     >
-      <body className="h-full overflow-hidden">{children}</body>
+      {/* 思源宋体 @font-face：服务端按 basePath 生成后内联（见 siyuan-font.ts）。
+          带 precedence 让 React 把它提进 <head>，随首屏样式一起就位，避免换装闪。 */}
+      <style
+        href="siyuan-font"
+        precedence="siyuan-font"
+        dangerouslySetInnerHTML={{ __html: siyuanFontCss(basePath) }}
+      />
+      <body className="h-full overflow-hidden">
+        {/* 思源宋体常用分片预载（字体是同源，必须带 crossorigin）；React 会提到 <head>。 */}
+        {FONT_PRELOAD.map((n) => (
+          <link
+            key={n}
+            rel="preload"
+            as="font"
+            type="font/woff2"
+            crossOrigin="anonymous"
+            href={`${basePath}/fonts/siyuan/${n}.woff2`}
+          />
+        ))}
+        {children}
+      </body>
     </html>
   );
 }

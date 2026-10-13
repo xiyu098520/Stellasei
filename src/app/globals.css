@@ -76,9 +76,13 @@
   --font-sans: var(--font-geist-sans), -apple-system, "PingFang SC",
     "Microsoft YaHei", sans-serif;
   --font-mono: var(--font-geist-mono), monospace;
-  /* 英文刊头用的衬线；中文宋体走系统字体棧，零加载成本。 */
-  --font-serif: var(--font-playfair), Georgia, "Songti SC", "SimSun", serif;
-  --font-song: "Songti SC", "STSong", "SimSun", Georgia, serif;
+  /* 英文刊头用的衬线（Playfair）；中文落到自托管的思源宋体，系统宋体兜底。
+   思源宋体的 @font-face 由 layout.tsx 按 basePath 生成后内联进 <head>（见
+   src/app/siyuan-font.ts）：因为 Next 不会给 CSS 里 url() 的绝对路径补 basePath，
+   子路径部署（GitHub Pages）下会 404，故不能写死在这里。 */
+  --font-serif: var(--font-playfair), Georgia, "Noto Serif SC", "Songti SC",
+    "SimSun", serif;
+  --font-song: "Noto Serif SC", "Songti SC", "STSong", "SimSun", Georgia, serif;
   /* 塔罗牌面上那一版字——原先用自托管「志莽行」手写行书，但它走 font-display:swap，
      冷启动必闪一下。现改用系统行楷／楷体（iOS 自带，零下载、零闪）。 */
   --font-arcana: "Xingkai SC", "STXingkai", "Kaiti SC", "STKaiti", "KaiTi",
