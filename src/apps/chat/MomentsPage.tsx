@@ -1436,16 +1436,16 @@ export default function MomentsPage({
      ⚠︎ 2026-10-13 恩熙：**从底部冒出来的单子一律不再收 tab**——底单就贴在 tab 栏
      上沿往外浮（这页 `overflow:hidden`、底边正好是 tab 顶边，天然裁得干净），
      取消时单子滑走、tab 自始至终没动过，不再「收掉又长回来」闪一下。
-     所以这里只留**真·整页**（发布页）与**居中弹／看图**（它们要盖住整条屏幕、含 tab）：
-     editor／moreItem／momentSet／visSheet／coverSheet／coverDraft／remindSheet 这些
-     底单统统不在此列。
+     所以这里只留**真·整页**（发布页）与**看图**（看大图要盖住整条屏幕、含 tab）。
+     底单（editor／moreItem／momentSet／visSheet／coverSheet／coverDraft／remindSheet）
+     与**删除动态的二次确认弹窗**都不在此列——2026-10-13 恩熙：那张居中确认弹只是
+     「压在页面上」，不该把底部 tab 收起来。
      ⚠︎ 发布页用 `composerState`（**原始开合**）而不是 `composer`（退场保留的那个）：
      整页往外滑的那 220ms 里 tab 就该回来了，滑开时底下正好接上，不再「滑完猛地补一下」。 */
   const anyOverlay =
     composerState !== null ||
     imgPick !== null ||
-    viewer !== null ||
-    confirmDelete !== null;
+    viewer !== null;
   /* 用 `useLayoutEffect` 而不是 `useEffect`：上报必须赶在**这一帧画出去之前**完成，
      让上一层在同一个提交里就把底 tab 收掉。否则晚一帧——第一帧先按「tab 还在、
      页面矮一截」画出去，第二帧页面才长高，贴着页底的那些浮层（尤是上滑的底单）
@@ -1508,11 +1508,24 @@ export default function MomentsPage({
   const onCoverPointerMove = (e: ReactPointerEvent) => {
     const d = coverDrag.current;
     if (!coverDraft || !d) return;
-    const h = coverRef.current?.offsetHeight || 272;
+    const frame = coverRef.current;
+    const img = coverImgRef.current;
+    const frameH = frame?.offsetHeight || 272;
+    const frameW = frame?.offsetWidth || 0;
+    /* ⚠️ 2026-10-13 修（恩熙：滑一大截才挪一点点、不跟手）：
+       尺子要用「图能上下挪的**总余量**」＝图按 cover 铺满后比框**高出**的那一截，
+       不是「整个框高」。用整框高当分母，手指走一大截、图才挪一小点，怎么滑都不跟手。
+       拿对尺子＝手指走多少、图就挪多少（1:1）。图还没 load、算不出余量的，
+       就退回框高，跟老样子一致，不至于卡死。 */
+    let room = frameH;
+    if (img && img.naturalWidth > 0 && img.naturalHeight > 0 && frameW > 0) {
+      const scale = Math.max(frameW / img.naturalWidth, frameH / img.naturalHeight);
+      room = Math.max(1, img.naturalHeight * scale - frameH);
+    }
     const dy = e.clientY - d.y;
-    const next = Math.max(0, Math.min(100, d.startPos - (dy / h) * 100));
+    const next = Math.max(0, Math.min(100, d.startPos - (dy / room) * 100));
     d.cur = next;
-    if (coverImgRef.current) coverImgRef.current.style.objectPosition = `center ${next}%`;
+    if (img) img.style.objectPosition = `center ${next}%`;
   };
   const endCoverDrag = () => {
     const d = coverDrag.current;
@@ -2333,7 +2346,8 @@ export default function MomentsPage({
               zIndex: 89,
               background: C.paper,
               borderRadius: "20px 20px 0 0",
-              padding: "18px 18px calc(var(--safe-area-bottom, 0px) + 16px)",
+              /* 2026-10-13 恩熙：最下面那颗钮离底部 tab 太近 → 16px 拉到 28px。 */
+              padding: "18px 18px calc(var(--safe-area-bottom, 0px) + 28px)",
               boxShadow: "0 -12px 40px -18px rgba(20,19,24,.5)",
               pointerEvents: coverSheetAlive.closing ? "none" : undefined,
             }}
@@ -2430,7 +2444,8 @@ export default function MomentsPage({
               zIndex: 89,
               background: C.paper,
               borderRadius: "20px 20px 0 0",
-              padding: "18px 18px calc(var(--safe-area-bottom, 0px) + 16px)",
+              /* 2026-10-13 恩熙：最下面那颗钮离底部 tab 太近 → 16px 拉到 28px。 */
+              padding: "18px 18px calc(var(--safe-area-bottom, 0px) + 28px)",
               boxShadow: "0 -12px 40px -18px rgba(20,19,24,.5)",
               pointerEvents: moreItemAlive.closing ? "none" : undefined,
             }}
@@ -2523,7 +2538,8 @@ export default function MomentsPage({
               zIndex: 97,
               background: C.paper,
               borderRadius: "20px 20px 0 0",
-              padding: "18px 18px calc(var(--safe-area-bottom, 0px) + 16px)",
+              /* 2026-10-13 恩熙：最下面那颗钮离底部 tab 太近 → 16px 拉到 28px。 */
+              padding: "18px 18px calc(var(--safe-area-bottom, 0px) + 28px)",
               boxShadow: "0 -12px 40px -18px rgba(20,19,24,.5)",
               maxHeight: "74%",
               overflowY: "auto",
@@ -2741,7 +2757,8 @@ export default function MomentsPage({
               zIndex: 97,
               background: C.paper,
               borderRadius: "20px 20px 0 0",
-              padding: "18px 18px calc(var(--safe-area-bottom, 0px) + 16px)",
+              /* 2026-10-13 恩熙：最下面那颗钮离底部 tab 太近 → 16px 拉到 28px。 */
+              padding: "18px 18px calc(var(--safe-area-bottom, 0px) + 28px)",
               boxShadow: "0 -12px 40px -18px rgba(20,19,24,.5)",
               maxHeight: "74%",
               overflowY: "auto",
@@ -3132,10 +3149,15 @@ export default function MomentsPage({
                 multiple
                 style={{ display: "none" }}
                 onChange={(e) => {
-                  const files = e.target.files;
-                  /* 选完立刻清空：同一张图连选两次也得能触发 onChange。 */
+                  /* ⚠️ 2026-10-13 修（恩熙：选好图格子没图、也没提示）：
+                     必须**先把这份「选了什么」拷成数组、再清空输入框**。
+                     那份清单是**跟着输入框活的**——`value = ""` 一清，它也一起空了，
+                     先清再读就永远是空：不加图，连「图没读进来」都不会弹。
+                     拷成数组就与输入框脱了钩。 */
+                  const files = e.target.files ? Array.from(e.target.files) : [];
+                  /* 清空：同一张图连选两次也得能触发 onChange。 */
                   e.target.value = "";
-                  if (files && files.length > 0) void addComposerImages(files);
+                  if (files.length > 0) void addComposerImages(files);
                 }}
               />
               {imgPick === "text" ? (
