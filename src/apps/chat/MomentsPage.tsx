@@ -61,6 +61,7 @@ import {
 } from "lucide-react";
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -1444,7 +1445,11 @@ export default function MomentsPage({
     coverSheetOpen ||
     coverDraft !== null ||
     remindSheetOpen;
-  useEffect(() => {
+  /* 用 `useLayoutEffect` 而不是 `useEffect`：上报必须赶在**这一帧画出去之前**完成，
+     让上一层在同一个提交里就把底 tab 收掉。否则晚一帧——第一帧先按「tab 还在、
+     页面矮一截」画出去，第二帧页面才长高，贴着页底的那些浮层（尤是上滑的底单）
+     会被带着整体往下顶一截，看着就是「弹窗先矮后高、闪一下」（1.12.83 修）。 */
+  useLayoutEffect(() => {
     onOverlayChange(anyOverlay);
   }, [anyOverlay, onOverlayChange]);
   useEffect(() => () => onOverlayChange(false), [onOverlayChange]);
