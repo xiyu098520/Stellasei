@@ -36,6 +36,10 @@ export default function ChatApp() {
      返回只是把这间屋子藏起来，TA 那一轮回复／配图／记忆照跑，回来接着看）。
      彻底不要了（删好友）才从这张表里剔掉。 */
   const [visitedChats, setVisitedChats] = useState<{ characterId: string; maskId: string }[]>([]);
+  /** 动态页有没有摊着整页浮层（发布／编辑／看图／换封面单…）。
+   *  非空＝底下的四个 tab 按钮先收起来——`MomentsPage` 的浮层够不着它（那是兄弟节点），
+   *  所以由这一层替它躲开（视觉上跟「盖住」一样）。 */
+  const [momentsOverlay, setMomentsOverlay] = useState(false);
   /** 应用内视图：消息列表 ⇄ 通讯人 ⇄ 群聊 ⇄ 动态 ⇄ 我的 ⇄ 钱包 ⇄ 聊天全局设定
    *  （群聊从通讯人页进；钱包／设定从「我的」进）。 */
   const [view, setView] = useState<
@@ -220,6 +224,8 @@ export default function ChatApp() {
             maskAvatar={currentMask?.avatar ?? ""}
             /* 签名跟「我的」页同一口径：没写就用兜底那句 */
             signature={currentMask?.signature?.trim() || SIGNATURE_FALLBACK}
+            /* 整页浮层开合上报：用来把底下的四个 tab 按钮临时收起来。 */
+            onOverlayChange={setMomentsOverlay}
             showToast={showToast}
           />
         ) : view === "mine" ? (
@@ -268,8 +274,9 @@ export default function ChatApp() {
       ) : null}
 
       {/* 底部 tab（第二档：新图标 ＋ 英文小标）：只在四个主视图露着、
-          且没打开任何对话时出现；钱包／聊天全局设定这些次级页不挂它。 */}
+          且没打开任何对话、动态页也没摊着整页浮层时出现；钱包／聊天全局设定这些次级页不挂它。 */}
       {!openChat &&
+      !momentsOverlay &&
       (view === "list" || view === "contacts" || view === "moments" || view === "mine") ? (
         <ChatTabBar
           active={view}

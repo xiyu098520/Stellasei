@@ -9,6 +9,7 @@
  * - 公开：谁都看得见。
  * - 仅自己可见：谁都看不见（只挂在动态页上给她自己看）。
  * - 部分可见：勾到的角色 ＋ 勾到的**世界里的人**（世界是活名单，角色挪进挪出跟着变）。
+ * - 不给谁看：在上面那句之上**再挡掉**勾到的角色／整个世界的人（黑白并存）。
  *
  * token（祖训②）：只取最近 MY_MOMENTS_MAX 条、每条正文截到 MY_MOMENT_CHARS 字。
  * 她随时可能发新的，所以这块走易变区，不进前缀缓存（见 promptBuilder 的分区注释）。
@@ -31,12 +32,21 @@ export function filterVisibleMyMoments(
   return items
     .filter((m) => {
       const v = m.visibility ?? "public";
-      if (v === "public") return true;
       if (v === "private") return false;
-      const byChar = (m.visibleTo ?? []).includes(characterId);
-      const byWorld =
-        categoryId !== undefined && (m.visibleWorlds ?? []).includes(categoryId);
-      return byChar || byWorld;
+      /* ① 白名单（哪些人有资格看）：公开／不给谁看＝全体；部分可见＝勾到的角色 ＋
+            勾到的**世界里的人**（世界是活名单，角色挪进挪出跟着变）。 */
+      const inBase =
+        v === "public" || v === "exclude"
+          ? true
+          : (m.visibleTo ?? []).includes(characterId) ||
+            (categoryId !== undefined && (m.visibleWorlds ?? []).includes(categoryId));
+      if (!inBase) return false;
+      /* ② 黑名单：白名单里**再挡掉**某些角色／整个世界的人（与白名单并存——
+            例：部分可见勾了一整个世界，又在「不给谁看」里挡掉这世界里的某个人）。 */
+      const excluded =
+        (m.excludeTo ?? []).includes(characterId) ||
+        (categoryId !== undefined && (m.excludeWorlds ?? []).includes(categoryId));
+      return !excluded;
     })
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
