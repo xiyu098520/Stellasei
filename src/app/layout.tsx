@@ -12,10 +12,11 @@ import { siyuanFontCss } from "./siyuan-font";
    字体文件的绝对地址得带上 basePath；本地开发该变量为空。 */
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
-/* 预载最常用的思源宋体分片：096 收「的一」，095 收「是不了你是我」，
-   094 收「星他」——先把这几片与 JS 并行抢下来，开屏一过即见宋体、不留空窗。
-   其余分片按 unicode-range 在用到时自动取，不必预载（省流量）。 */
-const FONT_PRELOAD = ["094", "095", "096"];
+/* 预载首批「界面基础文字」子集三片（ui-0/1/2，family 'Noto Serif SC UI'）：
+   开屏那 2.8s 内把它们抢下来，界面文案即可用思源宋体即刻上屏、不留空窗。
+   其余整量分片（000–100）由后台预取模块在进 App 后静默补齐（见 lib/font-prefetch.ts），
+   不在此预载，省首屏流量。 */
+const FONT_PRELOAD = ["ui-0", "ui-1", "ui-2"];
 
 const geistSans = Geist({
   variable: "--font-geist-sans",

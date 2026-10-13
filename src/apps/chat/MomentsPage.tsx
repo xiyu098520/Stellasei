@@ -1899,22 +1899,26 @@ export default function MomentsPage({
             ) : null}
           </div>
 
-          {/* 藏起来的 `<input type="file">`（iOS 只认用户手势触发的 `.click()`）：
-              点封面 → 选择单 → 选「手机相册」才去点它。选完压图进仓库、引用串写进设定。
-              「还原」（＝恢复默认）已挪进选择单标题行右端（2026-10-13）。 */}
-          <input
-            ref={coverInput}
-            type="file"
-            accept="image/*"
-            style={{ display: "none" }}
-            onChange={(e) => {
-              const file = e.target.files?.[0] ?? null;
-              /* 选完立刻清空：同一张图连选两次也得能触发 onChange。 */
-              e.target.value = "";
-              if (file) startCoverDraft(file);
-            }}
-          />
         </div>
+
+        {/* 藏起来的 `<input type="file">`（iOS 只认用户手势触发的 `.click()`）：
+            点封面 → 选择单 → 选「手机相册」才去点它。选完压图进仓库、引用串写进设定。
+            「还原」（＝恢复默认）已挪进选择单标题行右端（2026-10-13）。
+            ⚠️ 必须**挂在封面容器之外**（兄弟节点）：它 `.click()` 那一下会沿 DOM 冒泡，
+            若仍留在封面里面，会再次触发封面 onClick→又弹出选择单，
+            用户得再点一次「取消」才能拖图；挪到外面，选完图立刻就能挪。 */}
+        <input
+          ref={coverInput}
+          type="file"
+          accept="image/*"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            const file = e.target.files?.[0] ?? null;
+            /* 选完立刻清空：同一张图连选两次也得能触发 onChange。 */
+            e.target.value = "";
+            if (file) startCoverDraft(file);
+          }}
+        />
 
         {/* ── 信息流：**一条一张方卡**（每一条＝**一张白纸方卡**，深色细线框住）。
                ① 「第一则跟第二则怎么分清」靠**卡自己那条边**——不用页上的栏线；

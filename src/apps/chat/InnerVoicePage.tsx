@@ -40,13 +40,13 @@ const TONE = {
 } as const;
 
 /** 宋体（自托管思源宋体）：这一页的骨——标题、页签、竖签、英文小标、脚注。 */
-const FP = "'Noto Serif SC', 'Songti SC', 'STSong', 'SimSun', Georgia, serif";
+const FP = "'Noto Serif SC UI', 'Noto Serif SC', 'Songti SC', 'STSong', 'SimSun', Georgia, serif";
 
 /** 正文那一支（仿宋）：成句要读的字全归它。系统仿宋（iOS 自带，零下载、零闪）。 */
 const FK = "'FangSong', 'STFangsong', 'Songti SC', Georgia, serif";
 
 /** 英文衬线（Playfair）：数字、小标、时间与序号用它，自带真斜体面。 */
-const FE = "var(--font-playfair), Georgia, 'Noto Serif SC', 'Songti SC', serif";
+const FE = "var(--font-playfair), Georgia, 'Noto Serif SC UI', 'Noto Serif SC', 'Songti SC', serif";
 
 /** 虚文字（空态）：跟正文同一支仿宋，靠淡色跟实文字分开。 */
 const VAGUE: React.CSSProperties = {
