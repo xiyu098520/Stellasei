@@ -178,7 +178,7 @@ const ICON_BTN: CSSProperties = {
 const ACT_BTN = (on: boolean): CSSProperties => ({
   display: "inline-flex",
   alignItems: "center",
-  gap: 6,
+  gap: 5,
   border: "none",
   background: "transparent",
   padding: 0,
@@ -1014,7 +1014,7 @@ export default function MomentsPage({
         /* 名录式的条目分隔（2026-10-13 换皮）：条与条之间只压一条
            **两端缩进的发丝线**——内联样式写不了伪元素，落在样式块里。 */
         .mp-feed > article + article::before {
-          content: ''; position: absolute; top: 0; left: 0; right: 0;
+          content: ''; position: absolute; top: 0; left: 4px; right: 4px;
           height: 1px; background: ${C.line2};
         }
         /* 「配图」那四枚章（相册／拍照／小手机相册／文字描述）。
@@ -1070,17 +1070,12 @@ export default function MomentsPage({
           height: "100%",
           overflowY: "auto",
           overscrollBehavior: "none",
-          /* 雾不只在封面那一块：从**页顶**渗下来、到半页才化掉，整页是一口气。
-             `backgroundAttachment: local` 让这层雾跟着内容走（钉在**页首**，
-             不是钉在屏幕上）——往下滑就是干净的页底，雾留在它该在的顶上。
-             封面自己的渐变底正好接在这层雾上面，「色块 + 白底」那道硬缝就这么没了。
-             ⚠️ **封面下沿往下那一段（约 300～440px）保持可见的浓度**（`.5 → .34`）：
-             封面到页底之间才是一段**柔和过渡**，不会在封面下沿切出一道硬边。
-             ⚠️ 改这里**必须同步重算封面那两处化白渐变**的终点色（见下面封面注释）。 */
+          /* 2026-10-13 恩熙：「照草稿」——草稿的滚动格是**干净一张暖白纸**：
+             `.m-scroll` 不铺任何底色，整片露出页底 `--paper(#FAF9F6)`。
+             原先我在这儿铺了一层「整页蓝雾」（0→640px 的淡蓝渐变），它把封面
+             以下整片都染成了蓝——名册、名字、留言区全发蓝，看着就不像纸。
+             **撤掉这层雾**：封面下沿仍靠封面**自己**那段化白渐变化进纸色，不留硬边。 */
           backgroundColor: C.paper,
-          backgroundImage:
-            "linear-gradient(to bottom, rgba(214,226,240,.5) 0px, rgba(218,229,241,.5) 300px, rgba(226,235,245,.34) 440px, rgba(250,249,246,0) 640px)",
-          backgroundAttachment: "local",
         }}
       >
         {/* ── 封面＝**通铺整宽的真封面**。
@@ -1091,10 +1086,13 @@ export default function MomentsPage({
                所以：左右边距 12px 全撤、四角归零、三道白内边与那道深投影全撤
                （不浮了，它就是从顶上压下来的一整面），高度把安全区＋状态栏一并吃进来，
                从 y=0 起，连状态栏那块也是封面。
-               底边**不留缝**：最底一截化进「页底那层蓝雾在封面下沿处的颜色」——
-               算出是 `rgba(250,249,246,1)`（页底 `C.paper` 上盖着滚动容器那层蓝雾）。
-               封面下沿那块颜色和下沿外一像素的颜色一模一样，所以是**化开**，
-               不是「切一刀」。⚠️ **这枚值跟着上面容器那层雾的浓度走**——雾一改，必须重算。 ── */}
+               底边**不留缝**：最底一截**化满成一整片纸色** `rgba(250,249,246,1)`——
+              封面下面就是滚动格的 `C.paper`，两边颜色**一模一样**才是「化开」，
+              不是「切一刀」。
+              ⚠️ 2026-10-13 修：这里原先是 `rgba(250,249,246,.94)`，94% 没化满，
+              于是封面下沿那道边**没化干净**，真机上留了一条淡淡的横线（恩熙：
+              「自然一点」）。页底那层蓝雾早撤了，下沿外一像素就是纯纸色，
+              所以这里必须给到 `1`。 ── */}
         <div
           ref={coverRef}
           style={{
@@ -1117,7 +1115,7 @@ export default function MomentsPage({
                  「封面这个颜色调浅一点，自然一点」）：底色一浅，顶上白字就靠①那层
                  压暗＋字上的投影一起托住（压暗因此从 .52 收到 .40）。 */
               "linear-gradient(180deg, rgba(20,19,24,.40) 0%, rgba(20,19,24,.08) 20%, rgba(20,19,24,0) 40%)," +
-              "linear-gradient(to bottom, rgba(250,249,246,0) 70%, rgba(250,249,246,.94) 100%)," +
+              "linear-gradient(to bottom, rgba(250,249,246,0) 70%, rgba(250,249,246,1) 100%)," +
               "radial-gradient(150% 110% at 82% 4%, rgba(255,255,255,.45) 0%, rgba(255,255,255,0) 58%)," +
               "linear-gradient(162deg,#AABECF 0%,#C3D0DC 48%,#DFE6EC 100%)",
             /* 通铺的一整面**不再「浮起来」**：三道白内边与那道深投影全撤。 */
@@ -1189,7 +1187,8 @@ export default function MomentsPage({
           {/* ── 我是谁：草稿身份块同款——**名字在左、头像在右，并作一行**。
                  整块贴封面右下、骑在封面下沿上：`top: calc(100% - 28px)` 让 56px 的头像
                  **嵌进封面 28px、露在外面 28px**（一半里一半外的那枚印）。
-                 ⚠︎ 头像往上坐，下面的签名也跟着上移，信息流顶部留白用 `108px` 补回来。
+                 ⚠︎ 头像往上坐，下面的签名也跟着上移，信息流顶部留白由 `.mp-feed` 的
+                 `64px` 补回来（2026-10-13 照草稿，原 `108`）。
                  名字与签名落在封面**外**的雾白页底上，墨色压得住。 ── */}
           <div
             style={{
@@ -1335,7 +1334,7 @@ export default function MomentsPage({
         {feed.length === 0 ? (
           <div
             style={{
-              padding: "112px 24px 64px",
+              padding: "64px 24px 64px",
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
@@ -1354,7 +1353,10 @@ export default function MomentsPage({
           <div
             className="mp-feed"
             style={{
-              padding: "108px 0 calc(var(--safe-area-bottom, 0px) + 34px)",
+              /* 2026-10-13 照草稿：顶部留白 `108 → 64`（草稿 `.m-top` 下沿留 58 ＋
+                 `.c-body` 上留 6），正好让开封面下沿那枚骑边头像与它下面的名字／签名；
+                 左右 20px 交给条目自己的 `4px` 内边，条目内容线落在离屏 24px 处。 */
+              padding: "64px 20px calc(var(--safe-area-bottom, 0px) + 34px)",
               display: "flex",
               flexDirection: "column",
             }}
@@ -2640,11 +2642,15 @@ function MomentStamp({ iso }: { iso: string }) {
   const abs = momentFullTime(iso);
   const toggleable = rel !== abs;
   const base: CSSProperties = {
-    /* `inherit`：这行小字以前是个 `<span>`，字体是从卡上继承来的；
-       换成 `<button>` 之后**按钮不继承字体**，不写这句会变成系统 UI 字。 */
-    fontFamily: "inherit",
-    fontSize: 10,
-    letterSpacing: ".08em",
+    /* ── 2026-10-13 换皮（草稿 `.m-etime` 同款）：等宽小字、9.5、字距 .1em。
+       ⚠︎ **必须写死 `textAlign: "left"`**：相对时间那一档会渲染成 `<button>`，
+       而按钮的默认文字对齐是 `center`——它又是竖列里的 flex 子项、会被拉满整列宽，
+       于是「刚刚」就跑到列中间去了（2026-10-13 真机截图抓到的就是这个）。
+       这一行是给按钮兜底的，`<span>` 那一档本来就在左边。 ── */
+    fontFamily: LAT,
+    fontSize: 9.5,
+    letterSpacing: ".1em",
+    textAlign: "left",
     color: C.ink3,
     fontVariantNumeric: "tabular-nums",
   };
@@ -2823,8 +2829,11 @@ function MomentItem({
         gridTemplateColumns: "38px minmax(0, 1fr)",
         columnGap: 12,
         alignItems: "start",
-        margin: "0 16px",
-        padding: "15px 0 16px",
+        /* ── 2026-10-13 对齐草稿 `.m-ent`：条目**不吃左右外边距**（`margin: 0`），
+           左右那点边由外层 `.mp-feed` 的 `padding` 统一给；条目自己只在
+           里侧各让 4px（`15px 4px 16px`），好让两端缩进的发丝线与正文、配图对齐。 ── */
+        margin: 0,
+        padding: "15px 4px 16px",
       }}
     >
       {/* ── 2026-10-13 换皮：原卡右上角那枚**小书签**（标重要）已撤。
@@ -2853,11 +2862,12 @@ function MomentItem({
         <div
           style={{
             position: "absolute",
-            /* 槽不写高度（见上注），头像写死 36×36 挂在槽里，四周各留 1px 给描边。 */
-            top: 1,
-            left: 1,
-            width: 36,
-            height: 36,
+            /* 槽不写高度（见上注）。头像**写死 38×38、贴槽左上角**（草稿 `.av` 同款），
+               不再内缩 1px——那一圈白边本身就画在 38 里，不必再让位。 */
+            top: 0,
+            left: 0,
+            width: 38,
+            height: 38,
             /* 草稿 .av 同款：白底、圆角 12（方圆角，不是正圆）、一圈细白边＋淡影，
                首字（无头像时）用宋体雾蓝。 */
             borderRadius: 12,
@@ -2899,8 +2909,10 @@ function MomentItem({
         style={{
           gridColumn: 2,
           display: "flex",
-          alignItems: "flex-start",
-          gap: 10,
+          /* 草稿 `.m-eh{align-items:center;gap:12}`：这一行里头像、名字、范围、`⋯`
+             按**中线**对齐，右边那两枚不再顶在名字字首那条线上。 */
+          alignItems: "center",
+          gap: 12,
           minWidth: 0,
         }}
       >
@@ -2933,18 +2945,18 @@ function MomentItem({
               flex: "none",
               display: "inline-flex",
               alignItems: "center",
-              gap: 5,
+              gap: 6,
               fontSize: 10.5,
-              letterSpacing: ".04em",
-              color: C.ink3,
+              letterSpacing: ".06em",
+              color: C.ink2,
             }}
           >
             {item.visibility === "private" ? (
-              <Lock size={13} strokeWidth={1.6} />
+              <Lock size={14} strokeWidth={1.5} color={C.accent} />
             ) : item.visibility === "partial" ? (
-              <Users size={13} strokeWidth={1.6} />
+              <Users size={14} strokeWidth={1.5} color={C.accent} />
             ) : (
-              <Globe size={13} strokeWidth={1.6} />
+              <Globe size={14} strokeWidth={1.5} color={C.accent} />
             )}
             {item.visibility === "private"
               ? "仅自己可见"
@@ -3012,26 +3024,19 @@ function MomentItem({
         </div>
       </div>
 
-      {/* 正文文字＝整页的**大标题**：字是全页最大，**换成宋体**——那张卡
-          一半的「印刷品感」就在这儿。
-          （名字用宋、正文用无衬线是对调过来的：正文升成大标题，名字降下来。层级没变，气质变了。）
-          **字号又收了一档**：`14.5`。卡里多了一层「垫在下面的
-          粉纸」、顶上也染了一点粉，字再站 15.5px 就顶得慌——**纸变厚了，字就该收。**
-          行距 1.85。 ── */}
-      {/* 纯图动态正文为空：这一格不摆，免得图上方多一道 6px 的空档。 */}
+      {/* ── 2026-10-13 对齐草稿（`.m-etxt`）：正文**跨两列**（`1 / -1`），
+           **左沿跟头像对齐**——不再缩进到名字那条线（真机截图里「测试」缩着就是这个）。
+           字号收到 `14`、行距 `1.82`、字距 `.02em`，`marginTop` 给 `11`：
+           正文跨列后要跟上面那行头像拉开一点空，不然贴着头像下沿发挤。 ── */}
       {item.content.trim() ? (
       <div
         style={{
-          /* 正文在**右列**（头像右边的下方）——不再从卡左沿起，才不会落到头像底下。 */
-          gridColumn: 2,
-          /* ── 正文往上提了一点点（恩熙：「**发布内容文字的部分应该要再往上一点点。**」）。
-               这里原本是 `9`，**减 3 → 6**——跟名字那次「往上一点点」同档，
-               「一点点」就用 3 这个数当旋钮。嫌不够／多了，**只改这一个数**。 ── */
-          marginTop: 6,
-          fontSize: 15,
+          gridColumn: "1 / -1",
+          marginTop: 11,
+          fontSize: 14,
           fontFamily: SERIF,
-          lineHeight: 1.9,
-          letterSpacing: ".01em",
+          lineHeight: 1.82,
+          letterSpacing: ".02em",
           color: C.ink,
           whiteSpace: "pre-line",
         }}
@@ -3040,9 +3045,10 @@ function MomentItem({
       </div>
       ) : null}
 
-      {/* 我发的：正文底下摊自定义标签（`#词` 小 chip，2026-10-04）。 */}
+      {/* 我发的：正文底下摊自定义标签（`#词` 小 chip，2026-10-04）。
+          2026-10-13 对齐草稿：标签跟正文同一条左沿——**跨两列**。 */}
       {item.isSelf && item.tags && item.tags.length > 0 ? (
-        <div style={{ gridColumn: 2, marginTop: 8, display: "flex", flexWrap: "wrap", gap: 6 }}>
+        <div style={{ gridColumn: "1 / -1", marginTop: 8, display: "flex", flexWrap: "wrap", gap: 6 }}>
           {item.tags.map((t) => (
             <span
               key={t}
@@ -3078,7 +3084,7 @@ function MomentItem({
                ⚠︎ 写了 `width` 之后，`stretch` 等价于靠左对齐，**原先那行 `marginRight: -10`
                就成了废码**，一并删掉（留着只会让人以为还探着）。
                「**再大一点／再小一点**」＝只改这一个 `20`（想放大就写成 `calc(100% - 6px)` 这种更小的数）。 */
-            gridColumn: 2,
+            gridColumn: "1 / -1",
             marginTop: 16,
             width: "calc(100% - 20px)",
             padding: 7,
@@ -3156,7 +3162,7 @@ function MomentItem({
              它**不是**一张能被点开／长按重画的图——它就是「这张图」本身，静态摆着。 ─ */
         <div
           style={{
-            gridColumn: 2,
+            gridColumn: "1 / -1",
             marginTop: 16,
             width: "calc(100% - 20px)",
             padding: 7,
@@ -3196,7 +3202,7 @@ function MomentItem({
               虚线仍是**中性**的（粉虚线压在透粉的页底上会发脏）。
               圆角 3（跟卡同一套），底仍是那支**粉白**——卡本身已经是纯白，
               粉白压白，框还是框。 ── */
-        <div style={{ gridColumn: 2, marginTop: 16 }}>
+        <div style={{ gridColumn: "1 / -1", marginTop: 16 }}>
           <button
             type="button"
             className="mp-act"
@@ -3268,7 +3274,7 @@ function MomentItem({
           marginTop: 13,
           display: "flex",
           alignItems: "center",
-          gap: 22,
+          gap: 20,
         }}
       >
         <button
@@ -3279,7 +3285,7 @@ function MomentItem({
           onClick={() => onToggleLike(item)}
           style={ACT_BTN(likedByMe)}
         >
-          <Heart size={15} strokeWidth={1.7} fill={likedByMe ? "currentColor" : "none"} />
+          <Heart size={15} strokeWidth={1.6} fill={likedByMe ? "currentColor" : "none"} />
           {likedByMe ? "Liked" : "Like"}
         </button>
         <button
@@ -3293,7 +3299,7 @@ function MomentItem({
           }}
           style={ACT_BTN(composing)}
         >
-          <MessageCircle size={15} strokeWidth={1.7} />
+          <MessageCircle size={15} strokeWidth={1.6} />
           Comment
         </button>
       </div>
