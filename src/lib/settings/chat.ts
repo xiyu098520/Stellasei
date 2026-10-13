@@ -1475,6 +1475,44 @@ export async function setSelfMomentComments(
   await kvSet(SELF_MOMENTS_KEY, all);
 }
 
+/**
+ * 改「我」的某条动态（2026-10-13）：只动**正文**与**可见范围**，配图／标签一概不碰
+ * （编辑页就这两样，见 MomentsPage 的编辑模式）。找不到那一条就什么也不做。
+ * 可见范围的落库口径跟 addSelfMoment 完全一致：不是 partial 就把那两格删干净，
+ * partial 才按名单落，空名单也删格——免得留一堆用不上的空数组。
+ */
+export async function updateSelfMoment(
+  maskId: string,
+  momentId: string,
+  patch: {
+    content?: string;
+    visibility?: MomentVisibility;
+    visibleTo?: string[];
+    visibleWorlds?: string[];
+  },
+): Promise<void> {
+  const all = (await kvGet<Record<string, SelfMoment[]>>(SELF_MOMENTS_KEY)) ?? {};
+  const list = all[maskId];
+  if (!list) return;
+  const idx = list.findIndex((m) => m.id === momentId);
+  if (idx < 0) return;
+  const cur = list[idx];
+  if (patch.content !== undefined) cur.content = patch.content.trim();
+  if (patch.visibility !== undefined) {
+    cur.visibility = patch.visibility;
+    if (patch.visibility === "partial") {
+      if (patch.visibleTo?.length) cur.visibleTo = patch.visibleTo;
+      else delete cur.visibleTo;
+      if (patch.visibleWorlds?.length) cur.visibleWorlds = patch.visibleWorlds;
+      else delete cur.visibleWorlds;
+    } else {
+      delete cur.visibleTo;
+      delete cur.visibleWorlds;
+    }
+  }
+  await kvSet(SELF_MOMENTS_KEY, all);
+}
+
 /** 删掉「我」的某条动态（2026-10-05）：整条从该面具那一册滤掉。
     它的赞／评本来就挂在这一条上，跟着一起走。找不到那一条就什么也不做。 */
 export async function removeSelfMoment(maskId: string, momentId: string): Promise<void> {
