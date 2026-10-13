@@ -63,7 +63,7 @@ import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { AVATAR_GRADIENT, SANS, SERIF, T, momentFullTime, momentTime } from "./shared";
+import { SANS, SERIF, T, momentFullTime, momentTime } from "./shared";
 import type { ArchiveCategory, ArchiveEntry } from "@/types/contact";
 import type {
   ApiPresetEntry,
@@ -147,9 +147,22 @@ interface FeedItem {
   comments?: MomentComment[];
 }
 
-/** 封面里的字色：封面是**浅**马卡龙底（粉→香芋→蓝），白字压不住（对比度不到 1.5:1），
-    所以封面内一律用这枚**深梅色**——比纯黑暖，落在粉底上像印上去的。 */
-const COVER_INK = "#5B2A40";
+/** 动态页自己的色板（2026-10-13 换皮「雾蓝纸墨」，与消息列表「戊」同一套；
+    T 是聊天共享的粉系，不能动它——这页改用自己的 C）。 */
+const C = {
+  paper: "#FAF9F6", // 页底：暖白纸
+  card: "#FFFFFF", // 弹层底
+  ink: "#3A4149", // 墨
+  ink2: "#7A8A9E", // 次级
+  ink3: "#B3B8BE", // 淡
+  line: "rgba(58,65,73,.13)", // 细边
+  line2: "rgba(58,65,73,.07)", // 发丝线
+  accent: "#5A7391", // 雾蓝：主按钮、选中、点睛
+  accentSoft: "#E7ECF2", // 淡蓝底
+};
+
+/** 封面里的字色：封面默认是蓝紫天空底，白字压不住，一律用**墨色**（跟纸上的字同一支）。 */
+const COVER_INK = "#3A4149";
 
 /** 互动那两枚图标按钮的底样（心／话共用）：无底、无框，就一枚图标。 */
 const ICON_BTN: CSSProperties = {
@@ -159,7 +172,7 @@ const ICON_BTN: CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  color: T.ink3,
+  color: C.ink3,
   cursor: "pointer",
 };
 
@@ -167,22 +180,22 @@ const ICON_BTN: CSSProperties = {
 const COMMENT_INPUT: CSSProperties = {
   flex: 1,
   minWidth: 0,
-  border: `1px solid ${T.line}`,
+  border: `1px solid ${C.line}`,
   background: "#fff",
   borderRadius: 999,
   padding: "6px 12px",
   fontFamily: SANS,
   fontSize: 12.5,
   letterSpacing: ".01em",
-  color: T.ink,
+  color: C.ink,
   outline: "none",
 };
 
 /** 评论「发送」按钮：有内容才亮（粉底白字），空着就是一枚灰。 */
 const COMMENT_SEND = (on: boolean): CSSProperties => ({
   border: "none",
-  background: on ? T.pink : "rgba(20,19,24,.10)",
-  color: on ? "#fff" : T.ink3,
+  background: on ? C.accent : "rgba(20,19,24,.10)",
+  color: on ? "#fff" : C.ink3,
   borderRadius: 999,
   padding: "6px 14px",
   fontFamily: SANS,
@@ -197,7 +210,7 @@ const COMMENT_REPLY_BTN: CSSProperties = {
   background: "transparent",
   padding: 0,
   marginLeft: 6,
-  color: T.ink3,
+  color: C.ink3,
   fontFamily: SANS,
   fontSize: 11,
   letterSpacing: ".03em",
@@ -232,9 +245,9 @@ const VISIBILITY_OPTIONS: { key: MomentVisibility; label: string; icon: typeof G
 const pickChip = (on: boolean): CSSProperties => ({
   padding: "6px 12px",
   borderRadius: 999,
-  border: `1px solid ${on ? "rgba(232,106,155,.5)" : T.line}`,
-  background: on ? T.pinkSoft : "rgba(20,19,24,.04)",
-  color: on ? T.pink : T.ink2,
+  border: `1px solid ${on ? "rgba(90,115,145,.5)" : C.line}`,
+  background: on ? C.accentSoft : "rgba(20,19,24,.04)",
+  color: on ? C.accent : C.ink2,
   fontFamily: SANS,
   fontSize: 12,
   letterSpacing: ".04em",
@@ -941,19 +954,25 @@ export default function MomentsPage({
         width: "100%",
         height: "100%",
         /* 页底是「透粉的白」（跟聊天同一块板）：卡片浮在它上面 */
-        background: T.bg,
+        background: C.paper,
         overflow: "hidden",
         fontFamily: SANS,
-        color: T.ink,
+        color: C.ink,
       }}
     >
       <style>{`
         .mp-act { transition: opacity .16s ease; }
         .mp-act:active { opacity: .45; }
+        /* 名录式的条目分隔（2026-10-13 换皮）：条与条之间只压一条
+           **两端缩进的发丝线**——内联样式写不了伪元素，落在样式块里。 */
+        .mp-feed > article + article::before {
+          content: ''; position: absolute; top: 0; left: 0; right: 0;
+          height: 1px; background: ${C.line2};
+        }
         /* 「配图」那四枚章（相册／拍照／小手机相册／文字描述）。
            ⚠️ 章的底与边**必须写在样式表里、不能写内联**：内联样式永远压过样式表，
            写内联的话下面「按下」那条规则一辈子不生效（聊天加号面板踩过同一个坑）。
-           这是动态页自己的**浅色粉系**语言：白面／粉图标；按下整枚翻粉、图标转纸白。 */
+           蓝纸墨的语言：白面／雾蓝图标；按下整枚翻蓝、图标转纸白。 */
         .mp-seal .mp-seal-face {
           width: 46px;
           height: 46px;
@@ -961,19 +980,19 @@ export default function MomentsPage({
           align-items: center;
           justify-content: center;
           border-radius: 12px;
-          border: 1px solid rgba(232,106,155,.24);
-          color: #E86A9B;
+          border: 1px solid rgba(90,115,145,.24);
+          color: #5A7391;
           background: #FFF;
           box-shadow: 0 6px 14px -10px rgba(20,19,24,.4);
           transition: background .16s ease, border-color .16s ease, color .16s ease;
         }
-        /* 枚本身不再走 .mp-act 那层淡出——它翻粉，不需要再叠一层透明度。 */
+        /* 枚本身不再走 .mp-act 那层淡出——它翻蓝，不需要再叠一层透明度。 */
         .mp-seal:active { opacity: 1; }
-        /* 按下去那一瞬：整枚翻成粉底、边收掉、图标转纸白（图标走 currentColor，跟着变）。 */
+        /* 按下去那一瞬：整枚翻成蓝底、边收掉、图标转纸白（图标走 currentColor，跟着变）。 */
         .mp-seal:active .mp-seal-face {
           border-color: transparent;
           color: #FFFDF8;
-          background: linear-gradient(180deg, #E8709C 0%, #C9346A 100%);
+          background: linear-gradient(180deg, #6B84A3 0%, #46617F 100%);
         }
         @keyframes spin { to { transform: rotate(360deg); } }
         @media (prefers-reduced-motion: reduce) {
@@ -993,7 +1012,7 @@ export default function MomentsPage({
           /* 滚过封面下沿（减掉顶栏那点高度）→ 顶栏落成实底。同一个值重复塞进去
              不会重渲染，所以滚动途中不会跟着抖。 */
           const coverH = coverRef.current?.offsetHeight ?? 0;
-          setStuck(e.currentTarget.scrollTop > Math.max(0, coverH - 58));
+          setStuck(e.currentTarget.scrollTop > Math.max(0, coverH - 64));
         }}
         style={{
           /* `relative` 是**气泡的锚**：气泡挂在滚动格里面，才能跟着封面一起滚
@@ -1010,9 +1029,9 @@ export default function MomentsPage({
              ⚠️ **封面下沿往下那一段（约 300～440px）保持可见的浓度**（`.5 → .34`）：
              封面到页底之间才是一段**柔和过渡**，不会在封面下沿切出一道硬边。
              ⚠️ 改这里**必须同步重算封面那两处化白渐变**的终点色（见下面封面注释）。 */
-          backgroundColor: T.bg,
+          backgroundColor: C.paper,
           backgroundImage:
-            "linear-gradient(to bottom, rgba(243,220,230,.5) 0px, rgba(244,220,231,.5) 300px, rgba(246,229,238,.34) 440px, rgba(255,247,249,0) 640px)",
+            "linear-gradient(to bottom, rgba(214,226,240,.5) 0px, rgba(218,229,241,.5) 300px, rgba(226,235,245,.34) 440px, rgba(250,249,246,0) 640px)",
           backgroundAttachment: "local",
         }}
       >
@@ -1024,9 +1043,9 @@ export default function MomentsPage({
                所以：左右边距 12px 全撤、四角归零、三道白内边与那道深投影全撤
                （不浮了，它就是从顶上压下来的一整面），高度把安全区＋状态栏一并吃进来，
                从 y=0 起，连状态栏那块也是封面。
-               底边**不留缝**：最底一截化进「页底那层透粉的雾在封面下沿处的颜色」——
-               算出是 `rgba(249,234,240,1)`（页底 `T.bg` 上盖着滚动容器那层 **约 47%**
-               的粉雾）。封面下沿那块颜色和下沿外一像素的颜色一模一样，所以是**化开**，
+               底边**不留缝**：最底一截化进「页底那层蓝雾在封面下沿处的颜色」——
+               算出是 `rgba(250,249,246,1)`（页底 `C.paper` 上盖着滚动容器那层蓝雾）。
+               封面下沿那块颜色和下沿外一像素的颜色一模一样，所以是**化开**，
                不是「切一刀」。⚠️ **这枚值跟着上面容器那层雾的浓度走**——雾一改，必须重算。 ── */}
         <div
           ref={coverRef}
@@ -1040,11 +1059,11 @@ export default function MomentsPage({
             /* 通铺＝没有圆角（颗粒 svg 同步 0）。 */
             borderRadius: 0,
             background:
-              /* 最底一截**化进封面下沿外的页底**（见上面那段注释那枚 `rgba(249,234,240,1)`）：
-                 封面不是「贴在页面上的一块色」，而是从顶上渗下来、到自己散开。 */
-              "linear-gradient(to bottom, rgba(249,234,240,0) 44%, rgba(249,234,240,1) 100%)," +
+              /* 最底一截**化进封面下沿外的页底**：终点用纸色 `rgba(250,249,246,1)`
+                 （页底 `C.paper` 上盖着那层蓝雾的下沿色）——封面从顶上渗下来、到自己散开。 */
+              "linear-gradient(to bottom, rgba(250,249,246,0) 44%, rgba(250,249,246,1) 100%)," +
               "radial-gradient(150% 110% at 82% 4%, rgba(255,255,255,.5) 0%, rgba(255,255,255,0) 58%)," +
-              "linear-gradient(158deg,#F3DCE6 0%,#E7DCF0 44%,#DCE6F2 100%)",
+              "linear-gradient(158deg,#E2E8F2 0%,#D9E2EF 44%,#CFDBEC 100%)",
             /* 通铺的一整面**不再「浮起来」**：三道白内边与那道深投影全撤。 */
             boxShadow: "none",
             /* 注意：**不能** `overflow: hidden`——下面那块身份区要**跨出封面下沿**去
@@ -1058,7 +1077,7 @@ export default function MomentsPage({
               ① 顶上一点白（`.34 → 0 @24%`）：压在封面里的顶栏图标与字是**深梅色**，
                  照片若是暗的，AD 那几个字就没了；这层白只护住最上面那一小截，
                  再往下就是照片本来的样子；
-              ② 底下化进页底：用的是跟默认渐变**同一枚** `rgba(249,234,240,1)`，
+              ② 底下化进页底：用的是跟默认渐变**同一枚** `rgba(250,249,246,1)`，
                  所以「封面到哪儿为止」是**化开**的，不会忽然切一刀。 ── */}
           {coverSrc ? (
             <>
@@ -1081,7 +1100,7 @@ export default function MomentsPage({
                   inset: 0,
                   background:
                     "linear-gradient(to bottom, rgba(255,255,255,.34) 0%, rgba(255,255,255,0) 24%)," +
-                    "linear-gradient(to bottom, rgba(249,234,240,0) 62%, rgba(249,234,240,1) 100%)",
+                    "linear-gradient(to bottom, rgba(250,249,246,0) 62%, rgba(250,249,246,1) 100%)",
                 }}
               />
             </>
@@ -1131,18 +1150,20 @@ export default function MomentsPage({
                 flex: "none",
                 width: 60,
                 height: 60,
-                /* 头像是**正圆**。卡是方框，人脸不是；
-                   把方框的圆角收掉，跟把一张脸也削成方块，是两回事。 */
-                borderRadius: "50%",
-                background: AVATAR_GRADIENT,
+                /* 草稿身份块同款：白底方圆角（14），一圈白边把头像从雾里托出来，
+                   无头像时首字宋体雾蓝。 */
+                borderRadius: 14,
+                background: "#FFF",
+                color: C.accent,
+                fontFamily: SERIF,
+                border: "1px solid rgba(255,255,255,.78)",
                 boxShadow:
-                  "0 0 0 2px rgba(255,255,255,.92), 0 12px 24px -14px rgba(96,62,84,.6)",
+                  "0 0 0 2px rgba(250,249,246,.9), 0 10px 22px -14px rgba(58,65,73,.5)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                color: "#FFF",
                 fontSize: 21,
-                fontWeight: 700,
+                fontWeight: 600,
                 overflow: "hidden",
               }}
             >
@@ -1188,7 +1209,7 @@ export default function MomentsPage({
                   fontSize: 10.5,
                   lineHeight: 1.5,
                   letterSpacing: ".04em",
-                  color: "rgba(91,42,64,.72)",
+                  color: "rgba(58,65,73,.66)",
                   textAlign: "right",
                 }}
               >
@@ -1266,20 +1287,20 @@ export default function MomentsPage({
             }}
           >
             <span style={{ fontSize: 15, fontWeight: 500, fontFamily: SERIF,
-                           color: T.ink2, letterSpacing: ".1em" }}>
+                           color: C.ink2, letterSpacing: ".1em" }}>
               暂时没有动态
             </span>
-            <span style={{ fontSize: 11.5, color: T.ink3, letterSpacing: ".04em" }}>
+            <span style={{ fontSize: 11.5, color: C.ink3, letterSpacing: ".04em" }}>
               TA 发动态了会出现在这儿
             </span>
           </div>
         ) : (
           <div
+            className="mp-feed"
             style={{
               padding: "108px 0 calc(var(--safe-area-bottom, 0px) + 34px)",
               display: "flex",
               flexDirection: "column",
-              gap: 22,
             }}
           >
             {feed.map((item) => (
@@ -1354,7 +1375,7 @@ export default function MomentsPage({
               border: "1px solid rgba(255,255,255,.85)",
               color: COVER_INK,
               boxShadow:
-                "inset 0 1px 0 rgba(255,255,255,.95), inset 0 -1px 0 rgba(255,255,255,.35), 0 0 0 .5px rgba(255,255,255,.6), 0 0 0 1px rgba(20,19,24,.04), 0 14px 26px -18px rgba(96,62,84,.45), 0 0 22px rgba(255,255,255,.55)",
+                "inset 0 1px 0 rgba(255,255,255,.95), inset 0 -1px 0 rgba(255,255,255,.35), 0 0 0 .5px rgba(255,255,255,.6), 0 0 0 1px rgba(58,65,73,.04), 0 14px 26px -18px rgba(58,65,73,.4), 0 0 22px rgba(255,255,255,.55)",
             }}
           >
             {noticeLead.fromAvatar ? (
@@ -1371,8 +1392,8 @@ export default function MomentsPage({
                   width: 26,
                   height: 26,
                   borderRadius: 999,
-                  background: AVATAR_GRADIENT,
-                  color: "#FFFFFF",
+                  background: "#FFF",
+                  color: C.accent,
                   fontFamily: SERIF,
                   fontSize: 11,
                   display: "flex",
@@ -1403,10 +1424,9 @@ export default function MomentsPage({
       ) : null}
       </div>
 
-      {/* ── 顶栏：压在封面里时**不显形**（全透明、深梅色图标与字），滚过封面下沿才落成
-             一层粉白实底＋墨字＋一条发丝线。这样它既不是「贴在封面上的那条胶布」，
-             滚出来之后又不会糊在正文上。只有 `stuck` 翻面那一帧才重画，滚动途中
-             不跟着抖。 ── */}
+      {/* ── 顶栏：压在封面里时**不显形**（全透明、墨色图标与字），滚过封面下沿才落成
+             一层纸色实底＋墨字＋一条发丝线（草稿「雾蓝纸墨」同一套）。只有 `stuck`
+             翻面那一帧才重画，滚动途中不跟着抖。 ── */}
       <div
         style={{
           position: "absolute",
@@ -1414,7 +1434,7 @@ export default function MomentsPage({
           left: 0,
           right: 0,
           zIndex: 6,
-          height: "calc(var(--safe-area-top, 0px) + var(--sim-status-h, 0px) + 52px)",
+          height: "calc(var(--safe-area-top, 0px) + var(--sim-status-h, 0px) + 58px)",
           paddingTop: "calc(var(--safe-area-top, 0px) + var(--sim-status-h, 0px))",
           paddingLeft: 16,
           paddingRight: 16,
@@ -1422,28 +1442,28 @@ export default function MomentsPage({
           display: "flex",
           alignItems: "center",
           gap: 10,
-          background: stuck ? "rgba(255,247,249,.88)" : "transparent",
+          background: stuck ? "rgba(250,249,246,.9)" : "transparent",
           backdropFilter: stuck ? "blur(14px)" : "none",
           WebkitBackdropFilter: stuck ? "blur(14px)" : "none",
-          borderBottom: `1px solid ${stuck ? T.line : "transparent"}`,
+          borderBottom: `1px solid ${stuck ? C.line : "transparent"}`,
           /* 吸顶过渡放缓（2026-10-13，恩熙：「过渡再自然一点」）：纸底先落稳托住字，
              底下那两行标题与钮的颜色慢半拍（.08s）再缓缓转墨——两拍走，不像开关。 */
           transition:
             "background .32s cubic-bezier(.4,.2,.2,1), border-color .32s cubic-bezier(.4,.2,.2,1)",
         }}
       >
-        {/* ── 标题：中文在上、英文小字在下（字距拉到 .3em）。
-              名称与英文留在这两行里。
-              但**期号不回来**（不要 `No. 00X` 那种）。 ── */}
+        {/* ── 标题：中文在上、斜体英文小字在下（跟草稿/消息页同一副刊头排法）。
+              名称与英文留在这两行里。但**期号不回来**（不要 `No. 00X` 那种）。 ── */}
         <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
           <div
             style={{
-              fontSize: 16,
-              fontWeight: 500,
+              fontSize: 19,
+              fontWeight: 600,
               fontFamily: SERIF,
-              letterSpacing: ".16em",
+              letterSpacing: ".2em",
+              paddingLeft: ".2em",
               lineHeight: 1.2,
-              color: stuck ? T.ink : COVER_INK,
+              color: stuck ? C.ink : COVER_INK,
               transition: "color .5s ease .08s",
               whiteSpace: "nowrap",
               overflow: "hidden",
@@ -1454,10 +1474,12 @@ export default function MomentsPage({
           </div>
           <div
             style={{
-              fontSize: 8.5,
-              letterSpacing: ".3em",
+              fontSize: 10.5,
+              fontFamily: SERIF,
+              fontStyle: "italic",
+              letterSpacing: ".16em",
               lineHeight: 1.2,
-              color: stuck ? T.ink3 : "rgba(91,42,64,.58)",
+              color: stuck ? C.ink3 : "rgba(58,65,73,.62)",
               transition: "color .5s ease .08s",
               whiteSpace: "nowrap",
               overflow: "hidden",
@@ -1482,9 +1504,9 @@ export default function MomentsPage({
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            border: `1px solid ${stuck ? "rgba(20,19,24,.12)" : "rgba(91,42,64,.18)"}`,
-            background: stuck ? "rgba(20,19,24,.055)" : "rgba(255,255,255,.62)",
-            color: stuck ? T.ink : COVER_INK,
+            border: `1px solid ${stuck ? C.line : "rgba(58,65,73,.22)"}`,
+            background: stuck ? "rgba(58,65,73,.06)" : "rgba(255,255,255,.62)",
+            color: stuck ? C.ink : COVER_INK,
             transition: "color .5s ease .08s, background .32s cubic-bezier(.4,.2,.2,1), border-color .32s cubic-bezier(.4,.2,.2,1)",
             cursor: "pointer",
           }}
@@ -1516,13 +1538,13 @@ export default function MomentsPage({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "rgba(248,224,236,.55)",
+          background: "rgba(214,226,240,.5)",
           backdropFilter: "blur(14px)",
           WebkitBackdropFilter: "blur(14px)",
           border: "1px solid rgba(255,255,255,.7)",
           boxShadow:
             "0 10px 22px -12px rgba(58,65,73,.55), inset 0 1px 0 rgba(255,255,255,.9)",
-          color: T.pink,
+          color: C.accent,
           transform: "translateZ(0)",
           cursor: "pointer",
         }}
@@ -1646,7 +1668,7 @@ export default function MomentsPage({
             onClick={(e) => e.stopPropagation()}
             style={{
               width: "100%",
-              background: T.card,
+              background: C.card,
               borderTopLeftRadius: 20,
               borderTopRightRadius: 20,
               padding: "20px 18px calc(var(--safe-area-bottom, 0px) + 18px)",
@@ -1654,10 +1676,10 @@ export default function MomentsPage({
             }}
           >
             <div style={{ fontSize: 15.5, fontWeight: 500, fontFamily: SERIF,
-                          letterSpacing: ".1em", color: T.ink }}>
+                          letterSpacing: ".1em", color: C.ink }}>
               画面描述
             </div>
-            <div style={{ marginTop: 5, fontSize: 11.5, lineHeight: 1.7, color: T.ink3 }}>
+            <div style={{ marginTop: 5, fontSize: 11.5, lineHeight: 1.7, color: C.ink3 }}>
               图按这段话生成，不对就先改——确认了才跑接口。
             </div>
             <textarea
@@ -1673,9 +1695,9 @@ export default function MomentsPage({
                 resize: "none",
                 padding: "11px 12px",
                 borderRadius: 12,
-                border: `1px solid ${T.line}`,
+                border: `1px solid ${C.line}`,
                 background: "rgba(20,19,24,.04)",
-                color: T.ink,
+                color: C.ink,
                 fontFamily: SANS,
                 fontSize: 13.5,
                 lineHeight: 1.7,
@@ -1695,7 +1717,7 @@ export default function MomentsPage({
                   border: "none",
                   borderRadius: 12,
                   background: "rgba(20,19,24,.06)",
-                  color: T.ink2,
+                  color: C.ink2,
                   fontFamily: SANS,
                   fontSize: 13.5,
                   letterSpacing: ".04em",
@@ -1713,7 +1735,7 @@ export default function MomentsPage({
                   height: 44,
                   border: "none",
                   borderRadius: 12,
-                  background: T.pink,
+                  background: C.accent,
                   color: "#FFF",
                   fontFamily: SANS,
                   fontSize: 13.5,
@@ -1756,7 +1778,7 @@ export default function MomentsPage({
               maxHeight: "calc(100% - 40px)",
               overflowY: "auto",
               overscrollBehavior: "none",
-              background: T.card,
+              background: C.card,
               borderTopLeftRadius: 20,
               borderTopRightRadius: 20,
               padding: "20px 18px calc(var(--safe-area-bottom, 0px) + 18px)",
@@ -1765,7 +1787,7 @@ export default function MomentsPage({
             }}
           >
             <div style={{ fontSize: 15.5, fontWeight: 500, fontFamily: SERIF,
-                          letterSpacing: ".1em", color: T.ink }}>
+                          letterSpacing: ".1em", color: C.ink }}>
               发动态
             </div>
 
@@ -1784,9 +1806,9 @@ export default function MomentsPage({
                 resize: "none",
                 padding: "11px 12px",
                 borderRadius: 12,
-                border: `1px solid ${T.line}`,
+                border: `1px solid ${C.line}`,
                 background: "rgba(20,19,24,.04)",
-                color: T.ink,
+                color: C.ink,
                 /* 打字时就用思源宋体（2026-10-13，恩熙：「发布的动态文字要统一」）——
                    发出去的正文卡片是宋体，输入时也是宋体，写时＝发后，不再「写黑体、
                    发出去变宋体」跳一次。字号行距对齐正文卡（14.5/1.85 收半档）。 */
@@ -1831,7 +1853,7 @@ export default function MomentsPage({
                           height: 108,
                           objectFit: "cover",
                           borderRadius: 10,
-                          border: `1px solid ${T.line}`,
+                          border: `1px solid ${C.line}`,
                         }}
                       />
                     ) : (
@@ -1840,12 +1862,12 @@ export default function MomentsPage({
                           width: 108,
                           height: 108,
                           borderRadius: 10,
-                          border: `1px solid ${T.line}`,
+                          border: `1px solid ${C.line}`,
                           background: "rgba(20,19,24,.04)",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
-                          color: T.ink3,
+                          color: C.ink3,
                         }}
                       >
                         <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />
@@ -1858,7 +1880,7 @@ export default function MomentsPage({
                         width: 128,
                         minHeight: 108,
                         padding: 7,
-                        borderRadius: 3,
+                        borderRadius: 10,
                         background: "#FFF",
                         boxShadow:
                           "0 0 0 1px rgba(20,19,24,.06), 0 8px 18px -12px rgba(20,19,24,.35)",
@@ -1870,12 +1892,12 @@ export default function MomentsPage({
                           padding: "9px 8px",
                           maxHeight: 94,
                           overflow: "hidden",
-                          background: "rgba(255,247,249,.92)",
+                          background: "rgba(231,236,242,.5)",
                           border: "1px dashed rgba(20,19,24,.14)",
-                          borderRadius: 2,
+                          borderRadius: 8,
                           fontSize: 10.5,
                           lineHeight: 1.6,
-                          color: T.ink2,
+                          color: C.ink2,
                           fontFamily: SANS,
                           whiteSpace: "pre-line",
                         }}
@@ -1925,9 +1947,9 @@ export default function MomentsPage({
                       resize: "none",
                       padding: "10px 12px",
                       borderRadius: 10,
-                      border: `1px solid rgba(232,106,155,.4)`,
-                      background: "rgba(255,247,249,.92)",
-                      color: T.ink,
+                      border: `1px solid rgba(90,115,145,.35)`,
+                      background: "rgba(231,236,242,.5)",
+                      color: C.ink,
                       /* 同正文：文字描述也是「发布的字」，一并思源宋体。 */
                       fontFamily: SERIF,
                       fontSize: 13,
@@ -1950,7 +1972,7 @@ export default function MomentsPage({
                         border: "none",
                         borderRadius: 10,
                         background: "rgba(20,19,24,.06)",
-                        color: T.ink2,
+                        color: C.ink2,
                         fontFamily: SANS,
                         fontSize: 12.5,
                         cursor: "pointer",
@@ -1967,7 +1989,7 @@ export default function MomentsPage({
                         padding: "0 16px",
                         border: "none",
                         borderRadius: 10,
-                        background: T.pink,
+                        background: C.accent,
                         color: "#FFF",
                         fontFamily: SANS,
                         fontSize: 12.5,
@@ -1977,7 +1999,7 @@ export default function MomentsPage({
                     >
                       就这张
                     </button>
-                    <span style={{ flex: 1, fontSize: 10.5, lineHeight: 1.6, color: T.ink3,
+                    <span style={{ flex: 1, fontSize: 10.5, lineHeight: 1.6, color: C.ink3,
                                    letterSpacing: ".03em" }}>
                       发布时按「配图自动生成」定：关着＝描述当图，开着＝先画真图。
                     </span>
@@ -1986,7 +2008,7 @@ export default function MomentsPage({
               ) : imgPick === "seals" ? (
                 /* 四枚章：这张图从哪来。 */
                 <div>
-                  <div style={{ fontSize: 11, letterSpacing: ".08em", color: T.ink3 }}>
+                  <div style={{ fontSize: 11, letterSpacing: ".08em", color: C.ink3 }}>
                     这张图从哪来
                   </div>
                   <div style={{ marginTop: 10, display: "flex", gap: 20, alignItems: "flex-start" }}>
@@ -2019,7 +2041,7 @@ export default function MomentsPage({
                         <span className="mp-seal-face">
                           <row.icon size={20} strokeWidth={1.6} />
                         </span>
-                        <span style={{ fontFamily: SANS, fontSize: 10.5, color: T.ink2,
+                        <span style={{ fontFamily: SANS, fontSize: 10.5, color: C.ink2,
                                        letterSpacing: ".03em" }}>
                           {row.title}
                         </span>
@@ -2041,7 +2063,7 @@ export default function MomentsPage({
                     borderRadius: 10,
                     border: "1px dashed rgba(20,19,24,.18)",
                     background: "rgba(20,19,24,.03)",
-                    color: T.ink2,
+                    color: C.ink2,
                     fontFamily: SANS,
                     fontSize: 12.5,
                     letterSpacing: ".04em",
@@ -2056,7 +2078,7 @@ export default function MomentsPage({
 
             {/* 标签：已加的成一排小 chips，后面跟着输入框与「＋」。 */}
             <div style={{ marginTop: 16 }}>
-              <div style={{ fontSize: 11, letterSpacing: ".08em", color: T.ink3 }}>标签</div>
+              <div style={{ fontSize: 11, letterSpacing: ".08em", color: C.ink3 }}>标签</div>
               <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap",
                             alignItems: "center", gap: 6 }}>
                 {composer.tags.map((t) => (
@@ -2068,8 +2090,8 @@ export default function MomentsPage({
                       gap: 3,
                       padding: "3px 6px 3px 9px",
                       borderRadius: 999,
-                      background: T.pinkSoft,
-                      color: T.pink,
+                      background: C.accentSoft,
+                      color: C.accent,
                       fontSize: 11.5,
                       letterSpacing: ".02em",
                     }}
@@ -2082,7 +2104,7 @@ export default function MomentsPage({
                         setComposer({ ...composer, tags: composer.tags.filter((x) => x !== t) })
                       }
                       style={{ border: 0, background: "none", padding: 2, display: "flex",
-                               color: T.pink, cursor: "pointer" }}
+                               color: C.accent, cursor: "pointer" }}
                     >
                       <X size={10} strokeWidth={2.2} />
                     </button>
@@ -2102,9 +2124,9 @@ export default function MomentsPage({
                     width: 88,
                     padding: "4px 8px",
                     borderRadius: 999,
-                    border: `1px solid ${T.line}`,
+                    border: `1px solid ${C.line}`,
                     background: "transparent",
-                    color: T.ink,
+                    color: C.ink,
                     fontFamily: SANS,
                     fontSize: 12,
                     outline: "none",
@@ -2116,8 +2138,8 @@ export default function MomentsPage({
                   aria-label="添加标签"
                   onClick={addTag}
                   style={{ width: 26, height: 26, borderRadius: "50%",
-                           border: `1px solid ${T.line}`, background: "rgba(20,19,24,.04)",
-                           color: T.ink2, display: "flex", alignItems: "center",
+                           border: `1px solid ${C.line}`, background: "rgba(20,19,24,.04)",
+                           color: C.ink2, display: "flex", alignItems: "center",
                            justifyContent: "center", cursor: "pointer" }}
                 >
                   <Plus size={13} strokeWidth={2} />
@@ -2127,7 +2149,7 @@ export default function MomentsPage({
 
             {/* 可见范围：公开／私密／部分可见三选一；部分可见时才摊出联系人勾选。 */}
             <div style={{ marginTop: 16 }}>
-              <div style={{ fontSize: 11, letterSpacing: ".08em", color: T.ink3 }}>可见范围</div>
+              <div style={{ fontSize: 11, letterSpacing: ".08em", color: C.ink3 }}>可见范围</div>
               <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
                 {VISIBILITY_OPTIONS.map(({ key, label, icon: Icon }) => {
                   const on = composer.visibility === key;
@@ -2145,9 +2167,9 @@ export default function MomentsPage({
                         alignItems: "center",
                         justifyContent: "center",
                         gap: 5,
-                        border: `1px solid ${on ? "rgba(232,106,155,.5)" : T.line}`,
-                        background: on ? T.pinkSoft : "rgba(20,19,24,.04)",
-                        color: on ? T.pink : T.ink2,
+                        border: `1px solid ${on ? "rgba(90,115,145,.5)" : C.line}`,
+                        background: on ? C.accentSoft : "rgba(20,19,24,.04)",
+                        color: on ? C.accent : C.ink2,
                         fontFamily: SANS,
                         fontSize: 12.5,
                         letterSpacing: ".04em",
@@ -2163,14 +2185,14 @@ export default function MomentsPage({
 
               {composer.visibility === "partial" ? (
                 worlds.length === 0 && friends.length === 0 ? (
-                  <div style={{ marginTop: 10, fontSize: 11.5, color: T.ink3, letterSpacing: ".04em" }}>
+                  <div style={{ marginTop: 10, fontSize: 11.5, color: C.ink3, letterSpacing: ".04em" }}>
                     还没有可选的联系人
                   </div>
                 ) : (
                   <div style={{ marginTop: 12 }}>
                     {worlds.length > 0 ? (
                       <div>
-                        <div style={{ fontSize: 11, letterSpacing: ".08em", color: T.ink3 }}>世界</div>
+                        <div style={{ fontSize: 11, letterSpacing: ".08em", color: C.ink3 }}>世界</div>
                         <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 8 }}>
                           {worlds.map((w) => (
                             <button
@@ -2188,7 +2210,7 @@ export default function MomentsPage({
                     ) : null}
                     {friends.length > 0 ? (
                       <div style={{ marginTop: worlds.length > 0 ? 12 : 0 }}>
-                        <div style={{ fontSize: 11, letterSpacing: ".08em", color: T.ink3 }}>角色</div>
+                        <div style={{ fontSize: 11, letterSpacing: ".08em", color: C.ink3 }}>角色</div>
                         <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 8 }}>
                           {friends.map((f) => (
                             <button
@@ -2215,7 +2237,7 @@ export default function MomentsPage({
                 className="mp-act"
                 onClick={closeComposer}
                 style={{ flex: 1, height: 44, border: "none", borderRadius: 12,
-                         background: "rgba(20,19,24,.06)", color: T.ink2, fontFamily: SANS,
+                         background: "rgba(20,19,24,.06)", color: C.ink2, fontFamily: SANS,
                          fontSize: 13.5, letterSpacing: ".04em", cursor: "pointer" }}
               >
                 取消
@@ -2225,7 +2247,7 @@ export default function MomentsPage({
                 className="mp-act"
                 onClick={() => void publishSelf()}
                 style={{ flex: "1.6", height: 44, border: "none", borderRadius: 12,
-                         background: T.pink, color: "#FFF", fontFamily: SANS, fontSize: 13.5,
+                         background: C.accent, color: "#FFF", fontFamily: SANS, fontSize: 13.5,
                          fontWeight: 600, letterSpacing: ".04em", cursor: "pointer", display: "flex",
                          alignItems: "center", justifyContent: "center", gap: 6 }}
               >
@@ -2258,7 +2280,7 @@ export default function MomentsPage({
             style={{
               width: "100%",
               maxWidth: 300,
-              background: T.card,
+              background: C.card,
               borderRadius: 18,
               padding: "20px 18px 16px",
               boxShadow: "0 18px 50px -20px rgba(20,19,24,.5)",
@@ -2266,10 +2288,10 @@ export default function MomentsPage({
             }}
           >
             <div style={{ fontSize: 14.5, fontWeight: 500, fontFamily: SERIF,
-                          letterSpacing: ".08em", color: T.ink, textAlign: "center" }}>
+                          letterSpacing: ".08em", color: C.ink, textAlign: "center" }}>
               删除这条动态？
             </div>
-            <div style={{ marginTop: 8, fontSize: 11.5, lineHeight: 1.6, color: T.ink3,
+            <div style={{ marginTop: 8, fontSize: 11.5, lineHeight: 1.6, color: C.ink3,
                           textAlign: "center" }}>
               删掉就没了，它底下的赞和评论也一起走。
             </div>
@@ -2279,7 +2301,7 @@ export default function MomentsPage({
                 className="mp-act"
                 onClick={() => setConfirmDelete(null)}
                 style={{ flex: 1, height: 38, border: "none", borderRadius: 12,
-                         background: "rgba(20,19,24,.06)", color: T.ink2, fontSize: 13,
+                         background: "rgba(20,19,24,.06)", color: C.ink2, fontSize: 13,
                          fontFamily: SANS, cursor: "pointer" }}
               >
                 取消
@@ -2321,7 +2343,7 @@ export default function MomentsPage({
               maxHeight: "calc(100% - 40px)",
               overflowY: "auto",
               overscrollBehavior: "none",
-              background: T.card,
+              background: C.card,
               borderTopLeftRadius: 20,
               borderTopRightRadius: 20,
               padding: "20px 18px calc(var(--safe-area-bottom, 0px) + 18px)",
@@ -2331,7 +2353,7 @@ export default function MomentsPage({
           >
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div style={{ fontSize: 15.5, fontWeight: 500, fontFamily: SERIF,
-                            letterSpacing: ".1em", color: T.ink }}>
+                            letterSpacing: ".1em", color: C.ink }}>
                 动态设置
               </div>
               <button
@@ -2340,7 +2362,7 @@ export default function MomentsPage({
                 onClick={() => setMomentSet(null)}
                 aria-label="关闭"
                 style={{ width: 30, height: 30, border: "none", borderRadius: 10,
-                         background: "rgba(20,19,24,.05)", color: T.ink2, display: "flex",
+                         background: "rgba(20,19,24,.05)", color: C.ink2, display: "flex",
                          alignItems: "center", justifyContent: "center", cursor: "pointer" }}
               >
                 <X size={15} strokeWidth={2} />
@@ -2353,7 +2375,7 @@ export default function MomentsPage({
               style={{ marginTop: 16, display: "flex", alignItems: "center",
                        justifyContent: "space-between" }}
             >
-              <span style={{ fontFamily: SANS, fontSize: 13.5, color: T.ink }}>配图自动生成</span>
+              <span style={{ fontFamily: SANS, fontSize: 13.5, color: C.ink }}>配图自动生成</span>
               <div
                 role="switch"
                 aria-checked={momentSet.autoImg}
@@ -2361,7 +2383,7 @@ export default function MomentsPage({
                 className="mp-act"
                 onClick={toggleAutoMyMomentImage}
                 style={{ width: 46, height: 27, borderRadius: 999,
-                         background: momentSet.autoImg ? T.pink : "rgba(20,19,24,.12)",
+                         background: momentSet.autoImg ? C.accent : "rgba(20,19,24,.12)",
                          position: "relative", transition: "background .2s", flex: "none",
                          cursor: "pointer" }}
               >
@@ -2373,7 +2395,7 @@ export default function MomentsPage({
               </div>
             </div>
 
-            <div style={{ marginTop: 8, fontSize: 11.5, lineHeight: 1.75, color: T.ink3,
+            <div style={{ marginTop: 8, fontSize: 11.5, lineHeight: 1.75, color: C.ink3,
                           letterSpacing: ".04em" }}>
               你发动态用「文字描述」当配图时：关着＝这段描述就当这张图；开着＝先交给生图接口画成真图再发。
             </div>
@@ -2385,9 +2407,9 @@ export default function MomentsPage({
               <>
                 <div style={{ marginTop: 14, display: "flex", alignItems: "center",
                               justifyContent: "space-between" }}>
-                  <span style={{ fontFamily: SANS, fontSize: 13.5, color: T.ink }}>配图接口</span>
+                  <span style={{ fontFamily: SANS, fontSize: 13.5, color: C.ink }}>配图接口</span>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 11.5, color: T.ink3, letterSpacing: ".04em",
+                    <span style={{ fontSize: 11.5, color: C.ink3, letterSpacing: ".04em",
                                    maxWidth: 148, overflow: "hidden", textOverflow: "ellipsis",
                                    whiteSpace: "nowrap" }}>
                       {momentSet.imgApi?.baseUrl?.trim()
@@ -2403,7 +2425,7 @@ export default function MomentsPage({
                         }
                         setImgApiEdit(!imgApiEdit);
                       }}
-                      style={{ fontFamily: SANS, fontSize: 12, color: T.pink,
+                      style={{ fontFamily: SANS, fontSize: 12, color: C.accent,
                                background: "none", border: "none", padding: "2px",
                                cursor: "pointer" }}
                     >
@@ -2414,11 +2436,11 @@ export default function MomentsPage({
 
                 {imgApiEdit ? (
                   <div style={{ marginTop: 10, padding: 12, borderRadius: 12,
-                                background: "rgba(255,247,249,.72)",
-                                border: "1px solid rgba(232,106,155,.16)" }}>
+                                background: "rgba(231,236,242,.5)",
+                                border: "1px solid rgba(90,115,145,.16)" }}>
                     {imgPresets.length ? (
                       <div style={{ marginBottom: 12 }}>
-                        <div style={{ fontSize: 11, color: T.ink3, marginBottom: 6,
+                        <div style={{ fontSize: 11, color: C.ink3, marginBottom: 6,
                                       letterSpacing: ".04em" }}>
                           设置里的图文预设
                         </div>
@@ -2436,8 +2458,8 @@ export default function MomentsPage({
                                 })
                               }
                               style={{ maxWidth: 150, fontFamily: SANS, fontSize: 12,
-                                       color: T.pink, background: "#fff",
-                                       border: "1px solid rgba(232,106,155,.3)",
+                                       color: C.accent, background: "#fff",
+                                       border: "1px solid rgba(90,115,145,.35)",
                                        borderRadius: 999, padding: "5px 11px",
                                        overflow: "hidden", textOverflow: "ellipsis",
                                        whiteSpace: "nowrap", cursor: "pointer" }}
@@ -2447,7 +2469,7 @@ export default function MomentsPage({
                           ))}
                         </div>
                         <div style={{ marginTop: 6, fontSize: 10.5, lineHeight: 1.6,
-                                      color: T.ink3, letterSpacing: ".04em" }}>
+                                      color: C.ink3, letterSpacing: ".04em" }}>
                           点一下把它的地址／密钥／模型填进来，再点「存下」。
                         </div>
                       </div>
@@ -2458,7 +2480,7 @@ export default function MomentsPage({
                       ["model", "模型", "如 gpt-image-1"],
                     ] as const).map(([key, label, ph]) => (
                       <div key={key} style={{ marginBottom: key === "model" ? 0 : 8 }}>
-                        <div style={{ fontSize: 11, color: T.ink3, marginBottom: 4,
+                        <div style={{ fontSize: 11, color: C.ink3, marginBottom: 4,
                                       letterSpacing: ".04em" }}>
                           {label}
                         </div>
@@ -2471,7 +2493,7 @@ export default function MomentsPage({
                           spellCheck={false}
                           autoComplete="off"
                           style={{ width: "100%", boxSizing: "border-box", fontFamily: SANS,
-                                   fontSize: 13, color: T.ink, background: "#fff",
+                                   fontSize: 13, color: C.ink, background: "#fff",
                                    border: "1px solid rgba(20,19,24,.12)", borderRadius: 9,
                                    padding: "9px 11px", outline: "none" }}
                         />
@@ -2494,7 +2516,7 @@ export default function MomentsPage({
                           type="button"
                           className="mp-act"
                           onClick={resetImgApi}
-                          style={{ fontFamily: SANS, fontSize: 12.5, color: T.ink3,
+                          style={{ fontFamily: SANS, fontSize: 12.5, color: C.ink3,
                                    background: "#fff", border: "1px solid rgba(20,19,24,.12)",
                                    borderRadius: 10, padding: "10px 12px", cursor: "pointer" }}
                         >
@@ -2505,7 +2527,7 @@ export default function MomentsPage({
                   </div>
                 ) : null}
 
-                <div style={{ marginTop: 8, fontSize: 11, lineHeight: 1.7, color: T.ink3,
+                <div style={{ marginTop: 8, fontSize: 11, lineHeight: 1.7, color: C.ink3,
                               letterSpacing: ".04em" }}>
                   不填就跟随主「图文 API」；想单独用一套，可以点上面的预设带过来，或自己填，
                   只在这一处生效——存下的是一份快照，设置那边再改也影响不到这里。
@@ -2554,7 +2576,7 @@ function MomentStamp({ iso }: { iso: string }) {
     fontFamily: "inherit",
     fontSize: 10,
     letterSpacing: ".08em",
-    color: T.ink3,
+    color: C.ink3,
     fontVariantNumeric: "tabular-nums",
   };
   if (!toggleable) return <span style={base}>{rel}</span>;
@@ -2576,7 +2598,7 @@ function CommentBody({ content }: { content: string }) {
     <>
       {parts.map((p, i) =>
         p.startsWith("@") ? (
-          <span key={i} style={{ color: T.pink }}>
+          <span key={i} style={{ color: C.accent }}>
             {p}
           </span>
         ) : (
@@ -2710,79 +2732,21 @@ function MomentItem({
   };
 
   return (
-    /* ── 一条动态的排法：**一张方卡，头像也在卡里**。
-         每一条是**一张编过排过的启事**：
-         白纸、一圈深色细线、四角几乎直角、里面按层级一层层排下来。
-         **圆是柔，方是编排**——这张卡之所以「不普通」，靠的不是形状多别致，
-         是它每一层都被安排过（标签 → 大标题 → 正文 → 细线 → 署名行 → 右下脚注）。
-         **封面的圆角和这里的圆角是两码事**：封面是那张圆的气泡（那是雾，不是纸）。
-         逻辑一行没动：生图、长按重生成、存图、标「重要」、描述卡、放大层全照旧。 ── */
+    /* ── 一条动态的排法（2026-10-13 换皮「雾蓝纸墨」，草稿定稿的**名录式**）：
+           撤掉「一张方卡」的框、顶晕、纸芯蓝边、柔影——条目直接站在纸上，
+           条与条之间只压一条**两端缩进的发丝线**（`.mp-feed > article + article::before`，
+           见页首样式块）。左列头像、右列名字 →（时间）→ 正文 → 相纸，
+           跟消息列表「戊」同一个骨架：**排的是名录，不是卡片**。
+           逻辑一行没动：生图、长按重生成、存图、标「重要」、描述卡、放大层全照旧。 ── */
     <article
       style={{
         position: "relative",
-        /* 卡**就长在 `article` 身上**（不另套一层 div）：一条动态＝一张卡。
-           头像从卡**外面**挪进卡**里面**——左右边距因此对称，不再为左边留那条
-           70px 的头像位。
-           `border` 用**深色实线**（`.42`）而不是白高光：靠**一条清楚的边**把卡「框」住
-           ——这是那张卡最要紧的一笔，撤了它就散了。
-           里头那条分割线只有 `.09`，跟这条差了四倍多，「框」和「里面的线」一眼分得开。
-           影子收得很轻：纸是**放在**页面上的，不是浮在页面上的（浮＝气泡那套，已撤）。
-
-           **卡上那点颜色**：顶上这一段淡粉晕**有来由**——它就是封面那层粉**落下来的那一截**
-           ——雾到卡这儿还没散完，往下自己化回白纸。所以它不是「贴上去的一条色带」，
-           是同一口气的延续。深色细线、四角、轻影一律不动——骨架还是那张「编过排过的卡」。
-
-           **怎么才不「脏」**：
-           ① **脏在哪**：上一层色若用了**两支**（封面的粉 ＋ 封面的香芋），粉紫叠在白纸上，
-              过渡那一段混出**灰紫**——像纸被抹了一下，不是被染了一下。所以**只用粉一支**，
-              `#F3DCE6` 那一支、浓度 `.34`，**只把卡顶那一小截染上一点色**，
-              到 70% 就干净地化没。**一支色不会脏，两支才会。**
-           ② **立体感**：参考图那种「下面垫一层色」**不照搬**（那又是一枚借来的零件），
-              要立体改用**纸叠纸**——卡里的相纸、卡里的白边都是「纸叠纸」，
-              来由说得出来。
-              ⚠︎ **往右下错开一块实色**那种垫子不算「用别种方式」，只换颜色也不行；
-              现在整块垫子已撤，立体感改做「纸的厚度」（见下面 `boxShadow` 那段）。 ── */
-        /* ── **卡里分两列**（2026-09-22 恩熙定的版）：左列＝**头像自己一列**，
-             右列＝名字 → 时间（以后的「分组」也排这儿）→ 正文 → 配图，
-             **全在头像右边的下方**（不再有东西落在头像底下）。
-             用 `grid` 而不是「把内容套进一个 flex 右列」：这样**每个块都留在原地**，
-             只需各自标一个 `gridColumn: 2`（一行的事，不用把整段往里缩一层）。
-             `minmax(0, 1fr)` 的那个 `0` 是**收缩许可**——写成 `1fr`，长名字／长正文
-             会把列顶宽、把卡撑破。
-             块与块的间距仍由各自的 `marginTop` 给（9／16／15／12），这里**不加 `rowGap`**；
-             底下的**分割线 ＋ 互动行**跨两列（`1 / -1`），还是一条**卡宽**的署名行。 ── */
         display: "grid",
-        gridTemplateColumns: "44px minmax(0, 1fr)",
-        columnGap: 11,
+        gridTemplateColumns: "38px minmax(0, 1fr)",
+        columnGap: 12,
         alignItems: "start",
         margin: "0 16px",
-        padding: "13px 15px 13px",
-        borderRadius: 3,
-        border: "1px solid rgba(20,19,24,.42)",
-        background:
-          /* 叠在最下面的是纯白 `#FFF`；上面那层是**封面那支粉**（`#F3DCE6`）的一小截，
-             到 70% 干净化没——卡的下半仍是干净白纸，正文压在上面最好读。
-             ⚠︎ 别再加第二支色，**两支一叠就会出灰紫，那就是「脏」**。
-
-             卡是**底**，底得是星绥本来的粉；要「大胆」的地方是**细节**，
-             不是这么大一块面。**大面守本分，细节上出手。** ── */
-          "linear-gradient(180deg," +
-          " rgba(243,220,230,.34) 0%," +
-          " rgba(243,220,230,.18) 32%," +
-          " rgba(255,255,255,0) 70%)," +
-          " #FFFFFF",
-        boxShadow:
-          /* ── **立体感＝「这张纸的厚度」，不做「垫在下面的一块色」。**
-               错位的那块实色撤掉，立体感改由两件事给：
-               ① `inset 0 -3px 0 rgba(201,222,240,.9)`——**卡内侧底沿一条蓝**：纸被切开看得到的
-                  **芯**。它是**厚度**，不是**影子**——厚度在卡**里面**，影子才在卡**外面**。
-                  而且**这一笔正好就是「在一点细节上面用不同的颜色」**：卡面守住本来的粉，
-                  那支蓝只在底下露 3px。**大胆不是把底换掉，是在边上点一笔。**
-               ② `0 14px 24px -18px rgba(58,96,140,.42)`——一道**压得很深的蓝调柔影**（不是实色块，
-                  没有边），把卡从页面上**托住**，但不「浮起来」（浮＝气泡那套，早撤了）。
-               ③ 那道 `0 1px 2px rgba(20,19,24,.04)` 贴着卡边收一下。
-               **别再往卡外面加错位的色块**——那是参考图的零件，不是星绥的。 ── */
-          "inset 0 -3px 0 rgba(201,222,240,.9), 0 1px 2px rgba(20,19,24,.04), 0 14px 24px -18px rgba(58,96,140,.42)",
+        padding: "15px 0 16px",
       }}
     >
       {/* ── 右上角那枚**小书签**：表示「这条标了重要」（标了的那条永远原文留在 TA 的记忆里）。
@@ -2811,17 +2775,17 @@ function MomentItem({
         style={{
           position: "absolute",
           top: 0,
-          /* `15`＝卡的左右内边距，书签右缘跟正文右缘站在同一条竖线上。 */
-          right: 15,
+          /* 名录式条目没有卡内边距了，书签右缘直接贴条目右沿。 */
+          right: 0,
           width: 19,
           height: 27,
           padding: 0,
           border: 0,
           background: "none",
           cursor: "pointer",
-          /* 影也跟着走淡的那一套：粉的用粉影，蓝的用蓝影。 */
+          /* 影跟着蓝调走。 */
           filter: item.pinnedByUser
-            ? "drop-shadow(0 3px 5px rgba(232,106,155,.30))"
+            ? "drop-shadow(0 3px 5px rgba(90,115,145,.30))"
             : "drop-shadow(0 2px 3px rgba(120,150,180,.28))",
         }}
       >
@@ -2833,9 +2797,9 @@ function MomentItem({
             width: "100%",
             height: "100%",
             clipPath: "polygon(0 0, 100% 0, 100% 100%, 50% 74%, 0 100%)",
-            /* 淡粉／淡蓝（见上面那条注释：色相分状态，两档都淡）。 */
-            background: item.pinnedByUser ? "#F8D7E5" : "#DCEAF8",
-            color: item.pinnedByUser ? T.pink : "#9DBBD6",
+            /* 淡蓝两档（色相分状态，两档都淡，跟雾蓝一页同族）。 */
+            background: item.pinnedByUser ? "#D6E4F2" : "#E9EFF5",
+            color: item.pinnedByUser ? C.accent : "#9DB2C4",
           }}
         >
           {/* `translateY(-3)`：星往 V 口上面挪一点，才落在书签的「正身」里，不压到那个缺口。
@@ -2843,7 +2807,7 @@ function MomentItem({
           <Star
             size={11}
             strokeWidth={1.9}
-            fill={item.pinnedByUser ? T.pink : "none"}
+            fill={item.pinnedByUser ? C.accent : "none"}
             style={{ transform: "translateY(-3px)" }}
           />
         </span>
@@ -2867,35 +2831,32 @@ function MomentItem({
           **看着就像跟名字隔了一整个头像**。
           头像自己是 `position: absolute`（不占布局），槽多高都不影响它 ⇒ **把高度摘掉**，
           第 1 行的行高交给名字决定，正文自然贴到名字底下，只余它自己那点 `marginTop`。 */}
-      <div style={{ position: "relative", width: 44 }}>
+      <div style={{ position: "relative", width: 38 }}>
         <div
           style={{
             position: "absolute",
-            /* ⚠︎ 这里**不能写 `inset: 1`**（2026-09-22 踩过）：槽不写高度之后是 0 高，
-               `inset` 是靠父级尺寸算出来的 ⇒ 头像跟着变成 0 高，**整个头像就没了**。
-               改成写死 42×42 ＋ `top/left: 1`——槽的 44 里四周各留 1px，
-               头像照样不占布局（槽多矮都不影响它）。 */
+            /* 槽不写高度（见上注），头像写死 36×36 挂在槽里，四周各留 1px 给描边。 */
             top: 1,
             left: 1,
-            width: 42,
-            height: 42,
-            borderRadius: "50%",
-            background: AVATAR_GRADIENT,
-            /* **框是一叠环 ＋ 一道影**（层次就从这儿来，别再挂小圆点）：
-               `1.5px #FFF` 里圈白（把头像从卡上托起来）
-               → `2.5px` 细粉（框线）
-               → `5px` 一圈更宽的淡粉晕（框往外散出去，头像因此「坐」进去）
-               → 底下一道柔影（往右下走一点，头像才离得开卡面）。
-               标了「重要」的那条，外圈换成实心主粉，比挂「★ 重要」字样更打眼。 */
-            boxShadow: item.pinnedByUser
-              ? `0 0 0 1.5px #FFF, 0 0 0 3px ${T.pink}, 0 0 0 5px rgba(232,106,155,.16), 0 3px 8px -4px rgba(232,106,155,.45)`
-              : "0 0 0 1.5px #FFF, 0 0 0 2.5px rgba(232,106,155,.42), 0 0 0 5px rgba(232,106,155,.12), 0 3px 8px -4px rgba(20,19,24,.32)",
+            width: 36,
+            height: 36,
+            /* 草稿 .av 同款：白底、圆角 12（方圆角，不是正圆）、一圈细白边＋淡影，
+               首字（无头像时）用宋体雾蓝。 */
+            borderRadius: 12,
+            background: "#FFF",
+            color: C.accent,
+            border: "1px solid rgba(255,255,255,.75)",
+            boxShadow:
+              (item.pinnedByUser
+                ? `0 0 0 2px ${C.accent}, `
+                : "") +
+              "0 1px 2px rgba(58,65,73,.07), inset 0 1px 0 rgba(255,255,255,.95)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            color: "#FFF",
-            fontSize: 15,
-            fontWeight: 700,
+            fontSize: 14,
+            fontWeight: 600,
+            fontFamily: SERIF,
             overflow: "hidden",
           }}
         >
@@ -2937,20 +2898,15 @@ function MomentItem({
                   名字是右列第一行，跟书签同处卡顶，不留位的话长名字会从书签底下穿过去。
                   ⚠︎ 我自己的那条没有书签，整列放开。 ── */
             maxWidth: item.isSelf ? "100%" : "calc(100% - 26px)",
-            /* ── **那块实心粉方块撤了**。
-                   那是从参考图的「粉标签条」上**搬来的零件**：印刷品里「标签用方块、正文用宋」
-                   是公用的语法，但在星绥这儿它只是**一张硬邦邦贴上去的纸**，
-                   名字本来就不该长得像一块分类标签。
-                   所以名字改回**一行字**：**宋体 ＋ 主粉**——名字的「重」不再靠一块底，靠
-                   **颜色与字体**。
-                   副标签那套（`.14em` 字距、无衬线）一并撤掉：字距回到正文同一档，它才读得像
-                   「名字」，不像「编号」。色号用主粉 `T.pink`（`#E86A9B`）——这是全页唯一一处粉字。
-                   粉是**这个 App 的色**，也是「名字」该有的分量。 ── */
+            /* ── **名录式的名号**（草稿 .m-enm 同款）：宋体、15/600、字距 .08em、
+                   **墨色**——名录里名字的分量靠**字号与字重**，颜色跟正文同一支墨，
+                   整页才像一册名录（雾蓝只点在按钮与细节上）。
+                   ⚠︎ 右端那 26px 还是给右上角小书签让的位。 ── */
             fontFamily: SERIF,
-            fontSize: 13,
-            fontWeight: 500,
-            letterSpacing: ".06em",
-            color: T.pink,
+            fontSize: 15,
+            fontWeight: 600,
+            letterSpacing: ".08em",
+            color: C.ink,
             whiteSpace: "nowrap",
             overflow: "hidden",
             textOverflow: "ellipsis",
@@ -2980,11 +2936,11 @@ function MomentItem({
                这里原本是 `9`，**减 3 → 6**——跟名字那次「往上一点点」同档，
                「一点点」就用 3 这个数当旋钮。嫌不够／多了，**只改这一个数**。 ── */
           marginTop: 6,
-          fontSize: 14.5,
+          fontSize: 15,
           fontFamily: SERIF,
-          lineHeight: 1.85,
+          lineHeight: 1.9,
           letterSpacing: ".01em",
-          color: T.ink,
+          color: C.ink,
           whiteSpace: "pre-line",
         }}
       >
@@ -2998,8 +2954,8 @@ function MomentItem({
           {item.tags.map((t) => (
             <span
               key={t}
-              style={{ padding: "2px 9px", borderRadius: 999, background: T.pinkSoft,
-                       color: T.pink, fontSize: 11, letterSpacing: ".02em" }}
+              style={{ padding: "2px 9px", borderRadius: 999, background: C.accentSoft,
+                       color: C.accent, fontSize: 11, letterSpacing: ".02em" }}
             >
               #{t}
             </span>
@@ -3034,7 +2990,7 @@ function MomentItem({
             marginTop: 16,
             width: "calc(100% - 20px)",
             padding: 7,
-            borderRadius: 3,
+            borderRadius: 10,
             background: "#FFF",
             boxShadow:
               "0 0 0 1px rgba(20,19,24,.06), 0 1px 0 rgba(20,19,24,.045), 0 14px 28px -16px rgba(20,19,24,.38)",
@@ -3060,7 +3016,7 @@ function MomentItem({
               width: "100%",
               padding: 0,
               border: "none",
-              borderRadius: 2,
+              borderRadius: 8,
               background: "rgba(20,19,24,.03)",
               overflow: "hidden",
               cursor: "zoom-in",
@@ -3112,7 +3068,7 @@ function MomentItem({
             marginTop: 16,
             width: "calc(100% - 20px)",
             padding: 7,
-            borderRadius: 3,
+            borderRadius: 10,
             background: "#FFF",
             boxShadow:
               "0 0 0 1px rgba(20,19,24,.06), 0 1px 0 rgba(20,19,24,.045), 0 14px 28px -16px rgba(20,19,24,.38)",
@@ -3122,13 +3078,13 @@ function MomentItem({
             style={{
               padding: "13px 12px",
               minHeight: 96,
-              background: "rgba(255,247,249,.92)",
+              background: "rgba(231,236,242,.5)",
               border: "1px dashed rgba(20,19,24,.14)",
-              borderRadius: 2,
+              borderRadius: 8,
               fontSize: 13.5,
               lineHeight: 1.85,
               letterSpacing: ".01em",
-              color: T.ink2,
+              color: C.ink2,
               fontFamily: SANS,
               whiteSpace: "pre-line",
               boxSizing: "border-box",
@@ -3161,8 +3117,8 @@ function MomentItem({
               padding: "14px 13px 12px",
               textAlign: "left",
               border: "1px dashed rgba(20,19,24,.14)",
-              borderRadius: 3,
-              background: "rgba(255,247,249,.92)",
+              borderRadius: 10,
+              background: "rgba(231,236,242,.5)",
               cursor: generating ? "not-allowed" : "pointer",
               fontFamily: SANS,
             }}
@@ -3171,11 +3127,11 @@ function MomentItem({
               style={{
                 display: "block",
                 paddingLeft: 10,
-                borderLeft: "2px solid rgba(232,106,155,.3)",
+                borderLeft: "2px solid rgba(90,115,145,.35)",
                 fontSize: 13.5,
                 lineHeight: 1.85,
                 letterSpacing: ".01em",
-                color: T.ink2,
+                color: C.ink2,
                 whiteSpace: "pre-line",
               }}
             >
@@ -3189,7 +3145,7 @@ function MomentItem({
                 marginTop: 9,
                 fontSize: 10,
                 letterSpacing: ".06em",
-                color: T.ink3,
+                color: C.ink3,
               }}
             >
               {generating ? (
@@ -3210,11 +3166,9 @@ function MomentItem({
         <MomentStamp iso={item.createdAt} />
       </div>
 
-      {/* ── 细分割线：照那张卡——正文（或图／描述框）与「署名行」之间压一条
-            极淡的线（`T.line` = `rgba(20,19,24,.09)`）。它跟卡边（`.42`）**差了四倍多**，
-             一眼就分得清「框」和「里面的线」——**不要**那种「两条一样粗一样色」的线。
-             这一条只干一件事：把**上面（TA 说的话）**和**下面（这一行的功能）**断开。 ── */}
-      <div style={{ gridColumn: "1 / -1", marginTop: 15, height: 1, background: T.line }} />
+      {/* ── 名录式的条目不另压条目内的署名线（2026-10-13 换皮）：
+            条与条之间的那条发丝线由样式块 `.mp-feed > article + article::before` 给，
+            条目内部「内容」与「互动行」之间就不再多一条线——留白自己会说。 ── */}
 
       {/* ── 互动行＝这张卡的**署名行**：三枚极简图标（赞／评／转发）。
              赞／评从 2026-10-05 起接真数据：心＝我赞／取消赞（赞了实心变粉）；
@@ -3240,7 +3194,7 @@ function MomentItem({
             className="mp-act"
             aria-label={likedByMe ? "取消赞" : "点赞"}
             onClick={() => onToggleLike(item)}
-            style={{ ...ICON_BTN, color: likedByMe ? T.pink : T.ink3 }}
+            style={{ ...ICON_BTN, color: likedByMe ? C.accent : C.ink3 }}
           >
             <Heart size={16} strokeWidth={1.7} fill={likedByMe ? "currentColor" : "none"} />
           </button>
@@ -3252,7 +3206,7 @@ function MomentItem({
               setComposing((v) => !v);
               setAtOpen(false);
             }}
-            style={{ ...ICON_BTN, color: composing ? T.pink : T.ink3 }}
+            style={{ ...ICON_BTN, color: composing ? C.accent : C.ink3 }}
           >
             <MessageCircle size={16} strokeWidth={1.7} />
           </button>
@@ -3271,7 +3225,7 @@ function MomentItem({
         {item.isSelf ? (
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10.5,
-                           letterSpacing: ".04em", color: T.ink3 }}>
+                           letterSpacing: ".04em", color: C.ink3 }}>
               {item.visibility === "private" ? (
                 <Lock size={11} strokeWidth={1.8} />
               ) : item.visibility === "partial" ? (
@@ -3305,9 +3259,9 @@ function MomentItem({
         <div style={{ gridColumn: "1 / -1", marginTop: 10 }}>
           {replyTo ? (
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 7,
-                          fontSize: 11, color: T.ink3, letterSpacing: ".03em" }}>
+                          fontSize: 11, color: C.ink3, letterSpacing: ".03em" }}>
               <span>
-                正在回复 <span style={{ color: T.ink2 }}>{replyTo.byName}</span>
+                正在回复 <span style={{ color: C.ink2 }}>{replyTo.byName}</span>
               </span>
               <button
                 type="button"
@@ -3324,7 +3278,7 @@ function MomentItem({
           {atOpen ? (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
               {friends.length === 0 ? (
-                <span style={{ fontSize: 11.5, color: T.ink3 }}>还没有能 @ 的人</span>
+                <span style={{ fontSize: 11.5, color: C.ink3 }}>还没有能 @ 的人</span>
               ) : (
                 friends.map((f) => (
                   <button
@@ -3344,7 +3298,7 @@ function MomentItem({
               type="button"
               aria-label="提到某人"
               onClick={() => setAtOpen((v) => !v)}
-              style={{ ...ICON_BTN, color: atOpen ? T.pink : T.ink3 }}
+              style={{ ...ICON_BTN, color: atOpen ? C.accent : C.ink3 }}
             >
               <span style={{ fontFamily: SANS, fontSize: 15, fontWeight: 600 }}>@</span>
             </button>
@@ -3378,7 +3332,7 @@ function MomentItem({
             gridColumn: "1 / -1",
             marginTop: 10,
             padding: "10px 12px",
-            borderRadius: 3,
+            borderRadius: 10,
             background: "rgba(20,19,24,.033)",
           }}
         >
@@ -3387,11 +3341,11 @@ function MomentItem({
               <Heart
                 size={12}
                 strokeWidth={1.8}
-                fill={T.pink}
-                color={T.pink}
+                fill={C.accent}
+                color={C.accent}
                 style={{ marginTop: 3, flexShrink: 0 }}
               />
-              <span style={{ fontSize: 12.5, lineHeight: 1.7, color: T.ink2,
+              <span style={{ fontSize: 12.5, lineHeight: 1.7, color: C.ink2,
                              letterSpacing: ".01em", minWidth: 0, wordBreak: "break-word" }}>
                 {likes.map((l) => l.byName).join("，")}
               </span>
@@ -3399,17 +3353,17 @@ function MomentItem({
           ) : null}
 
           {likes.length > 0 && comments.length > 0 ? (
-            <div style={{ height: 1, background: T.line, margin: "8px 0" }} />
+            <div style={{ height: 1, background: C.line, margin: "8px 0" }} />
           ) : null}
 
           {rootComments.map((c) => {
             const replies = comments.filter((r) => r.replyToId === c.id);
             return (
               <div key={c.id} style={{ marginTop: 4 }}>
-                <div style={{ fontSize: 12.5, lineHeight: 1.75, color: T.ink2,
+                <div style={{ fontSize: 12.5, lineHeight: 1.75, color: C.ink2,
                               letterSpacing: ".01em", wordBreak: "break-word" }}>
-                  <span style={{ color: T.ink, fontWeight: 500 }}>{c.byName}</span>
-                  <span style={{ color: T.ink3 }}>：</span>
+                  <span style={{ color: C.ink, fontWeight: 500 }}>{c.byName}</span>
+                  <span style={{ color: C.ink3 }}>：</span>
                   <CommentBody content={c.content} />
                   <button type="button" onClick={() => startReply(c)} style={COMMENT_REPLY_BTN}>
                     回复
@@ -3417,10 +3371,10 @@ function MomentItem({
                 </div>
                 {replies.map((r) => (
                   <div key={r.id} style={{ marginLeft: 14, marginTop: 3, fontSize: 12.5,
-                                           lineHeight: 1.75, color: T.ink2,
+                                           lineHeight: 1.75, color: C.ink2,
                                            letterSpacing: ".01em", wordBreak: "break-word" }}>
-                    <span style={{ color: T.ink, fontWeight: 500 }}>{r.byName}</span>
-                    <span style={{ color: T.ink3 }}>：</span>
+                    <span style={{ color: C.ink, fontWeight: 500 }}>{r.byName}</span>
+                    <span style={{ color: C.ink3 }}>：</span>
                     <CommentBody content={r.content} />
                     <button type="button" onClick={() => startReply(r)} style={COMMENT_REPLY_BTN}>
                       回复
