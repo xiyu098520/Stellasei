@@ -46,12 +46,9 @@ import {
   Lock,
   MessageCircle,
   Plus,
-  Share2,
   SlidersVertical,
   Smartphone,
   SquarePen,
-  Star,
-  Trash2,
   Type as TypeIcon,
   Users,
   X,
@@ -63,7 +60,7 @@ import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { SANS, SERIF, T, momentFullTime, momentTime } from "./shared";
+import { LAT, SANS, SERIF, T, momentFullTime, momentTime } from "./shared";
 import type { ArchiveCategory, ArchiveEntry } from "@/types/contact";
 import type {
   ApiPresetEntry,
@@ -164,7 +161,7 @@ const C = {
 /** 封面里的字色：封面默认是蓝紫天空底，白字压不住，一律用**墨色**（跟纸上的字同一支）。 */
 const COVER_INK = "#3A4149";
 
-/** 互动那两枚图标按钮的底样（心／话共用）：无底、无框，就一枚图标。 */
+/** 纯图标按钮的底样（@ 那枚等）：无底、无框，就一枚图标。 */
 const ICON_BTN: CSSProperties = {
   border: "none",
   background: "transparent",
@@ -174,6 +171,57 @@ const ICON_BTN: CSSProperties = {
   justifyContent: "center",
   color: C.ink3,
   cursor: "pointer",
+};
+
+/** 条目底部那两枚**带字**的互动键（`LIKE` / `COMMENT`，草稿 `.m-a` 同款）：
+    等宽小字、全大写、字距拉开，图标 15px，靠左站一排。`on` ＝ 选中／展开态走主雾蓝。 */
+const ACT_BTN = (on: boolean): CSSProperties => ({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  border: "none",
+  background: "transparent",
+  padding: 0,
+  cursor: "pointer",
+  fontFamily: LAT,
+  fontSize: 9.5,
+  letterSpacing: ".14em",
+  textTransform: "uppercase",
+  color: on ? C.accent : C.ink2,
+});
+
+/** 条目右上角那枚「⋯」的底样（草稿 `.m-more`，20×20 只装三颗点）。 */
+const MORE_BTN: CSSProperties = {
+  flex: "none",
+  width: 20,
+  height: 20,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  border: "none",
+  background: "transparent",
+  padding: 0,
+  color: C.ink3,
+  cursor: "pointer",
+  fontFamily: LAT,
+  fontSize: 15,
+  lineHeight: 1,
+};
+
+/** 「⋯」点开后那枚小菜单里的一行（标重要／取消重要／删除）。 */
+const MENU_ITEM: CSSProperties = {
+  display: "block",
+  width: "100%",
+  textAlign: "left",
+  border: "none",
+  background: "transparent",
+  padding: "8px 14px",
+  fontFamily: SANS,
+  fontSize: 12.5,
+  letterSpacing: ".04em",
+  color: C.ink,
+  cursor: "pointer",
+  whiteSpace: "nowrap",
 };
 
 /** 评论输入框（评论区里内联那一只）：一枚药丸，跟聊天输入框同一口气。 */
@@ -1065,11 +1113,13 @@ export default function MomentsPage({
                  ② 底下化进页底：到 70% 起往纸色 `rgba(250,249,246,.94)` 化，
                     「封面到哪儿为止」是**化开**的，不是切一刀；
                  ③ 一抹柔光把暮蓝底子撑出层次。
-                 底子从浅蓝改成**暮蓝**（draft 的夜空照口吻）：底色一深，顶上白字才立得住。 */
-              "linear-gradient(180deg, rgba(20,19,24,.52) 0%, rgba(20,19,24,.10) 20%, rgba(20,19,24,0) 38%)," +
+                 底子从**暮蓝深色**调浅成**清晨天光**那种浅蓝灰（2026-10-13 恩熙：
+                 「封面这个颜色调浅一点，自然一点」）：底色一浅，顶上白字就靠①那层
+                 压暗＋字上的投影一起托住（压暗因此从 .52 收到 .40）。 */
+              "linear-gradient(180deg, rgba(20,19,24,.40) 0%, rgba(20,19,24,.08) 20%, rgba(20,19,24,0) 40%)," +
               "linear-gradient(to bottom, rgba(250,249,246,0) 70%, rgba(250,249,246,.94) 100%)," +
-              "radial-gradient(150% 110% at 82% 4%, rgba(255,255,255,.34) 0%, rgba(255,255,255,0) 58%)," +
-              "linear-gradient(158deg,#2C3547 0%,#39465C 46%,#4C5A72 100%)",
+              "radial-gradient(150% 110% at 82% 4%, rgba(255,255,255,.45) 0%, rgba(255,255,255,0) 58%)," +
+              "linear-gradient(162deg,#AABECF 0%,#C3D0DC 48%,#DFE6EC 100%)",
             /* 通铺的一整面**不再「浮起来」**：三道白内边与那道深投影全撤。 */
             boxShadow: "none",
             /* 注意：**不能** `overflow: hidden`——下面那块身份区要**跨出封面下沿**去
@@ -1077,6 +1127,9 @@ export default function MomentsPage({
                本来也不溢出，剪不剪都一样。 */
             overflow: "visible",
           }}
+          /* 2026-10-13 照草稿：**整面封面就是那枚「换封面」按钮**——原先左下常显的
+             「换封面」药丸撤了，点封面上任意一处即开系统选图（草稿同款手势）。 */
+          onClick={() => coverInput.current?.click()}
         >
           {/* 换过封面就走真照片：图**铺满整面**（`object-fit: cover`），
               上面压两层（跟默认底同一套「上深下浅」）——
@@ -1148,6 +1201,8 @@ export default function MomentsPage({
               flexDirection: "column",
               alignItems: "flex-end",
             }}
+            /* 身份块骑在封面上：点它别冒泡到封面那枚「换封面」手势上去。 */
+            onClick={(e) => e.stopPropagation()}
           >
             <div
               style={{
@@ -1225,10 +1280,10 @@ export default function MomentsPage({
             ) : null}
           </div>
 
-          {/* 「换封面」：占左下角，跟右下的身份卡一左一右。
-              点它开系统选图（藏起来的 `<input type="file">`，iOS 只认用户手势触发的
-              `.click()`），选完压图进仓库、引用串写进设定。换过之后旁边多一枚「还原」——
-              **一旦能换就得能换回来**，不然封面成了单行道。 */}
+          {/* 「换封面」：2026-10-13 照草稿——入口搬到**封面自己**身上（点封面即选图，
+              见封面那枚 `onClick`）；这儿只留**换过之后**才冒出来的那枚「还原」。
+              藏起来的 `<input type="file">`（iOS 只认用户手势触发的 `.click()`），
+              选完压图进仓库、引用串写进设定——**一旦能换就得能换回来**。 */}
           <input
             ref={coverInput}
             type="file"
@@ -1241,36 +1296,30 @@ export default function MomentsPage({
               if (file) void pickCover(file);
             }}
           />
-          <div
-            style={{
-              position: "absolute",
-              left: 18,
-              bottom: 30,
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-            }}
-          >
-            <button
-              type="button"
-              className="mp-act"
-              onClick={() => coverInput.current?.click()}
-              style={COVER_PILL}
+          {coverAsset ? (
+            <div
+              style={{
+                position: "absolute",
+                left: 18,
+                bottom: 30,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+              }}
             >
-              <ImageIcon size={12} strokeWidth={1.9} />
-              换封面
-            </button>
-            {coverAsset ? (
               <button
                 type="button"
                 className="mp-act"
-                onClick={() => void clearCover()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void clearCover();
+                }}
                 style={{ ...COVER_PILL, padding: "6px 12px", background: "rgba(255,255,255,.42)" }}
               >
                 还原
               </button>
-            ) : null}
-          </div>
+            </div>
+          ) : null}
         </div>
 
         {/* ── 信息流：**一条一张方卡**（每一条＝**一张白纸方卡**，深色细线框住）。
@@ -1315,7 +1364,6 @@ export default function MomentsPage({
                 key={item.uid}
                 item={item}
                 generating={isMomentImageGenerating(item.conversationId, item.momentId)}
-                showToast={showToast}
                 onOpenImage={(src, ref) => setViewer({ src, ref })}
                 onEditPrompt={(target) => {
                   /* 自动生图开着 → 直接画；关着 → 先摊描述卡看／改（看得见、改得动，确认了才花钱）。
@@ -1485,7 +1533,7 @@ export default function MomentsPage({
               whiteSpace: "nowrap",
             }}
           >
-            星绥动态
+            动态
           </div>
           <div
             style={{
@@ -1501,7 +1549,7 @@ export default function MomentsPage({
               whiteSpace: "nowrap",
             }}
           >
-            STELLASEI MOMENTS
+            Moments
           </div>
         </div>
 
@@ -2633,7 +2681,6 @@ function CommentBody({ content }: { content: string }) {
 function MomentItem({
   item,
   generating,
-  showToast,
   onOpenImage,
   onEditPrompt,
   onTogglePin,
@@ -2645,8 +2692,6 @@ function MomentItem({
   item: FeedItem;
   /** 这条的配图正在画（按钮转圈／图上盖一层；不给重复点）。 */
   generating: boolean;
-  /** 条目里那枚「转发」还没有真数据，点了给个提示。 */
-  showToast: (msg: string) => void;
   /** 点配图 → 放大预览（保存图片在那一层里）。 */
   onOpenImage: (src: string, ref?: string) => void;
   /** 要（重新）画这张配图 → 由上层分流（自动生图开＝直接跑；关＝先摊描述卡看／改）。 */
@@ -2683,6 +2728,18 @@ function MomentItem({
   const [mentionIds, setMentionIds] = useState<string[]>([]);
   const [replyTo, setReplyTo] = useState<MomentComment | null>(null);
   const [atOpen, setAtOpen] = useState(false);
+
+  /* 「⋯」菜单：开没开 ＋ 一枚 ref（点菜单外面就自动收起）。 */
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [menuOpen]);
 
   const startReply = (c: MomentComment) => {
     setComposing(true);
@@ -2770,70 +2827,10 @@ function MomentItem({
         padding: "15px 0 16px",
       }}
     >
-      {/* ── 右上角那枚**小书签**：表示「这条标了重要」（标了的那条永远原文留在 TA 的记忆里）。
-             恩熙 2026-09-22 定的：「**然后我觉得这个重要应该要放在卡片的右上角，
-             然后给它做成像一种 小书签的那种感觉吧。**」
-             ⇒ 原先压在互动行右端的那枚「重要」标签条**搬到这儿**，并做成书签形：
-             **下缘咬掉一个 V 口**（`clipPath`，真书签就是那个样子）。
-             ── **颜色（恩熙 2026-09-22：「可不可以改成粉色的？也是淡淡的粉，
-                或是淡淡的蓝这种」）**：整片的调子跟卡走**淡**的那一套——
-                **没标＝淡蓝**（跟卡底下那道淡蓝的纸边同族，安静、不出声），
-                **标了＝淡粉**（粉是这页唯一的「重要」色）。
-                两档都淡，靠**色相**分状态，不靠深浅硬碰。 ──
-             标了＝淡粉底 ＋ 实心主粉星；没标＝淡蓝底 ＋ 淡蓝空心星，
-             位置却始终在这——所以它**既是显示、也是开关**（点一下标／取消标），
-             **不必再来第二处**替它说话。
-             ⚠︎ **整片夹在卡里、不探出卡外**：卡与卡挨得近，探出去会压到上一张。
-             ⚠︎ 影子挂在**外层**：`filter` 在 `clipPath` **之前**生效，
-             同一层写会被剪掉（V 口那儿会缺一块影）。 ── */}
-      {/* 小书签＝「标重要」，只对 TA 的动态适用；我自己的那条不摆（2026-10-04）。 */}
-      {item.isSelf ? null : (
-      <button
-        type="button"
-        aria-label={item.pinnedByUser ? "取消重要" : "标为重要"}
-        aria-pressed={item.pinnedByUser ? true : false}
-        onClick={() => onTogglePin(item)}
-        style={{
-          position: "absolute",
-          top: 0,
-          /* 名录式条目没有卡内边距了，书签右缘直接贴条目右沿。 */
-          right: 0,
-          width: 19,
-          height: 27,
-          padding: 0,
-          border: 0,
-          background: "none",
-          cursor: "pointer",
-          /* 影跟着蓝调走。 */
-          filter: item.pinnedByUser
-            ? "drop-shadow(0 3px 5px rgba(90,115,145,.30))"
-            : "drop-shadow(0 2px 3px rgba(120,150,180,.28))",
-        }}
-      >
-        <span
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: "100%",
-            height: "100%",
-            clipPath: "polygon(0 0, 100% 0, 100% 100%, 50% 74%, 0 100%)",
-            /* 淡蓝两档（色相分状态，两档都淡，跟雾蓝一页同族）。 */
-            background: item.pinnedByUser ? "#D6E4F2" : "#E9EFF5",
-            color: item.pinnedByUser ? C.accent : "#9DB2C4",
-          }}
-        >
-          {/* `translateY(-3)`：星往 V 口上面挪一点，才落在书签的「正身」里，不压到那个缺口。
-              标了＝实心（`fill` 跟着 `color` 走），没标＝空心（只留那圈淡蓝描边）。 */}
-          <Star
-            size={11}
-            strokeWidth={1.9}
-            fill={item.pinnedByUser ? C.accent : "none"}
-            style={{ transform: "translateY(-3px)" }}
-          />
-        </span>
-      </button>
-      )}
+      {/* ── 2026-10-13 换皮：原卡右上角那枚**小书签**（标重要）已撤。
+             草稿 `minimal-style-samples.html` 的条目右上角只有一枚「⋯」，
+             「标重要／取消重要」收进「⋯」点开的小菜单里（见右列那枚 `MORE_BTN`），
+             同一件事不再说两遍。 ── */}
       {/* ── 左列＝**头像自己一列**（这一格只装头像这一件事）。
              ⚠︎ 2026-09-22 恩熙定的版：头像**自成左列**，名字、时间、正文、配图
              **全在它右边的下方**——不再有东西落在头像**底下**，头像也不再跟名字挤一行。
@@ -2893,52 +2890,126 @@ function MomentItem({
           )}
         </div>
       </div>
-      {/* ── 右列（`gridColumn: 2`）：**名字打头**，往下是正文、配图／描述框、时间，
-             全在头像右边的下方。
-             这一格留成 `flex` 竖列，是给**以后的「分组」**备的位子（恩熙：「名字下方应该是
-             发布时间，或者是之后要做的分组」）——分组来了就摆在名字底下，不用再动结构。
-             ⚠︎ 时间**已经不在这列了**：2026-09-22 恩熙要的是微信那种摆法——落在**内容底下**
-             （纯文字在文字下、有图在图下），见卡末那枚 `MomentStamp`。
-             ⚠︎ 这里**不再有 `top` 那种微调**：名字原先是跟头像同一行、垂直居中，
-             才需要抬一点点；现在它是右列的**第一行**，位子由列自己的对齐定。 ── */}
+      {/* ── 右列（`gridColumn: 2`）：照草稿 `.m-eh` 那一行排法——
+             左边一摞是 **名字 ＋ 时间**（`.ehx`：名字宋体 15/600 字距 .08em，
+             时间等宽 9.5 垫在名字底下），
+             右端依次是 **可见范围**（`.m-vis`，只有我发的才有）与 **「⋯」**（`.m-more`）。
+             「⋯」点开＝小菜单：我发的 → 删除；TA 的 → 标重要／取消重要。 ── */}
       <div
         style={{
           gridColumn: 2,
           display: "flex",
-          flexDirection: "column",
           alignItems: "flex-start",
-          gap: 2,
+          gap: 10,
           minWidth: 0,
         }}
       >
-        <span
-          style={{
-            /* `maxWidth`：名字要能在列宽里**省略号收尾**，
-               宁可截断，也不能把右列顶宽、把卡撑破。
-               ── **减去的 26px 是给右上角那枚小书签让的位**（书签宽 19 ＋ 一点点缝）：
-                  名字是右列第一行，跟书签同处卡顶，不留位的话长名字会从书签底下穿过去。
-                  ⚠︎ 我自己的那条没有书签，整列放开。 ── */
-            maxWidth: item.isSelf ? "100%" : "calc(100% - 26px)",
-            /* ── **名录式的名号**（草稿 .m-enm 同款）：宋体、15/600、字距 .08em、
-                   **墨色**——名录里名字的分量靠**字号与字重**，颜色跟正文同一支墨，
-                   整页才像一册名录（雾蓝只点在按钮与细节上）。
-                   ⚠︎ 右端那 26px 还是给右上角小书签让的位。 ── */
-            fontFamily: SERIF,
-            fontSize: 15,
-            fontWeight: 600,
-            letterSpacing: ".08em",
-            color: C.ink,
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          }}
-        >
-          {item.name}
-        </span>
-        {/* ⚠︎ 名字底下**暂时是空的**：时间搬去内容底下了（见卡末那枚 `MomentStamp`，
-             恩熙 2026-09-22：「**像微信那样……纯文字就在纯文字底下，有图片就在图片底下**」）。
-             这一列留着，是给**以后的「分组」**排的（她的原话：「名字下方应该是发布时间，
-             或者是之后要做的分组」）——分组来了就摆这儿，不用再动结构。 */}
+        {/* `.ehx`：名字 ＋ 时间竖成一摞，占满中间、能省略号收尾。 */}
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
+          <span
+            style={{
+              /* ── **名录式的名号**（草稿 .m-enm 同款）：宋体、15/600、字距 .08em、
+                     **墨色**——名录里名字的分量靠字号与字重，颜色跟正文同一支墨。 ── */
+              fontFamily: SERIF,
+              fontSize: 15,
+              fontWeight: 600,
+              letterSpacing: ".08em",
+              color: C.ink,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {item.name}
+          </span>
+          {/* 时间回到名字底下（草稿 `.m-etime` 的位子）。 */}
+          <MomentStamp iso={item.createdAt} />
+        </div>
+
+        {/* `.m-vis`：可见范围（只有我发的才有）。 */}
+        {item.isSelf ? (
+          <span
+            style={{
+              flex: "none",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+              fontSize: 10.5,
+              letterSpacing: ".04em",
+              color: C.ink3,
+            }}
+          >
+            {item.visibility === "private" ? (
+              <Lock size={13} strokeWidth={1.6} />
+            ) : item.visibility === "partial" ? (
+              <Users size={13} strokeWidth={1.6} />
+            ) : (
+              <Globe size={13} strokeWidth={1.6} />
+            )}
+            {item.visibility === "private"
+              ? "仅自己可见"
+              : item.visibility === "partial"
+                ? `部分可见 · ${item.visibleNames?.length ?? 0} 人`
+                : "公开"}
+          </span>
+        ) : null}
+
+        {/* `.m-more`：一枚「⋯」，点开＝小菜单（我发的 → 删除；TA 的 → 标重要／取消重要）。 */}
+        <div style={{ position: "relative", flex: "none" }} ref={menuRef}>
+          <button
+            type="button"
+            aria-label="更多"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen ? true : false}
+            onClick={() => setMenuOpen((v) => !v)}
+            style={{ ...MORE_BTN, color: menuOpen ? C.accent : C.ink3 }}
+          >
+            ⋯
+          </button>
+          {menuOpen ? (
+            <div
+              role="menu"
+              style={{
+                position: "absolute",
+                top: "calc(100% + 6px)",
+                right: 0,
+                zIndex: 30,
+                padding: "6px 0",
+                minWidth: 108,
+                borderRadius: 10,
+                background: "#FFF",
+                boxShadow:
+                  "0 0 0 1px rgba(58,65,73,.08), 0 10px 28px -12px rgba(58,65,73,.35)",
+              }}
+            >
+              {item.isSelf ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onDelete(item);
+                  }}
+                  style={MENU_ITEM}
+                >
+                  删除
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onTogglePin(item);
+                  }}
+                  style={MENU_ITEM}
+                >
+                  {item.pinnedByUser ? "取消重要" : "标为重要"}
+                </button>
+              )}
+            </div>
+          ) : null}
+        </div>
       </div>
 
       {/* 正文文字＝整页的**大标题**：字是全页最大，**换成宋体**——那张卡
@@ -3178,99 +3249,53 @@ function MomentItem({
         </div>
       ) : null}
 
-      {/* ── 时间戳：**落在内容的末尾**（微信那种摆法，恩熙 2026-09-22 定的）——
-             纯文字那条就在正文底下；有图的那条落在图（或画面描述框）底下；
-             总之它是「这条内容」的最后一行，**不再待在名字底下**。
-             `gridColumn: 2`：跟正文、相纸同一条竖线起（还在头像右边那一列里）；
-             它自己**不占卡宽**——底下那条分割线与互动行，才是全宽的署名行。 ── */}
-      <div style={{ gridColumn: 2, marginTop: 12 }}>
-        <MomentStamp iso={item.createdAt} />
-      </div>
+      {/* ── 2026-10-13 换皮：原「时间戳落在内容末尾」那枚已撤——
+             草稿 `minimal-style-samples.html` 把时间摆在**名字底下**（`.m-etime`），
+             见右列 `.ehx` 里那枚 `MomentStamp`。 ── */}
 
       {/* ── 名录式的条目不另压条目内的署名线（2026-10-13 换皮）：
             条与条之间的那条发丝线由样式块 `.mp-feed > article + article::before` 给，
             条目内部「内容」与「互动行」之间就不再多一条线——留白自己会说。 ── */}
 
-      {/* ── 互动行＝这张卡的**署名行**：三枚极简图标（赞／评／转发）。
-             赞／评从 2026-10-05 起接真数据：心＝我赞／取消赞（赞了实心变粉）；
-             话＝摊开评论框（平铺 ＋ 二级回复）。转发仍是占位。
-             ⚠︎ 这一行**原先还有第四样**——右端那枚「重要」标签条。
-             2026-09-22 恩熙把它**搬到卡的右上角、做成了小书签**（见卡顶那枚，
-             点它就是标／取消标）⇒ 它在这儿**撤掉**，同一件事不再说两遍。 ── */}
+      {/* ── 互动行＝这张卡的**署名行**：照草稿 `.m-acts`——只有两枚**带字**的键：
+             `Like`（心 ＋ 字）与 `Comment`（话 ＋ 字）。
+             转发那枚（草稿里没有），以及右端旧有的「可见范围 ＋ 删除」，都收走了：
+             可见范围挪进右列名字行（`.m-vis`），删除收进「⋯」菜单（`.m-more`）。 ── */}
       <div
         style={{
-          /* **跨两列**（`1 / -1`）：署名行是**卡宽**的，不跟正文一起缩进——
-             上面是「TA 说的话」（右列、跟着头像缩进），下面是「卡自己的功能」，
-             两者靠这条全宽的线 ＋ 全宽的行分开。 */
+          /* **跨两列**（`1 / -1`）：署名行是**卡宽**的，不跟正文一起缩进。 */
           gridColumn: "1 / -1",
-          marginTop: 12,
+          marginTop: 13,
           display: "flex",
           alignItems: "center",
-          justifyContent: "space-between",
+          gap: 22,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-          <button
-            type="button"
-            className="mp-act"
-            aria-label={likedByMe ? "取消赞" : "点赞"}
-            onClick={() => onToggleLike(item)}
-            style={{ ...ICON_BTN, color: likedByMe ? C.accent : C.ink3 }}
-          >
-            <Heart size={16} strokeWidth={1.7} fill={likedByMe ? "currentColor" : "none"} />
-          </button>
-          <button
-            type="button"
-            className="mp-act"
-            aria-label="评论"
-            onClick={() => {
-              setComposing((v) => !v);
-              setAtOpen(false);
-            }}
-            style={{ ...ICON_BTN, color: composing ? C.accent : C.ink3 }}
-          >
-            <MessageCircle size={16} strokeWidth={1.7} />
-          </button>
-          <button
-            type="button"
-            className="mp-act"
-            aria-label="转发"
-            onClick={() => showToast("转发还在做")}
-            style={ICON_BTN}
-          >
-            <Share2 size={16} strokeWidth={1.7} />
-          </button>
-        </div>
-
-        {/* 我发的：互动行右端＝可见范围 ＋ 一枚删除（可见范围 2026-10-04；删除 2026-10-05）。 */}
-        {item.isSelf ? (
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10.5,
-                           letterSpacing: ".04em", color: C.ink3 }}>
-              {item.visibility === "private" ? (
-                <Lock size={11} strokeWidth={1.8} />
-              ) : item.visibility === "partial" ? (
-                <Users size={11} strokeWidth={1.8} />
-              ) : (
-                <Globe size={11} strokeWidth={1.8} />
-              )}
-              {item.visibility === "private"
-                ? "仅自己可见"
-                : item.visibility === "partial"
-                  ? `部分可见 · ${item.visibleNames?.length ?? 0} 人`
-                  : "公开"}
-            </span>
-            <button
-              type="button"
-              className="mp-act"
-              aria-label="删除动态"
-              onClick={() => onDelete(item)}
-              style={ICON_BTN}
-            >
-              <Trash2 size={15} strokeWidth={1.7} />
-            </button>
-          </div>
-        ) : null}
+        <button
+          type="button"
+          className="mp-act"
+          aria-label={likedByMe ? "取消赞" : "点赞"}
+          aria-pressed={likedByMe ? true : false}
+          onClick={() => onToggleLike(item)}
+          style={ACT_BTN(likedByMe)}
+        >
+          <Heart size={15} strokeWidth={1.7} fill={likedByMe ? "currentColor" : "none"} />
+          {likedByMe ? "Liked" : "Like"}
+        </button>
+        <button
+          type="button"
+          className="mp-act"
+          aria-label="评论"
+          aria-pressed={composing ? true : false}
+          onClick={() => {
+            setComposing((v) => !v);
+            setAtOpen(false);
+          }}
+          style={ACT_BTN(composing)}
+        >
+          <MessageCircle size={15} strokeWidth={1.7} />
+          Comment
+        </button>
       </div>
 
       {/* ── 评论框（点了话那枚才摊开）：回复提示 ＋ @ 选人 ＋ 一枚输入药丸 ＋ 发送。
