@@ -1363,6 +1363,21 @@ export async function saveMomentsCover(ref: string): Promise<void> {
   await kvSet(MOMENTS_COVER_KEY, ref);
 }
 
+/* 封面里的**纵向位置**：0–100，50＝居中。
+   选完封面图按住上下拖调的就是它（草稿 `.m-prev`「调位置」那一条）。
+   跟封面引用串一样只存一笔、不跟面具走。 */
+const MOMENTS_COVER_POS_KEY = "moments-cover-pos";
+
+/** 读封面纵向位置；没设过（或改版前的老数据）给 50＝居中。 */
+export async function getMomentsCoverPos(): Promise<number> {
+  return (await kvGet<number>(MOMENTS_COVER_POS_KEY)) ?? 50;
+}
+
+/** 写封面纵向位置（传 50＝居中）。 */
+export async function saveMomentsCoverPos(pos: number): Promise<void> {
+  await kvSet(MOMENTS_COVER_POS_KEY, pos);
+}
+
 /* ── 「我」自己发的动态（2026-10-04）。
    存一份 `Record<面具id, SelfMoment[]>`：动态页只看当前面具那一册。
    跟 TA 的动态（落在各自的 `Conversation.moments`）**分开存**——我的这些不分角色。 ── */
@@ -1379,34 +1394,42 @@ export async function addSelfMoment(
   maskId: string,
   draft: {
     content: string;
+    /** 多张配图（2026-10-13 起，最多 9 张）；老的 `imageRef` 单图照旧能传。 */
+    images?: string[];
     imageRef?: string;
     imageText?: string;
     tags?: string[];
     visibility?: MomentVisibility;
     visibleTo?: string[];
     visibleWorlds?: string[];
+    excludeTo?: string[];
+    excludeWorlds?: string[];
+    remindTo?: string[];
   },
 ): Promise<SelfMoment> {
   const content = draft.content.trim();
-  const imageRef = draft.imageRef?.trim();
+  /* 多图优先；只传了单图（老调用）就并成一张。最多留 9 张，空串滤掉。 */
+  const images = (draft.images ?? (draft.imageRef ? [draft.imageRef] : []))
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 9);
   /* 「文字描述当图」：图没落成真图、但有这段描述时才算数（有真图就不存文字，免得打架）。 */
-  const imageText = imageRef ? undefined : draft.imageText?.trim();
+  const imageText = images.length > 0 ? undefined : draft.imageText?.trim();
   const tags = (draft.tags ?? []).map((t) => t.trim().replace(/^#+/, "")).filter(Boolean);
   const visibility = draft.visibility ?? "public";
   const item: SelfMoment = {
     id: uuid(),
     content,
     createdAt: new Date().toISOString(),
-    ...(imageRef ? { imageRef } : {}),
+    ...(images.length > 0 ? { images } : {}),
     ...(imageText ? { imageText } : {}),
     ...(tags.length > 0 ? { tags } : {}),
     visibility,
-    ...(visibility === "partial" && draft.visibleTo?.length
-      ? { visibleTo: draft.visibleTo }
-      : {}),
-    ...(visibility === "partial" && draft.visibleWorlds?.length
-      ? { visibleWorlds: draft.visibleWorlds }
-      : {}),
+    ...(draft.visibleTo?.length ? { visibleTo: draft.visibleTo } : {}),
+    ...(draft.visibleWorlds?.length ? { visibleWorlds: draft.visibleWorlds } : {}),
+    ...(draft.excludeTo?.length ? { excludeTo: draft.excludeTo } : {}),
+    ...(draft.excludeWorlds?.length ? { excludeWorlds: draft.excludeWorlds } : {}),
+    ...(draft.remindTo?.length ? { remindTo: draft.remindTo } : {}),
   };
   const all = (await kvGet<Record<string, SelfMoment[]>>(SELF_MOMENTS_KEY)) ?? {};
   all[maskId] = [...(all[maskId] ?? []), item];
@@ -1477,9 +1500,10 @@ export async function setSelfMomentComments(
 
 /**
  * 改「我」的某条动态（2026-10-13）：只动**正文**与**可见范围**，配图／标签一概不碰
- * （编辑页就这两样，见 MomentsPage 的编辑模式）。找不到那一条就什么也不做。
- * 可见范围的落库口径跟 addSelfMoment 完全一致：不是 partial 就把那两格删干净，
- * partial 才按名单落，空名单也删格——免得留一堆用不上的空数组。
+ * （编辑页与动态上那枚范围记号都走这儿）。找不到那一条就什么也不做。
+ * 可见范围的落库口径：白名单（visibleTo/visibleWorlds）与黑名单（excludeTo/excludeWorlds）
+ * **各自独立存**——恩熙要「部分可见挑一整片、不给谁看再挡掉其中一个」，两格得同时留着。
+ * 空名单删格，免得留一堆用不上的空数组。
  */
 export async function updateSelfMoment(
   maskId: string,
@@ -1489,6 +1513,8 @@ export async function updateSelfMoment(
     visibility?: MomentVisibility;
     visibleTo?: string[];
     visibleWorlds?: string[];
+    excludeTo?: string[];
+    excludeWorlds?: string[];
   },
 ): Promise<void> {
   const all = (await kvGet<Record<string, SelfMoment[]>>(SELF_MOMENTS_KEY)) ?? {};
@@ -1498,17 +1524,18 @@ export async function updateSelfMoment(
   if (idx < 0) return;
   const cur = list[idx];
   if (patch.content !== undefined) cur.content = patch.content.trim();
-  if (patch.visibility !== undefined) {
-    cur.visibility = patch.visibility;
-    if (patch.visibility === "partial") {
-      if (patch.visibleTo?.length) cur.visibleTo = patch.visibleTo;
-      else delete cur.visibleTo;
-      if (patch.visibleWorlds?.length) cur.visibleWorlds = patch.visibleWorlds;
-      else delete cur.visibleWorlds;
-    } else {
-      delete cur.visibleTo;
-      delete cur.visibleWorlds;
-    }
+  if (patch.visibility !== undefined) cur.visibility = patch.visibility;
+  const setList = (key: "visibleTo" | "visibleWorlds" | "excludeTo" | "excludeWorlds", next?: string[]) => {
+    if (next && next.length) cur[key] = next;
+    else delete cur[key];
+  };
+  if (patch.visibleTo !== undefined || patch.visibleWorlds !== undefined) {
+    setList("visibleTo", patch.visibleTo);
+    setList("visibleWorlds", patch.visibleWorlds);
+  }
+  if (patch.excludeTo !== undefined || patch.excludeWorlds !== undefined) {
+    setList("excludeTo", patch.excludeTo);
+    setList("excludeWorlds", patch.excludeWorlds);
   }
   await kvSet(SELF_MOMENTS_KEY, all);
 }

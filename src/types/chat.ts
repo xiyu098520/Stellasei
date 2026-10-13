@@ -356,8 +356,8 @@ export interface ChatMoment {
   visibleWorlds?: string[];
 }
 
-/** 「我」自己发的一条动态的可见范围：公开／私密／部分可见。 */
-export type MomentVisibility = "public" | "private" | "partial";
+/** 「我」自己发的一条动态的可见范围：公开／仅自己可见／部分可见／不给谁看。 */
+export type MomentVisibility = "public" | "private" | "partial" | "exclude";
 
 /**
  * 「我」自己发的一条动态（挂在面具下，不跟某个角色会话走）。
@@ -372,8 +372,13 @@ export interface SelfMoment {
   content: string;
   /** ISO 时间戳。 */
   createdAt: string;
-  /** 配图：media-store:// 引用串（可选）。 */
+  /** 配图：media-store:// 引用串（可选）。单图时代留下的老格；多图从 `images` 走。 */
   imageRef?: string;
+  /**
+   * 配图（2026-10-13 起支持多张，最多 9 张）：media-store:// 引用串数组。
+   * 老的 `imageRef` 单图照旧能读（渲染时两张并起来看）。
+   */
+  images?: string[];
   /**
    * 「文字描述当图」（可选）：没画真图，只拿一段文字当这张配图——
    * 卡片上摊一张印着这段话的相纸；TA 收到的仍是「（配了一张图：<描述>）」，
@@ -396,6 +401,14 @@ export interface SelfMoment {
   /** 部分可见时才用：可见的「世界」（分类）id 列表。存世界而不是名单——
       世界里的角色整批可见，且跟着名单走（角色进出世界，可见范围自动跟着变）。 */
   visibleWorlds?: string[];
+  /** 「不给谁看」（2026-10-13）：要挡掉的角色 id 列表。与「部分可见」可并存——
+      白名单里挑一整片、黑名单里再挡掉其中一个，两格一起算。 */
+  excludeTo?: string[];
+  /** 「不给谁看」里的「世界」（分类）id 列表：整片世界挡掉。 */
+  excludeWorlds?: string[];
+  /** 发布时「提醒谁看」（2026-10-13，照微信「提醒谁看」）：要提醒去看的角色 id 列表。
+      只在发布那一下留个痕，动态本身不显示、也不伪造成通知。 */
+  remindTo?: string[];
   /** 这条动态的赞（我／任何角色）。 */
   likes?: MomentLike[];
   /** 这条动态的评论（含二级回复）。 */
