@@ -167,6 +167,59 @@ function momentImages(m: { images?: string[]; imageRef?: string }): string[] {
   return m.imageRef ? [m.imageRef] : [];
 }
 
+/** 系统／星绥自己是否要求「少动效」：省电总闸（html.smooth-mode）或系统「减少动态效果」。
+    真命中时退场就不等了——全局本来就把动画掐掉了，干等只会更卡，直接硬切最顺。 */
+function calmMotion(): boolean {
+  if (typeof window === "undefined") return false;
+  if (document.documentElement.classList.contains("smooth-mode")) return true;
+  return (
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
+/** 浮层「进退场」的小钩子：`value` 非空＝开着、空＝关了。
+    关的那一下**不立刻把节点摘掉**：先把 `closing` 亮起来（外面据此跑退场动画），
+    等 `ms` 毫秒跑完才真卸。返回的 `shown` 是**最近一次非空的值**——退场那几十毫秒里
+    浮层还得靠它撑着内容，直接拿已经变 null 的原状态去渲染会当场炸。
+    ⚠️ 为什么用 ref 存「上一次非空」而不是另开一份 state：state 副本会让受控输入晚一帧、
+    打字跳光标；这里平时直接用 `value` 自身（它永远是最新的），只在它变空的退场窗口里
+    才回落到上次那份——打字路径一帧都不多。 */
+function usePresence<T>(value: T | null, ms: number): { shown: T | null; closing: boolean } {
+  const lastRef = useRef<T | null>(value);
+  const [closing, setClosing] = useState(false);
+  /* 本段的 setState 都是「跟着 value 变」的同步收敛（开→关、关→开各一次），
+     不是那种会自我触发的级联渲染；hook 规则会把 effect 里的同步 setState 一刀切
+     报出来，这里定向放行。 */
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (value !== null) {
+      lastRef.current = value;
+      setClosing(false);
+      return;
+    }
+    /* value 变空：本来就没开过就什么都不做（没有节点要退场）。 */
+    if (lastRef.current === null) return;
+    if (calmMotion()) {
+      lastRef.current = null;
+      setClosing(false);
+      return;
+    }
+    setClosing(true);
+    const t = window.setTimeout(() => {
+      lastRef.current = null;
+      setClosing(false);
+    }, ms);
+    return () => window.clearTimeout(t);
+  }, [value, ms]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+  /* 读 ref 只为拿「退场窗口里那份上次的值」：它由上面的 effect 同步写入，
+     读取与写入成对发生，不会出现读到半截的中间态；渲染期读 ref 的通用禁令在此豁免。 */
+  // eslint-disable-next-line react-hooks/refs
+  const shown = value !== null ? value : lastRef.current;
+  return { shown, closing };
+}
+
 /** 动态页自己的色板（2026-10-13 换皮「雾蓝纸墨」，与消息列表「戊」同一套；
     T 是聊天共享的粉系，不能动它——这页改用自己的 C）。 */
 const C = {
@@ -743,11 +796,16 @@ export default function MomentsPage({
 
   /* 点开的那张配图（放大预览＋保存）。存引用串而不是只存地址——保存时要拿仓库里
      已经解好的 Blob，转成 data URL 再解一遍会把用户手势耗掉（见 saveImageToDevice）。 */
-  const [viewer, setViewer] = useState<{ src: string; ref?: string } | null>(null);
+  const [viewerState, setViewer] = useState<{ src: string; ref?: string } | null>(null);
+  /* 退场时节点先留着跑完动画再卸——`shown` 是渲染用的值（关的那几十毫秒里仍是旧值）。 */
+  const viewerAlive = usePresence(viewerState, 240);
+  const viewer = viewerAlive.shown;
 
   /* 「生成配图」先弹的描述卡（看得见、改得动，确认了才花钱）。
      生成这件事抬到这一层：弹层是卡片流的兄弟节点，不会被那个滚动容器裁掉。 */
-  const [editor, setEditor] = useState<{ item: FeedItem; text: string } | null>(null);
+  const [editorState, setEditor] = useState<{ item: FeedItem; text: string } | null>(null);
+  const editorAlive = usePresence(editorState, 240);
+  const editor = editorAlive.shown;
   /* 生图进度登记在 `moment-image` 的登记表里：状态挂在页面里，页面一卸就丢，
      画图那趟请求其实还在跑。这里订阅它，登记表一变就重渲染，
      下面逐条去问「这一条在不在画」。 */
@@ -905,7 +963,7 @@ export default function MomentsPage({
         `images` 是相册选来的图的仓库引用串（2026-10-05 单图；2026-10-13 起最多 9 张）。
         `editId`（2026-10-13）：非空＝这是在**编辑**已发的那条（只改正文＋可见范围，
         标题「编辑动态」、按钮「保存」；配图那块编辑时不摊出来）。 ── */
-  const [composer, setComposer] = useState<{
+  const [composerState, setComposer] = useState<{
     text: string;
     images: string[];
     imageText?: string;
@@ -920,6 +978,9 @@ export default function MomentsPage({
     remindTo: string[];
     editId?: string;
   } | null>(null);
+  /* 整页发布／编辑：退场多留一会儿（.26s），让它缩下去的动效跑完再卸。 */
+  const composerAlive = usePresence(composerState, 260);
+  const composer = composerAlive.shown;
 
   /* 「配图」那枚按钮点开之后：先问图从哪来——`seals`＝四枚章的那面墙（相册／拍照／
      小手机相册／文字描述）；`text`＝写文字描述的子面板。null＝没开着。
@@ -1103,10 +1164,14 @@ export default function MomentsPage({
   };
 
   /** 待删的那条动态：非空＝删除确认弹层开着（只有「我发的」才可能被放进来）。 */
-  const [confirmDelete, setConfirmDelete] = useState<FeedItem | null>(null);
+  const [confirmDeleteState, setConfirmDelete] = useState<FeedItem | null>(null);
+  const confirmDeleteAlive = usePresence(confirmDeleteState, 240);
+  const confirmDelete = confirmDeleteAlive.shown;
 
   /** 点了「⋯」的那条动态：非空＝「这条动态」底单开着（我发的→编辑／删除；别人的→标重要）。 */
-  const [moreItem, setMoreItem] = useState<FeedItem | null>(null);
+  const [moreItemState, setMoreItem] = useState<FeedItem | null>(null);
+  const moreItemAlive = usePresence(moreItemState, 240);
+  const moreItem = moreItemAlive.shown;
 
   /* 点「⋯」底单里的「编辑」：把那条**已发**的动态摊进整页编辑器。
      正文取摊平后的 content；可见范围要回到原始那条 SelfMoment 取 id（FeedItem 只带人名，
@@ -1155,11 +1220,13 @@ export default function MomentsPage({
 
   /* ── 动态设置（2026-10-05）：动态页聚合了所有人，动态页里只留「我」发动态相关的配图设置。
         null＝弹层没开着。 ── */
-  const [momentSet, setMomentSet] = useState<{
+  const [momentSetState, setMomentSet] = useState<{
     autoImg: boolean;
     /** 「配图自动生成」用的生图接口：null＝跟随主图文 API（这一处自己填的那套）。 */
     imgApi: { baseUrl: string; apiKey: string; model: string } | null;
   } | null>(null);
+  const momentSetAlive = usePresence(momentSetState, 240);
+  const momentSet = momentSetAlive.shown;
 
   /* 「配图接口」编辑态：只在弹层里活着，不入库。 */
   const [imgApiEdit, setImgApiEdit] = useState(false);
@@ -1282,8 +1349,10 @@ export default function MomentsPage({
   const [coverDraft, setCoverDraft] = useState<null | { src: string; pos: number }>(null);
   /* 试穿态那张图的原文件——确认时才真的落库。 */
   const coverDraftFile = useRef<File | null>(null);
-  /* 拖动封面时记下的落点（按下时的 Y 与当时的 pos）。 */
-  const coverDrag = useRef<{ y: number; pos: number } | null>(null);
+  /* 拖动封面时记下的落点（按下时的 Y、起始 pos，以及这一趟拖出来的当前 pos）。 */
+  const coverDrag = useRef<{ y: number; startPos: number; cur: number } | null>(null);
+  /* 试穿态那张 `<img>`——拖动时不 setState，直接改它自己的 `object-position`。 */
+  const coverImgRef = useRef<HTMLImageElement | null>(null);
   /* 选图那个 `<input type="file">`：iOS 上必须由用户手势触发 `.click()`，
      所以做成藏起来的 input ＋ 按钮去点它，而不是自己造选图界面。 */
   const coverInput = useRef<HTMLInputElement | null>(null);
@@ -1291,14 +1360,16 @@ export default function MomentsPage({
   /* 点封面浮出来的那张选择单（手机相册／小手机的相册／取消）开没开。
      2026-10-13 恩熙：「点这个动态希望是有弹窗的，像浏览页面一样」——
      不再点一下直接开系统选图，先摊这张单子。 */
-  const [coverSheet, setCoverSheet] = useState(false);
+  const [coverSheetState, setCoverSheet] = useState(false);
+  const coverSheetAlive = usePresence<true>(coverSheetState || null, 240);
+  const coverSheetOpen = coverSheetAlive.shown !== null;
 
   /* 「谁可以看」那张底单（2026-10-13）：发布页那行「谁可以看」跟动态上那枚小爱心，
      点开都是这一张。`scope` 记是从哪儿开的——发布页里改的是草稿、改完就写回 composer；
      动态上改的是已发的那条、改一下立刻落库（跟微信一样）。
      `pane` 是这张单当前停在哪一页：`top`＝四档；`partial`／`exclude`＝进去勾世界／角色。
      ⚠︎ 工作副本（visibility 与四个名单）都摆在这儿，改动即时生效、即时回写。 */
-  const [visSheet, setVisSheet] = useState<null | {
+  const [visSheetState, setVisSheet] = useState<null | {
     scope: "composer" | "moment";
     momentId: string;
     pane: "top" | "partial" | "exclude";
@@ -1308,10 +1379,14 @@ export default function MomentsPage({
     excludeTo: string[];
     excludeWorlds: string[];
   }>(null);
+  const visSheetAlive = usePresence(visSheetState, 240);
+  const visSheet = visSheetAlive.shown;
 
   /* 「提醒谁看」那张底单（2026-10-13）：发布时勾几个角色，发出去就提醒他们来看
      （微信「提醒谁看」那个意思）。只做「记下来」，不硬造通知后端。 */
-  const [remindSheet, setRemindSheet] = useState(false);
+  const [remindSheetState, setRemindSheet] = useState(false);
+  const remindSheetAlive = usePresence<true>(remindSheetState || null, 240);
+  const remindSheetOpen = remindSheetAlive.shown !== null;
 
   /* 把这张单里的一处改动**落下去**：发布页写回草稿、动态上写回库；单子自己也跟着更新。 */
   const applyVis = (next: {
@@ -1366,9 +1441,9 @@ export default function MomentsPage({
     moreItem !== null ||
     momentSet !== null ||
     visSheet !== null ||
-    coverSheet ||
+    coverSheetOpen ||
     coverDraft !== null ||
-    remindSheet;
+    remindSheetOpen;
   useEffect(() => {
     onOverlayChange(anyOverlay);
   }, [anyOverlay, onOverlayChange]);
@@ -1415,21 +1490,30 @@ export default function MomentsPage({
   };
 
   /* 试穿态里按住封面上下拖＝挪图在框里的位置：手指往下走＝图往下走
-     （`object-position` 的 Y% 要**减**才让画面跟着手往下）。 */
+     （`object-position` 的 Y% 要**减**才让画面跟着手往下）。
+     ⚠️ 拖动中**不 setState**——每帧 setState 会把整页重渲染一遍，手机端就卡了。
+     拖的时候只直接改那张图自己的 `object-position`（一次 style 写入，极便宜），
+     松手那一刻才把最终值落回 state。 */
   const onCoverPointerDown = (e: ReactPointerEvent) => {
     if (!coverDraft) return;
-    coverDrag.current = { y: e.clientY, pos: coverDraft.pos };
+    coverDrag.current = { y: e.clientY, startPos: coverDraft.pos, cur: coverDraft.pos };
     (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
   };
   const onCoverPointerMove = (e: ReactPointerEvent) => {
-    if (!coverDraft || !coverDrag.current) return;
+    const d = coverDrag.current;
+    if (!coverDraft || !d) return;
     const h = coverRef.current?.offsetHeight || 272;
-    const dy = e.clientY - coverDrag.current.y;
-    const next = Math.max(0, Math.min(100, coverDrag.current.pos - (dy / h) * 100));
-    setCoverDraft((d) => (d ? { ...d, pos: next } : d));
+    const dy = e.clientY - d.y;
+    const next = Math.max(0, Math.min(100, d.startPos - (dy / h) * 100));
+    d.cur = next;
+    if (coverImgRef.current) coverImgRef.current.style.objectPosition = `center ${next}%`;
   };
   const endCoverDrag = () => {
+    const d = coverDrag.current;
     coverDrag.current = null;
+    if (!d) return;
+    /* 只在真拖出变化时才落值——纯点一下（没动）不进 state，免得白重渲染一次。 */
+    if (d.cur !== d.startPos) setCoverDraft((c) => (c ? { ...c, pos: d.cur } : c));
   };
 
   /* 还原成默认那面马卡龙渐变。一旦能换就得能换回来，不然封面是条单行道。 */
@@ -1525,10 +1609,32 @@ export default function MomentsPage({
           color: #FFFDF8;
           background: linear-gradient(180deg, #6B84A3 0%, #46617F 100%);
         }
+        /* ── 浮层「进退场」（2026-10-13）：只走 opacity 与 transform（GPU 合成，不碰
+           布局），曲线照草稿的背板与底单。进场用 backwards 让首帧就落在起点、
+           不闪一下；退场用 forwards 停在末帧，等节点真卸掉再收。
+           本段是模板字符串，注释里不能出现反引号。 ── */
+        @keyframes mpFadeIn { from { opacity: 0 } to { opacity: 1 } }
+        @keyframes mpFadeOut { from { opacity: 1 } to { opacity: 0 } }
+        @keyframes mpSheetUp { from { transform: translateY(100%) } to { transform: translateY(0) } }
+        @keyframes mpSheetDown { from { transform: translateY(0) } to { transform: translateY(100%) } }
+        @keyframes mpPopIn { from { opacity: 0; transform: scale(.94) } to { opacity: 1; transform: scale(1) } }
+        @keyframes mpPopOut { from { opacity: 1; transform: scale(1) } to { opacity: 0; transform: scale(.96) } }
+        @keyframes mpPageIn { from { opacity: 0; transform: translateY(16px) } to { opacity: 1; transform: translateY(0) } }
+        @keyframes mpPageOut { from { opacity: 1; transform: translateY(0) } to { opacity: 0; transform: translateY(16px) } }
+        .mp-bd-in { animation: mpFadeIn .22s ease backwards; }
+        .mp-bd-out { animation: mpFadeOut .18s ease forwards; }
+        .mp-sh-in { animation: mpSheetUp .32s cubic-bezier(.2,.85,.25,1) backwards; }
+        .mp-sh-out { animation: mpSheetDown .22s cubic-bezier(.4,0,1,1) forwards; }
+        .mp-pop-in { animation: mpPopIn .22s cubic-bezier(.2,.85,.25,1) backwards; }
+        .mp-pop-out { animation: mpPopOut .16s ease forwards; }
+        .mp-page-in { animation: mpPageIn .28s cubic-bezier(.2,.85,.25,1) backwards; }
+        .mp-page-out { animation: mpPageOut .2s ease forwards; }
         @keyframes spin { to { transform: rotate(360deg); } }
         @media (prefers-reduced-motion: reduce) {
           .mp-act { transition: none }
           .mp-seal .mp-seal-face { transition: none }
+          .mp-bd-in, .mp-bd-out, .mp-sh-in, .mp-sh-out,
+          .mp-pop-in, .mp-pop-out, .mp-page-in, .mp-page-out { animation: none }
         }
       `}</style>
 
@@ -1634,6 +1740,7 @@ export default function MomentsPage({
             <>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
+                ref={coverImgRef}
                 src={coverShownSrc}
                 alt=""
                 style={{
@@ -2128,6 +2235,7 @@ export default function MomentsPage({
       {/* ── 封面试穿浮条（草稿 `.m-prev`）：选完图先试穿——一行提示 ＋ 「重选／就用这张」。 */}
       {coverDraft ? (
         <div
+          className="mp-sh-in"
           style={{
             position: "absolute",
             left: 16,
@@ -2180,22 +2288,22 @@ export default function MomentsPage({
              「小手机的相册」先留位置（灰着 ＋ 一枚「预留」小药丸）。
              标题行右端那枚「恢复默认」（RotateCcw）只在**换过封面**时才露面——
              恩熙：别把「恢复默认」浮在封面图片上，收进单子里、摆在标题右边。 ── */}
-      {coverSheet ? (
+      {coverSheetOpen ? (
         <>
           <div
             onClick={() => setCoverSheet(false)}
+            className={coverSheetAlive.closing ? "mp-bd-out" : "mp-bd-in"}
             style={{
               position: "absolute",
-              /* 遮罩从顶栏下沿起：恩熙说换封面单不该连顶上那条「动态设置」一起盖住。 */
-              top: "calc(var(--safe-area-top, 0px) + var(--sim-status-h, 0px) + 58px)",
-              left: 0,
-              right: 0,
-              bottom: 0,
+              /* 2026-10-13 恩熙更正：遮罩要**全屏**，连顶上那条「动态设置」一起罩住。 */
+              inset: 0,
               zIndex: 88,
               background: "rgba(20,19,24,.36)",
+              pointerEvents: coverSheetAlive.closing ? "none" : undefined,
             }}
           />
           <div
+            className={coverSheetAlive.closing ? "mp-sh-out" : "mp-sh-in"}
             style={{
               position: "absolute",
               left: 0,
@@ -2206,6 +2314,7 @@ export default function MomentsPage({
               borderRadius: "20px 20px 0 0",
               padding: "18px 18px calc(var(--safe-area-bottom, 0px) + 16px)",
               boxShadow: "0 -12px 40px -18px rgba(20,19,24,.5)",
+              pointerEvents: coverSheetAlive.closing ? "none" : undefined,
             }}
           >
             <div
@@ -2280,18 +2389,18 @@ export default function MomentsPage({
         <>
           <div
             onClick={() => setMoreItem(null)}
+            className={moreItemAlive.closing ? "mp-bd-out" : "mp-bd-in"}
             style={{
               position: "absolute",
-              /* 跟上头的换封面单一个口径：遮罩从顶栏下沿起，不盖顶上那条。 */
-              top: "calc(var(--safe-area-top, 0px) + var(--sim-status-h, 0px) + 58px)",
-              left: 0,
-              right: 0,
-              bottom: 0,
+              /* 2026-10-13：遮罩**全屏**，连顶上那条一起罩住。 */
+              inset: 0,
               zIndex: 88,
               background: "rgba(20,19,24,.36)",
+              pointerEvents: moreItemAlive.closing ? "none" : undefined,
             }}
           />
           <div
+            className={moreItemAlive.closing ? "mp-sh-out" : "mp-sh-in"}
             style={{
               position: "absolute",
               left: 0,
@@ -2302,6 +2411,7 @@ export default function MomentsPage({
               borderRadius: "20px 20px 0 0",
               padding: "18px 18px calc(var(--safe-area-bottom, 0px) + 16px)",
               boxShadow: "0 -12px 40px -18px rgba(20,19,24,.5)",
+              pointerEvents: moreItemAlive.closing ? "none" : undefined,
             }}
           >
             <div style={{ fontFamily: SERIF, fontSize: 15, fontWeight: 600,
@@ -2373,17 +2483,17 @@ export default function MomentsPage({
         <>
           <div
             onClick={() => setVisSheet(null)}
+            className={visSheetAlive.closing ? "mp-bd-out" : "mp-bd-in"}
             style={{
               position: "absolute",
-              top: "calc(var(--safe-area-top, 0px) + var(--sim-status-h, 0px) + 58px)",
-              left: 0,
-              right: 0,
-              bottom: 0,
+              inset: 0,
               zIndex: 96,
               background: "rgba(20,19,24,.36)",
+              pointerEvents: visSheetAlive.closing ? "none" : undefined,
             }}
           />
           <div
+            className={visSheetAlive.closing ? "mp-sh-out" : "mp-sh-in"}
             style={{
               position: "absolute",
               left: 0,
@@ -2396,6 +2506,7 @@ export default function MomentsPage({
               boxShadow: "0 -12px 40px -18px rgba(20,19,24,.5)",
               maxHeight: "74%",
               overflowY: "auto",
+              pointerEvents: visSheetAlive.closing ? "none" : undefined,
             }}
           >
             {visSheet.pane === "top" ? (
@@ -2586,21 +2697,21 @@ export default function MomentsPage({
 
       {/* ── 「提醒谁看」底单（2026-10-13）：发布时勾几个角色，发出去就提醒他们来看
              （微信「提醒谁看」那个意思）。只做「记下来」，勾完写回草稿。 ── */}
-      {remindSheet ? (
+      {remindSheetOpen ? (
         <>
           <div
             onClick={() => setRemindSheet(false)}
+            className={remindSheetAlive.closing ? "mp-bd-out" : "mp-bd-in"}
             style={{
               position: "absolute",
-              top: "calc(var(--safe-area-top, 0px) + var(--sim-status-h, 0px) + 58px)",
-              left: 0,
-              right: 0,
-              bottom: 0,
+              inset: 0,
               zIndex: 96,
               background: "rgba(20,19,24,.36)",
+              pointerEvents: remindSheetAlive.closing ? "none" : undefined,
             }}
           />
           <div
+            className={remindSheetAlive.closing ? "mp-sh-out" : "mp-sh-in"}
             style={{
               position: "absolute",
               left: 0,
@@ -2613,6 +2724,7 @@ export default function MomentsPage({
               boxShadow: "0 -12px 40px -18px rgba(20,19,24,.5)",
               maxHeight: "74%",
               overflowY: "auto",
+              pointerEvents: remindSheetAlive.closing ? "none" : undefined,
             }}
           >
             <div style={SHEET_TITLE}>提醒谁看</div>
@@ -2661,6 +2773,7 @@ export default function MomentsPage({
       {viewer ? (
         <div
           onClick={() => setViewer(null)}
+          className={viewerAlive.closing ? "mp-bd-out" : "mp-bd-in"}
           style={{
             position: "absolute",
             inset: 0,
@@ -2671,6 +2784,7 @@ export default function MomentsPage({
             justifyContent: "center",
             flexDirection: "column",
             gap: 14,
+            pointerEvents: viewerAlive.closing ? "none" : undefined,
           }}
         >
           <button
@@ -2758,6 +2872,7 @@ export default function MomentsPage({
       {editor ? (
         <div
           onClick={() => setEditor(null)}
+          className={editorAlive.closing ? "mp-bd-out" : "mp-bd-in"}
           style={{
             position: "absolute",
             inset: 0,
@@ -2765,10 +2880,12 @@ export default function MomentsPage({
             zIndex: 78,
             display: "flex",
             alignItems: "flex-end",
+            pointerEvents: editorAlive.closing ? "none" : undefined,
           }}
         >
           <div
             onClick={(e) => e.stopPropagation()}
+            className={editorAlive.closing ? "mp-sh-out" : "mp-sh-in"}
             style={{
               width: "100%",
               background: C.card,
@@ -2864,6 +2981,7 @@ export default function MomentsPage({
           `data-mp-scroll`：给上面那枚手势闸认，这一层自己滚得动、到头不拖整页。 */}
       {composer ? (
         <div
+          className={composerAlive.closing ? "mp-page-out" : "mp-page-in"}
           style={{
             position: "absolute",
             inset: 0,
@@ -2871,6 +2989,7 @@ export default function MomentsPage({
             background: C.paper,
             display: "flex",
             flexDirection: "column",
+            pointerEvents: composerAlive.closing ? "none" : undefined,
           }}
         >
           {/* 顶栏（草稿 `.m-post-h`）：左「取消」、中标题、右一枚主按钮（发表／保存）。
@@ -3329,6 +3448,7 @@ export default function MomentsPage({
       {confirmDelete ? (
         <div
           onClick={() => setConfirmDelete(null)}
+          className={confirmDeleteAlive.closing ? "mp-bd-out" : "mp-bd-in"}
           style={{
             position: "absolute",
             inset: 0,
@@ -3338,10 +3458,12 @@ export default function MomentsPage({
             alignItems: "center",
             justifyContent: "center",
             padding: "0 40px",
+            pointerEvents: confirmDeleteAlive.closing ? "none" : undefined,
           }}
         >
           <div
             onClick={(e) => e.stopPropagation()}
+            className={confirmDeleteAlive.closing ? "mp-pop-out" : "mp-pop-in"}
             style={{
               width: "100%",
               maxWidth: 300,
@@ -3391,6 +3513,7 @@ export default function MomentsPage({
       {momentSet ? (
         <div
           onClick={() => setMomentSet(null)}
+          className={momentSetAlive.closing ? "mp-bd-out" : "mp-bd-in"}
           style={{
             position: "absolute",
             inset: 0,
@@ -3398,11 +3521,13 @@ export default function MomentsPage({
             zIndex: 82,
             display: "flex",
             alignItems: "flex-end",
+            pointerEvents: momentSetAlive.closing ? "none" : undefined,
           }}
         >
           <div
             data-mp-scroll="1"
             onClick={(e) => e.stopPropagation()}
+            className={momentSetAlive.closing ? "mp-sh-out" : "mp-sh-in"}
             style={{
               width: "100%",
               maxHeight: "calc(100% - 40px)",
