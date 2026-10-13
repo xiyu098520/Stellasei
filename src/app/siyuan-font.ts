@@ -10,7 +10,13 @@
  *
  * 为什么 font-display:block：字体就绪前先把文本「藏住」再一次上屏，
  * 杜绝「先系统宋体、再跳思源」的换装闪；开屏本就会等 document.fonts.ready。
+ *
+ * 另有「界面基础文字」子集（family 名 'Noto Serif SC UI'，见 siyuan-font-ui.ts）：
+ * 开屏时随首批下载的小整文件，覆盖界面基础文案，先于整量生效；两批互不重叠，
+ * 由字体栈顺序确定性选择，不依赖同 family 重叠 unicode-range 的浏览器歧义行为。
  */
+import { UI_RAW } from "./siyuan-font-ui";
+
 const RAW = `
 @font-face{font-family:'Noto Serif SC';font-style:normal;font-weight:400 900;font-display:block;src:url('__BASE__/fonts/siyuan/000.woff2') format('woff2');unicode-range:U+1f1e9-1f1f5, U+1f1f7-1f1ff, U+1f21a, U+1f232, U+1f234-1f237, U+1f250-1f251, U+1f300, U+1f302-1f308, U+1f30a-1f311, U+1f315, U+1f319-1f320, U+1f324, U+1f327, U+1f32a, U+1f32c-1f32d, U+1f330-1f357, U+1f359-1f37e;}
 @font-face{font-family:'Noto Serif SC';font-style:normal;font-weight:400 900;font-display:block;src:url('__BASE__/fonts/siyuan/001.woff2') format('woff2');unicode-range:U+fee3, U+fef3, U+ff03-ff04, U+ff07, U+ff0a, U+ff17-ff19, U+ff1c-ff1d, U+ff20-ff3a, U+ff3c, U+ff3e-ff5b, U+ff5d, U+ff61-ff65, U+ff67-ff6a, U+ff6c, U+ff6f-ff78, U+ff7a-ff7d, U+ff80-ff84, U+ff86, U+ff89-ff8e, U+ff92, U+ff97-ff9b, U+ff9d-ff9f, U+ffe0-ffe4, U+ffe6, U+ffe9, U+ffeb, U+ffed, U+fffc, U+1f004, U+1f170-1f171, U+1f192-1f195, U+1f198-1f19a, U+1f1e6-1f1e8;}
@@ -115,7 +121,8 @@ const RAW = `
 @font-face{font-family:'Noto Serif SC';font-style:normal;font-weight:400 900;font-display:block;src:url('__BASE__/fonts/siyuan/100.woff2') format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;}
 `;
 
-/** 返回思源宋体全部 @font-face 规则（basePath：本地 ""／线上 "/Stellasei"）。 */
+/** 返回思源宋体全部 @font-face 规则（basePath：本地 ""／线上 "/Stellasei"）。
+ *  UI 子集在前、整量在后，同名 __BASE__ 一并替换。 */
 export function siyuanFontCss(basePath: string): string {
-  return RAW.replaceAll("__BASE__", basePath);
+  return (UI_RAW + RAW).replaceAll("__BASE__", basePath);
 }

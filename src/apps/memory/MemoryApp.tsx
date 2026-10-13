@@ -102,7 +102,7 @@ const GRAIN: CSSProperties = {
 /** 硬边错位投影：剪贴拼贴感，比柔和 shadow 更像印刷品。 */
 const OFFSET_SHADOW = "3px 3px 0 rgba(27,25,24,.06)";
 
-const SERIF = "'Noto Serif SC', 'Songti SC', Georgia, serif";
+const SERIF = "'Noto Serif SC UI', 'Noto Serif SC', 'Songti SC', Georgia, serif";
 /** 标题：书写体——笔画有起有收、横画微仰，像编者亲手写在卡片上的，不是活字砖块。
  *  走系统楷体（iOS 自带，零下载、零闪）。 */
 const TITLE = "'Kaiti SC', 'STKaiti', 'KaiTi', 'Songti SC', Georgia, serif";

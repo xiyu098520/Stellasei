@@ -3,6 +3,11 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { usePhone } from "@/context/PhoneContext";
 
+/** 内页正文统一用「思源宋体」：界面基础文字子集（'Noto Serif SC UI'）在前，
+    命中即走开屏已下的小文件，其余落到整量（进 App 后后台补齐）。 */
+const A_FONT =
+  "'Noto Serif SC UI', 'Noto Serif SC', 'Songti SC', 'STSong', 'SimSun', Georgia, serif";
+
 /**
  * App 内页通用框架：返回列＋标题＋滚动内容，自动避开安全区。
  * 支持 light（预设）／dark／paper（厚纸白）／cream（米白琥珀）／
@@ -166,24 +171,24 @@ export function AppChrome({
               backgroundImage:
                 "radial-gradient(circle, #1a1a1a 1px, transparent 1px)",
               backgroundSize: "12px 12px",
-              fontFamily: "'Noto Serif SC', 'Songti SC', 'STSong', 'SimSun', Georgia, serif",
+              fontFamily: A_FONT,
             }
           : isPaper
             ? {
                 /* 请柬的底是**一张暖灰的桌**，不是白墙——白纸只有压在比它暗的
                    桌面上才浮得起来（同白即为「简陋」的根源）。桌上不铺点阵、
                    不泛黄，纸的质感交给世界书页自己。 */
-                fontFamily: "'Noto Serif SC', 'Songti SC', 'STSong', 'SimSun', Georgia, serif",
+                fontFamily: A_FONT,
               }
             : isCream
               ? {
                   backgroundImage:
                     "radial-gradient(circle, rgba(139,115,85,0.05) 1px, transparent 1px)",
                   backgroundSize: "32px 32px",
-                  fontFamily: "'Noto Serif SC', 'Songti SC', 'STSong', 'SimSun', Georgia, serif",
+                  fontFamily: A_FONT,
                 }
               : isFile
-                ? { fontFamily: "'Noto Serif SC', 'Songti SC', 'STSong', 'SimSun', Georgia, serif" }
+                ? { fontFamily: A_FONT }
                 : isArcana
                   ? {
                       /* 灯在正中上方，往下散开就没了——牌桌只被这一盏灯照着。
@@ -195,7 +200,7 @@ export function AppChrome({
                          牌面提一档，桌跟着一起提——牌比桌亮两格这条关系不动。 */
                       backgroundImage:
                         "radial-gradient(118% 76% at 50% 2%, #241936 0%, #1A102E 46%, #0F091D 100%)",
-                      fontFamily: "'Noto Serif SC', 'Songti SC', 'STSong', 'SimSun', Georgia, serif",
+                      fontFamily: A_FONT,
                     }
                   : isPop
                     ? { fontFamily: "var(--font-sans)" }

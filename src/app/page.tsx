@@ -8,6 +8,7 @@ import { StatusBar } from "@/components/phone/StatusBar";
 import { HomeScreen } from "@/components/phone/home/HomeScreen";
 import { AppWindow } from "@/components/phone/AppWindow";
 import { installTapFallback } from "@/lib/tapFallback";
+import { startFontPrefetch } from "@/lib/font-prefetch";
 import { getChatPrefs } from "@/lib/settings/chat";
 
 /**
@@ -32,6 +33,12 @@ function PhoneOs() {
 
   // 兜住 iOS 选字后 click 假死（WebKit 288461）：见 lib/tapFallback.ts。
   useEffect(() => installTapFallback(), []);
+
+  // 开屏过后，纯后台静默补齐整量字形（失败自动重试到成功、仅下次启动前生效一次）；
+  // 见 lib/font-prefetch.ts。basePath 与字体 @font-face 同源。
+  useEffect(() => {
+    if (splashDone) startFontPrefetch(process.env.NEXT_PUBLIC_BASE_PATH ?? "");
+  }, [splashDone]);
 
   /* 流畅模式总闸（1.9.6）：按 chat-prefs 的 smoothMode 在 <html> 上挂／摘
      `.smooth-mode`（样式见 globals.css 那一段）。设置页里一开关就落库并喊一声
