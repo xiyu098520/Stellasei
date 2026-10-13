@@ -45,10 +45,13 @@ import {
   Loader2,
   Lock,
   MessageCircle,
+  Pencil,
   Plus,
+  RotateCcw,
   SlidersVertical,
   Smartphone,
-  SquarePen,
+  Star,
+  Trash2,
   Type as TypeIcon,
   Users,
   X,
@@ -96,6 +99,7 @@ import {
   setMomentPinned,
   setSelfMomentComments,
   setSelfMomentLikes,
+  updateSelfMoment,
 } from "@/lib/settings/chat";
 import {
   getCachedMediaBlob,
@@ -208,22 +212,6 @@ const MORE_BTN: CSSProperties = {
   lineHeight: 1,
 };
 
-/** 「⋯」点开后那枚小菜单里的一行（标重要／取消重要／删除）。 */
-const MENU_ITEM: CSSProperties = {
-  display: "block",
-  width: "100%",
-  textAlign: "left",
-  border: "none",
-  background: "transparent",
-  padding: "8px 14px",
-  fontFamily: SANS,
-  fontSize: 12.5,
-  letterSpacing: ".04em",
-  color: C.ink,
-  cursor: "pointer",
-  whiteSpace: "nowrap",
-};
-
 /** 评论输入框（评论区里内联那一只）：一枚药丸，跟聊天输入框同一口气。 */
 const COMMENT_INPUT: CSSProperties = {
   flex: 1,
@@ -279,6 +267,70 @@ const COVER_PILL: CSSProperties = {
   fontFamily: SANS,
   fontSize: 10.5,
   letterSpacing: ".08em",
+  cursor: "pointer",
+};
+
+/* ── 底单（草稿 `.m-sheet`）：从屏幕底上浮的一张选择单，用来装「换封面」「这条动态」那几组动作。
+      2026-10-13 起「⋯」和封面都走这套，不再用小下拉（小下拉会被动态流滚动的框裁掉）。
+      项与项之间的发丝线在样式块里用 `.mp-sh-item + .mp-sh-item::before` 补。 ── */
+const SHEET_ITEM: CSSProperties = {
+  position: "relative",
+  display: "flex",
+  alignItems: "center",
+  gap: 14,
+  width: "100%",
+  textAlign: "left",
+  background: "none",
+  border: 0,
+  padding: "14px 2px",
+  fontFamily: SANS,
+  cursor: "pointer",
+};
+
+/** 底单里每项左端那枚 42×42 的淡蓝圆角图标底。 */
+const SHEET_ICO: CSSProperties = {
+  flex: "none",
+  width: 42,
+  height: 42,
+  borderRadius: 13,
+  background: C.accentSoft,
+  color: C.accent,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+};
+
+/** 底单每项的主标题（宋体小白）。 */
+const SHEET_B: CSSProperties = {
+  display: "block",
+  fontFamily: SERIF,
+  fontSize: 15.5,
+  fontWeight: 600,
+  letterSpacing: ".08em",
+  color: C.ink,
+};
+
+/** 底单每项的副标题（灰字一行）。 */
+const SHEET_I: CSSProperties = {
+  display: "block",
+  marginTop: 3,
+  fontStyle: "normal",
+  fontSize: 12.5,
+  color: C.ink2,
+};
+
+/** 底单最底下那枚「取消」。 */
+const SHEET_CANCEL: CSSProperties = {
+  marginTop: 8,
+  width: "100%",
+  height: 44,
+  border: 0,
+  borderRadius: 13,
+  background: "#F2F3F1",
+  color: C.ink,
+  fontFamily: SANS,
+  fontSize: 14,
+  letterSpacing: ".14em",
   cursor: "pointer",
 };
 
@@ -607,8 +659,10 @@ export default function MomentsPage({
     await refreshAfterSocial(!!item.isSelf);
   };
 
-  /* ── 发动态（2026-10-04）：底部弹层的那份草稿（正文／配图／标签／可见范围）。null＝没开着。
-        `imageRef` 是相册选来的图的仓库引用串（2026-10-05 起支持配图）。 ── */
+  /* ── 发动态（2026-10-04）：**整页**的那份草稿（正文／配图／标签／可见范围）。null＝没开着。
+        `imageRef` 是相册选来的图的仓库引用串（2026-10-05 起支持配图）。
+        `editId`（2026-10-13）：非空＝这是在**编辑**已发的那条（只改正文＋可见范围，
+        标题「编辑动态」、按钮「保存」；配图／标签那两块编辑时不摊出来）。 ── */
   const [composer, setComposer] = useState<{
     text: string;
     imageRef?: string;
@@ -618,6 +672,7 @@ export default function MomentsPage({
     visibility: MomentVisibility;
     visibleTo: string[];
     visibleWorlds: string[];
+    editId?: string;
   } | null>(null);
 
   /* 「配图」那枚按钮点开之后：先问图从哪来——`seals`＝四枚章的那面墙（相册／拍照／
@@ -816,6 +871,48 @@ export default function MomentsPage({
   /** 待删的那条动态：非空＝删除确认弹层开着（只有「我发的」才可能被放进来）。 */
   const [confirmDelete, setConfirmDelete] = useState<FeedItem | null>(null);
 
+  /** 点了「⋯」的那条动态：非空＝「这条动态」底单开着（我发的→编辑／删除；别人的→标重要）。 */
+  const [moreItem, setMoreItem] = useState<FeedItem | null>(null);
+
+  /* 点「⋯」底单里的「编辑」：把那条**已发**的动态摊进整页编辑器。
+     正文取摊平后的 content；可见范围要回到原始那条 SelfMoment 取 id（FeedItem 只带人名，
+     带不了 visibleTo／visibleWorlds）。配图／标签不进来——编辑页只改这两样。 */
+  const openEditMoment = (item: FeedItem) => {
+    const src = selfMoments.find((m) => m.id === item.momentId);
+    setMoreItem(null);
+    setComposer({
+      text: item.content,
+      tags: [],
+      tagDraft: "",
+      visibility: src?.visibility ?? "public",
+      visibleTo: src?.visibleTo ?? [],
+      visibleWorlds: src?.visibleWorlds ?? [],
+      editId: item.momentId,
+    });
+  };
+
+  /* 编辑页点「保存」：写回正文＋可见范围 → 重读这一册 → 收页。 */
+  const saveEditMoment = async () => {
+    if (!composer?.editId) return;
+    const text = composer.text.trim();
+    const src = selfMoments.find((m) => m.id === composer.editId);
+    if (!text && !src?.imageRef && !src?.imageText) {
+      showToast("写点什么再保存");
+      return;
+    }
+    await updateSelfMoment(maskId, composer.editId, {
+      content: text,
+      visibility: composer.visibility,
+      visibleTo: composer.visibleTo,
+      visibleWorlds: composer.visibleWorlds,
+    });
+    setSelfMoments(await getSelfMoments(maskId));
+    setComposer(null);
+    setImgPick(null);
+    setTextDraft("");
+    showToast("改好了");
+  };
+
   /* ── 动态设置（2026-10-05）：动态页聚合了所有人，动态页里只留「我」发动态相关的配图设置。
         null＝弹层没开着。 ── */
   const [momentSet, setMomentSet] = useState<{
@@ -942,6 +1039,11 @@ export default function MomentsPage({
      所以做成藏起来的 input ＋ 按钮去点它，而不是自己造选图界面。 */
   const coverInput = useRef<HTMLInputElement | null>(null);
 
+  /* 点封面浮出来的那张选择单（手机相册／小手机的相册／取消）开没开。
+     2026-10-13 恩熙：「点这个动态希望是有弹窗的，像浏览页面一样」——
+     不再点一下直接开系统选图，先摊这张单子。 */
+  const [coverSheet, setCoverSheet] = useState(false);
+
   useEffect(() => {
     let alive = true;
     void getMomentsCover().then((ref) => {
@@ -984,6 +1086,13 @@ export default function MomentsPage({
     showToast("封面还原了");
   };
 
+  /* 选择单里点「手机相册」：先把单子收掉，再开系统选图（iOS 要用户手势那一下，
+     两者隔一帧不碍事；单子收掉才不会盖在系统选图上）。 */
+  const pickCoverFromDevice = () => {
+    setCoverSheet(false);
+    coverInput.current?.click();
+  };
+
   /* 气泡上那一行字：多条用一个**罩得住「赞了／评论了」两种事**的泛词
      （中文里最不别扭的就是「新消息」），单条才说具体的事。 */
   const noticeLead = unseenNotices[0];
@@ -994,6 +1103,14 @@ export default function MomentsPage({
       : noticeLead.kind === "like"
         ? `${noticeLead.fromName} 赞了你`
         : `${noticeLead.fromName} 评论了你`;
+
+  /* 发布／编辑页顶栏那枚主按钮亮不亮（草稿 `.m-post-ok` / `.off`）：
+     编辑时总能存（可能只改可见范围）；新发时正文与配图至少有一个。 */
+  const canSubmitComposer = composer
+    ? composer.editId
+      ? true
+      : Boolean(composer.text.trim() || composer.imageRef || composer.imageText?.trim())
+    : false;
 
   return (
     <div
@@ -1015,6 +1132,12 @@ export default function MomentsPage({
            **两端缩进的发丝线**——内联样式写不了伪元素，落在样式块里。 */
         .mp-feed > article + article::before {
           content: ''; position: absolute; top: 0; left: 4px; right: 4px;
+          height: 1px; background: ${C.line2};
+        }
+        /* 底单（换封面 / 这条动态）里项与项之间一条**从图标右侧起**的发丝线
+           （草稿 .m-sh-item + .m-sh-item::before）。内联样式写不了伪元素，落这儿。 */
+        .mp-sh-item + .mp-sh-item::before {
+          content: ''; position: absolute; top: 0; left: 56px; right: 2px;
           height: 1px; background: ${C.line2};
         }
         /* 「配图」那四枚章（相册／拍照／小手机相册／文字描述）。
@@ -1125,9 +1248,10 @@ export default function MomentsPage({
                本来也不溢出，剪不剪都一样。 */
             overflow: "visible",
           }}
-          /* 2026-10-13 照草稿：**整面封面就是那枚「换封面」按钮**——原先左下常显的
-             「换封面」药丸撤了，点封面上任意一处即开系统选图（草稿同款手势）。 */
-          onClick={() => coverInput.current?.click()}
+          /* 2026-10-13：**整面封面就是那枚「换封面」按钮**——点封面上任意一处，
+             先浮出那张选择单（手机相册／小手机的相册／取消，草稿 `.m-sheet` 同款）。
+             真挑图那一下挪进选择单里（选「手机相册」才开系统选图）。 */
+          onClick={() => setCoverSheet(true)}
         >
           {/* 换过封面就走真照片：图**铺满整面**（`object-fit: cover`），
               上面压两层（跟默认底同一套「上深下浅」）——
@@ -1279,10 +1403,9 @@ export default function MomentsPage({
             ) : null}
           </div>
 
-          {/* 「换封面」：2026-10-13 照草稿——入口搬到**封面自己**身上（点封面即选图，
-              见封面那枚 `onClick`）；这儿只留**换过之后**才冒出来的那枚「还原」。
-              藏起来的 `<input type="file">`（iOS 只认用户手势触发的 `.click()`），
-              选完压图进仓库、引用串写进设定——**一旦能换就得能换回来**。 */}
+          {/* 藏起来的 `<input type="file">`（iOS 只认用户手势触发的 `.click()`）：
+              点封面 → 选择单 → 选「手机相册」才去点它。选完压图进仓库、引用串写进设定。
+              「还原」（＝恢复默认）已挪进选择单标题行右端（2026-10-13）。 */}
           <input
             ref={coverInput}
             type="file"
@@ -1295,30 +1418,6 @@ export default function MomentsPage({
               if (file) void pickCover(file);
             }}
           />
-          {coverAsset ? (
-            <div
-              style={{
-                position: "absolute",
-                left: 18,
-                bottom: 30,
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-              }}
-            >
-              <button
-                type="button"
-                className="mp-act"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void clearCover();
-                }}
-                style={{ ...COVER_PILL, padding: "6px 12px", background: "rgba(255,255,255,.42)" }}
-              >
-                还原
-              </button>
-            </div>
-          ) : null}
         </div>
 
         {/* ── 信息流：**一条一张方卡**（每一条＝**一张白纸方卡**，深色细线框住）。
@@ -1373,13 +1472,12 @@ export default function MomentsPage({
                   if (autoGen) void runGenerate(target, target.imagePrompt ?? "");
                   else setEditor({ item: target, text: target.imagePrompt ?? "" });
                 }}
-                onTogglePin={(target) => void togglePin(target)}
                 friends={friends}
+                onMore={(target) => setMoreItem(target)}
                 onToggleLike={(target) => void toggleLike(target)}
                 onSubmitComment={(target, text, mentions, replyToId) =>
                   void submitComment(target, text, mentions, replyToId)
                 }
-                onDelete={(target) => setConfirmDelete(target)}
               />
             ))}
           </div>
@@ -1623,6 +1721,177 @@ export default function MomentsPage({
         <Plus size={19} strokeWidth={1.9} />
       </button>
 
+      {/* ── 换封面选择单（2026-10-13）：点封面 → 从屏幕底浮出这张单
+             （草稿 `.m-sheet`）。不再点一下直接开系统选图，「手机相册」才去开；
+             「小手机的相册」先留位置（灰着 ＋ 一枚「预留」小药丸）。
+             标题行右端那枚「恢复默认」（RotateCcw）只在**换过封面**时才露面——
+             恩熙：别把「恢复默认」浮在封面图片上，收进单子里、摆在标题右边。 ── */}
+      {coverSheet ? (
+        <>
+          <div
+            onClick={() => setCoverSheet(false)}
+            style={{ position: "absolute", inset: 0, zIndex: 88, background: "rgba(20,19,24,.36)" }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 89,
+              background: C.paper,
+              borderRadius: "20px 20px 0 0",
+              padding: "18px 18px calc(var(--safe-area-bottom, 0px) + 16px)",
+              boxShadow: "0 -12px 40px -18px rgba(20,19,24,.5)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                paddingBottom: 6,
+              }}
+            >
+              <span style={{ fontFamily: SERIF, fontSize: 15, fontWeight: 600,
+                             letterSpacing: ".1em", color: C.ink }}>
+                换一张封面
+              </span>
+              {coverAsset ? (
+                <button
+                  type="button"
+                  className="mp-act"
+                  onClick={() => {
+                    setCoverSheet(false);
+                    void clearCover();
+                  }}
+                  aria-label="恢复默认封面"
+                  style={{ ...ICON_BTN, gap: 5, fontFamily: SANS, fontSize: 12.5,
+                           letterSpacing: ".06em", color: C.ink2 }}
+                >
+                  <RotateCcw size={15} strokeWidth={1.7} />
+                  恢复默认
+                </button>
+              ) : null}
+            </div>
+
+            <button type="button" className="mp-sh-item" style={SHEET_ITEM}
+                    onClick={pickCoverFromDevice}>
+              <span style={SHEET_ICO}><Smartphone size={20} strokeWidth={1.6} /></span>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <b style={SHEET_B}>手机相册</b>
+                <i style={SHEET_I}>从你这台手机里挑一张</i>
+              </span>
+            </button>
+
+            <button
+              type="button"
+              className="mp-sh-item"
+              style={{ ...SHEET_ITEM, opacity: 0.5 }}
+              onClick={() => showToast("小手机的相册还在路上，先等等它")}
+            >
+              <span style={SHEET_ICO}><ImageIcon size={20} strokeWidth={1.6} /></span>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <b style={SHEET_B}>小手机的相册</b>
+                <i style={SHEET_I}>从星绥的相册里挑</i>
+              </span>
+              <span style={{ flex: "none", fontSize: 9.5, letterSpacing: ".16em",
+                             color: C.ink3, border: `1px solid ${C.line}`,
+                             borderRadius: 999, padding: "3px 8px" }}>
+                预留
+              </span>
+            </button>
+
+            <button type="button" style={SHEET_CANCEL} onClick={() => setCoverSheet(false)}>
+              取消
+            </button>
+          </div>
+        </>
+      ) : null}
+
+      {/* ── 「这条动态」底单（2026-10-13）：点条目右上角「⋯」浮出来。
+             **自己的**：编辑（跳编辑页）／删除（走原来那张二次确认）；
+             **别人的**：只有「标为重要」这一枚（不能改别人的动态）。
+             ⚠️ 底单挂在**页面级**、不在滚动格里——放条目内部会被信息流的滚动框裁掉。 ── */}
+      {moreItem ? (
+        <>
+          <div
+            onClick={() => setMoreItem(null)}
+            style={{ position: "absolute", inset: 0, zIndex: 88, background: "rgba(20,19,24,.36)" }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 89,
+              background: C.paper,
+              borderRadius: "20px 20px 0 0",
+              padding: "18px 18px calc(var(--safe-area-bottom, 0px) + 16px)",
+              boxShadow: "0 -12px 40px -18px rgba(20,19,24,.5)",
+            }}
+          >
+            <div style={{ fontFamily: SERIF, fontSize: 15, fontWeight: 600,
+                          letterSpacing: ".1em", color: C.ink, paddingBottom: 6 }}>
+              这条动态
+            </div>
+
+            {moreItem.isSelf ? (
+              <>
+                <button type="button" className="mp-sh-item" style={SHEET_ITEM}
+                        onClick={() => openEditMoment(moreItem)}>
+                  <span style={SHEET_ICO}><Pencil size={19} strokeWidth={1.6} /></span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <b style={SHEET_B}>编辑</b>
+                    <i style={SHEET_I}>改正文，或改谁可以看</i>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="mp-sh-item"
+                  style={SHEET_ITEM}
+                  onClick={() => {
+                    const target = moreItem;
+                    setMoreItem(null);
+                    setConfirmDelete(target);
+                  }}
+                >
+                  <span style={SHEET_ICO}><Trash2 size={19} strokeWidth={1.6} /></span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <b style={SHEET_B}>删除</b>
+                    <i style={SHEET_I}>删掉这条动态</i>
+                  </span>
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="mp-sh-item"
+                style={SHEET_ITEM}
+                onClick={() => {
+                  const target = moreItem;
+                  setMoreItem(null);
+                  void togglePin(target);
+                }}
+              >
+                <span style={SHEET_ICO}><Star size={19} strokeWidth={1.6} /></span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <b style={SHEET_B}>{moreItem.pinnedByUser ? "取消重要" : "标为重要"}</b>
+                  <i style={SHEET_I}>
+                    {moreItem.pinnedByUser ? "不再把它拎到最上面" : "把它拎到我动态的最上面"}
+                  </i>
+                </span>
+              </button>
+            )}
+
+            <button type="button" style={SHEET_CANCEL} onClick={() => setMoreItem(null)}>
+              取消
+            </button>
+          </div>
+        </>
+      ) : null}
+
       {/* 配图放大层：点动态里那张图弹出来——大图 + 底下「保存图片」，点背景或右上角 X 关掉。
           大图特意放开原生长按（全局是禁掉的，见 globals.css）：手机端还能用系统菜单里的
           「存储图像／存储到照片」，跟聊天里点大图同一套手感。 */}
@@ -1827,71 +2096,112 @@ export default function MomentsPage({
         </div>
       ) : null}
 
-      {/* 发动态：底部弹层——正文 ＋ 标签 ＋ 可见范围，点了「发布」才落库（2026-10-04）。
-          `data-mp-scroll`：给上面那枚手势闸认，弹层自己滚得动、到头不拖整页。 */}
+      {/* 发动态／编辑动态：整页（2026-10-13 由底部弹层升成满屏，对齐草稿 `.m-post`）——
+          正文 ＋（新发时）配图／标签 ＋ 可见范围，点了「发表／保存」才落库。
+          `data-mp-scroll`：给上面那枚手势闸认，这一层自己滚得动、到头不拖整页。 */}
       {composer ? (
         <div
-          onClick={closeComposer}
           style={{
             position: "absolute",
             inset: 0,
-            background: "rgba(20,19,24,.42)",
             zIndex: 80,
+            background: C.paper,
             display: "flex",
-            alignItems: "flex-end",
+            flexDirection: "column",
           }}
         >
+          {/* 顶栏（草稿 `.m-post-h`）：左「取消」、中标题、右一枚主按钮（发表／保存）。
+              2026-10-13 从底部弹层改成**整页**——恩熙要的是一张正经的发布页，
+              像微信「发表」那样满屏写。编辑时标题换「编辑动态」、按钮换「保存」。 */}
+          <div
+            style={{
+              flex: "none",
+              padding: "calc(var(--safe-area-top, 0px) + var(--sim-status-h, 0px) + 14px) 22px 12px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              borderBottom: `1px solid ${C.line2}`,
+            }}
+          >
+            <button
+              type="button"
+              className="mp-act"
+              onClick={closeComposer}
+              style={{ border: 0, background: "none", padding: 0, fontFamily: SANS,
+                       fontSize: 13.5, letterSpacing: ".08em", color: C.ink2, cursor: "pointer" }}
+            >
+              取消
+            </button>
+            <span style={{ fontFamily: SERIF, fontSize: 16, fontWeight: 600,
+                           letterSpacing: ".16em", color: C.ink }}>
+              {composer.editId ? "编辑动态" : "发布动态"}
+            </span>
+            <button
+              type="button"
+              className="mp-act"
+              onClick={() => (composer.editId ? void saveEditMoment() : void publishSelf())}
+              disabled={!canSubmitComposer || publishing}
+              style={{
+                border: 0,
+                borderRadius: 999,
+                padding: "7px 17px",
+                fontFamily: SANS,
+                fontSize: 13,
+                letterSpacing: ".1em",
+                color: "#fff",
+                background: !canSubmitComposer || publishing ? "#DCDFE3" : C.accent,
+                cursor: !canSubmitComposer || publishing ? "default" : "pointer",
+              }}
+            >
+              {publishing ? "…" : composer.editId ? "保存" : "发表"}
+            </button>
+          </div>
+
+          {/* 可写区（草稿 `.m-post-b`）：整页滚动，正文一只**无框** textarea。 */}
           <div
             data-mp-scroll="1"
-            onClick={(e) => e.stopPropagation()}
             style={{
-              width: "100%",
-              maxHeight: "calc(100% - 40px)",
+              flex: 1,
+              minHeight: 0,
               overflowY: "auto",
               overscrollBehavior: "none",
-              background: C.card,
-              borderTopLeftRadius: 20,
-              borderTopRightRadius: 20,
-              padding: "20px 18px calc(var(--safe-area-bottom, 0px) + 18px)",
-              boxShadow: "0 -14px 44px -20px rgba(20,19,24,.5)",
+              padding: "18px 22px calc(var(--safe-area-bottom, 0px) + 26px)",
               boxSizing: "border-box",
             }}
           >
-            <div style={{ fontSize: 15.5, fontWeight: 500, fontFamily: SERIF,
-                          letterSpacing: ".1em", color: C.ink }}>
-              发动态
-            </div>
 
             <textarea
               aria-label="动态正文"
               data-mp-scroll="1"
               value={composer.text}
               onChange={(e) => setComposer({ ...composer, text: e.target.value })}
-              placeholder="这一刻，想说点什么…"
+              placeholder="这一刻的想法…"
               rows={4}
               style={{
-                marginTop: 12,
                 width: "100%",
-                minHeight: 96,
-                maxHeight: 200,
+                minHeight: 112,
+                maxHeight: 320,
                 resize: "none",
-                padding: "11px 12px",
-                borderRadius: 12,
-                border: `1px solid ${C.line}`,
-                background: "rgba(20,19,24,.04)",
+                padding: 0,
+                border: 0,
+                background: "none",
                 color: C.ink,
                 /* 打字时就用思源宋体（2026-10-13，恩熙：「发布的动态文字要统一」）——
                    发出去的正文卡片是宋体，输入时也是宋体，写时＝发后，不再「写黑体、
                    发出去变宋体」跳一次。字号行距对齐正文卡（14.5/1.85 收半档）。 */
                 fontFamily: SERIF,
                 fontSize: 14,
-                lineHeight: 1.8,
-                letterSpacing: ".01em",
+                lineHeight: 1.85,
+                letterSpacing: ".02em",
                 outline: "none",
                 boxSizing: "border-box",
               }}
             />
 
+            {/* 配图 / 标签这两块**编辑时不摊开**（编辑只管正文＋谁可以看，跟草稿一致）。
+                只有新发动态才给。 */}
+            {!composer.editId ? (
+              <>
             {/* 配图（2026-10-05；2026-10-05 二次改：先问图从哪来）：
                 点「配图」先摊四枚章——相册／拍照（共用藏起来的 input，拍照临时挂 `capture`）／
                 小手机相册（还没做，如实说一句）／文字描述（写段画面当图）。
@@ -2218,6 +2528,9 @@ export default function MomentsPage({
               </div>
             </div>
 
+              </>
+            ) : null}
+
             {/* 可见范围：公开／私密／部分可见三选一；部分可见时才摊出联系人勾选。 */}
             <div style={{ marginTop: 16 }}>
               <div style={{ fontSize: 11, letterSpacing: ".08em", color: C.ink3 }}>可见范围</div>
@@ -2300,31 +2613,6 @@ export default function MomentsPage({
                   </div>
                 )
               ) : null}
-            </div>
-
-            <div style={{ marginTop: 18, display: "flex", gap: 10 }}>
-              <button
-                type="button"
-                className="mp-act"
-                onClick={closeComposer}
-                style={{ flex: 1, height: 44, border: "none", borderRadius: 12,
-                         background: "rgba(20,19,24,.06)", color: C.ink2, fontFamily: SANS,
-                         fontSize: 13.5, letterSpacing: ".04em", cursor: "pointer" }}
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                className="mp-act"
-                onClick={() => void publishSelf()}
-                style={{ flex: "1.6", height: 44, border: "none", borderRadius: 12,
-                         background: C.accent, color: "#FFF", fontFamily: SANS, fontSize: 13.5,
-                         fontWeight: 600, letterSpacing: ".04em", cursor: "pointer", display: "flex",
-                         alignItems: "center", justifyContent: "center", gap: 6 }}
-              >
-                <SquarePen size={14} />
-                发布
-              </button>
             </div>
           </div>
         </div>
@@ -2689,11 +2977,10 @@ function MomentItem({
   generating,
   onOpenImage,
   onEditPrompt,
-  onTogglePin,
   friends,
+  onMore,
   onToggleLike,
   onSubmitComment,
-  onDelete,
 }: {
   item: FeedItem;
   /** 这条的配图正在画（按钮转圈／图上盖一层；不给重复点）。 */
@@ -2702,10 +2989,10 @@ function MomentItem({
   onOpenImage: (src: string, ref?: string) => void;
   /** 要（重新）画这张配图 → 由上层分流（自动生图开＝直接跑；关＝先摊描述卡看／改）。 */
   onEditPrompt: (item: FeedItem) => void;
-  /** 标／取消标「重要」——标了的那条永远原文留在 TA 的记忆里（见 setMomentPinned）。 */
-  onTogglePin: (item: FeedItem) => void;
   /** @ 选人用的名单（跟信息流同一条过滤口径）。 */
   friends: { id: string; name: string }[];
+  /** 点「⋯」→ 把这条交给上层弹「这条动态」底单（编辑／删除／标重要都归上层）。 */
+  onMore: (item: FeedItem) => void;
   /** 点赞／取消赞（我自己那一下）。 */
   onToggleLike: (item: FeedItem) => void;
   /** 发评论：`replyToId` 有值＝挂在某条评论底下（艾特出来的那一层）。 */
@@ -2715,8 +3002,6 @@ function MomentItem({
     mentions: string[],
     replyToId?: string,
   ) => void;
-  /** 删「我」的这条动态（只有我发的才给这枚按钮）：由上层弹确认、落库。 */
-  onDelete: (item: FeedItem) => void;
 }) {
   const resolvedSrc = useMediaSrc(item.imageRef);
 
@@ -2734,18 +3019,6 @@ function MomentItem({
   const [mentionIds, setMentionIds] = useState<string[]>([]);
   const [replyTo, setReplyTo] = useState<MomentComment | null>(null);
   const [atOpen, setAtOpen] = useState(false);
-
-  /* 「⋯」菜单：开没开 ＋ 一枚 ref（点菜单外面就自动收起）。 */
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onDown = (e: PointerEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
-    };
-    document.addEventListener("pointerdown", onDown);
-    return () => document.removeEventListener("pointerdown", onDown);
-  }, [menuOpen]);
 
   const startReply = (c: MomentComment) => {
     setComposing(true);
@@ -2966,62 +3239,18 @@ function MomentItem({
           </span>
         ) : null}
 
-        {/* `.m-more`：一枚「⋯」，点开＝小菜单（我发的 → 删除；TA 的 → 标重要／取消重要）。 */}
-        <div style={{ position: "relative", flex: "none" }} ref={menuRef}>
-          <button
-            type="button"
-            aria-label="更多"
-            aria-haspopup="menu"
-            aria-expanded={menuOpen ? true : false}
-            onClick={() => setMenuOpen((v) => !v)}
-            style={{ ...MORE_BTN, color: menuOpen ? C.accent : C.ink3 }}
-          >
-            ⋯
-          </button>
-          {menuOpen ? (
-            <div
-              role="menu"
-              style={{
-                position: "absolute",
-                top: "calc(100% + 6px)",
-                right: 0,
-                zIndex: 30,
-                padding: "6px 0",
-                minWidth: 108,
-                borderRadius: 10,
-                background: "#FFF",
-                boxShadow:
-                  "0 0 0 1px rgba(58,65,73,.08), 0 10px 28px -12px rgba(58,65,73,.35)",
-              }}
-            >
-              {item.isSelf ? (
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    onDelete(item);
-                  }}
-                  style={MENU_ITEM}
-                >
-                  删除
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    onTogglePin(item);
-                  }}
-                  style={MENU_ITEM}
-                >
-                  {item.pinnedByUser ? "取消重要" : "标为重要"}
-                </button>
-              )}
-            </div>
-          ) : null}
-        </div>
+        {/* `.m-more`：一枚「⋯」——2026-10-13 起点它**只把这条交给上层**，
+            由上层弹页面级的「这条动态」底单（我发的 → 编辑／删除；TA 的 → 标重要）。
+            原来的小下拉放这儿会被信息流的滚动框裁掉，故不再自己渲菜单。 */}
+        <button
+          type="button"
+          aria-label="更多"
+          aria-haspopup="menu"
+          onClick={() => onMore(item)}
+          style={{ ...MORE_BTN, flex: "none" }}
+        >
+          ⋯
+        </button>
       </div>
 
       {/* ── 2026-10-13 对齐草稿（`.m-etxt`）：正文**跨两列**（`1 / -1`），
