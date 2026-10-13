@@ -6,32 +6,15 @@ import { useEffect, useRef, useState } from "react";
  * 开屏：深紫星空、星芒呼吸、STELLASEI 淡入。
  * - 2.8 秒后自动进入，亦可点击跳过。
  * - 用 sessionStorage 记住本次浏览工作階段已看过；严格仅客户端读写。
- * - 入场等 Web 字体就绪后再播：PWA 冷启动时页面最忙，字体换装会改变文本
- *   度量带动版面、主线程拥挤导致动画头几帧掉帧（表现为一顿一顿的位移）。
+ * - **2026-10-13 恩熙：开屏不许再等字体下载。** 原先是等 `document.fonts.ready`
+ *   （即等思源宋体子集下完）才播入场，PWA 冷启动时若脚本迟迟没接管，内容会被
+ *   `opacity:0` 门禁永久藏住、只剩一行「点击任意处进入」。现刊头直接改用系统
+ *   衬线／宋体（iOS／Windows 自带，零下载、零闪），并删掉等字体的门禁——
+ *   挂载即播入场，任何情况下都能立刻看到 STELLASEI。
  */
 export function SplashScreen({ onFinish }: { onFinish: () => void }) {
   const [leaving, setLeaving] = useState(false);
-  const [fontsReady, setFontsReady] = useState(false);
   const finishedRef = useRef(false);
-
-  useEffect(() => {
-    // 双 rAF：确保首帧排版已发生、字体请求已发出，之后 fonts.ready
-    // （成功或失败都会 resolve）才真正等到加载收尾，避免过早放行。
-    let alive = true;
-    let raf2 = 0;
-    const raf1 = requestAnimationFrame(() => {
-      raf2 = requestAnimationFrame(() => {
-        document.fonts.ready.then(() => {
-          if (alive) setFontsReady(true);
-        });
-      });
-    });
-    return () => {
-      alive = false;
-      cancelAnimationFrame(raf1);
-      cancelAnimationFrame(raf2);
-    };
-  }, []);
 
   useEffect(() => {
     const alreadySeen =
@@ -80,18 +63,13 @@ export function SplashScreen({ onFinish }: { onFinish: () => void }) {
       />
       <div
         className="relative flex flex-col items-center"
-        style={
-          fontsReady
-            ? {
-                // 提前提升合成层，避免动画首帧才栅格化造成的顿挫。
-                willChange: "transform, opacity",
-                animation: leaving
-                  ? "splash-content-out 0.32s cubic-bezier(0.4, 0, 1, 1) both"
-                  : "splash-enter 0.6s cubic-bezier(0.22, 1, 0.36, 1) both",
-              }
-            : // 字体未就绪：先整组藏住，就绪后一次到位地入场。
-              { opacity: 0 }
-        }
+        style={{
+          // 提前提升合成层，避免动画首帧才栅格化造成的顿挫。
+          willChange: "transform, opacity",
+          animation: leaving
+            ? "splash-content-out 0.32s cubic-bezier(0.4, 0, 1, 1) both"
+            : "splash-enter 0.6s cubic-bezier(0.22, 1, 0.36, 1) both",
+        }}
       >
         <svg width="72" height="72" viewBox="0 0 24 24" className="text-[#cbbfff]">
           <path
@@ -99,10 +77,16 @@ export function SplashScreen({ onFinish }: { onFinish: () => void }) {
             fill="currentColor"
           />
         </svg>
-        <h1 className="mt-7 font-serif text-[28px] font-medium tracking-[0.42em] text-[#efeaff] pl-[0.42em]">
+        <h1
+          className="mt-7 text-[28px] font-medium tracking-[0.42em] text-[#efeaff] pl-[0.42em]"
+          style={{ fontFamily: 'Georgia, "Times New Roman", "Songti SC", "SimSun", serif' }}
+        >
           STELLASEI
         </h1>
-        <p className="mt-3 font-song text-[12px] tracking-[0.5em] text-white/45 pl-[0.5em]">
+        <p
+          className="mt-3 text-[12px] tracking-[0.5em] text-white/45 pl-[0.5em]"
+          style={{ fontFamily: '"Songti SC", "STSong", "SimSun", Georgia, serif' }}
+        >
           星绥 · 星空传讯
         </p>
       </div>

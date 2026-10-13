@@ -40,6 +40,11 @@ export default function ChatApp() {
    *  非空＝底下的四个 tab 按钮先收起来——`MomentsPage` 的浮层够不着它（那是兄弟节点），
    *  所以由这一层替它躲开（视觉上跟「盖住」一样）。 */
   const [momentsOverlay, setMomentsOverlay] = useState(false);
+  /** 动态页底单／居中弹窗摊着时，底下那排 tab 要不要也罩进黑幕。
+   *  存的是**遮罩浓度**（null＝没遮罩）：`MomentsPage` 那层黑遮罩盖不住这排 tab
+   *  （兄弟节点），由这一层替它补压一层**同浓**的黑遮罩——2026-10-13 恩熙：
+   *  底单开着时四个 tab 也要在这层黑色半透明之下。 */
+  const [momentsDim, setMomentsDim] = useState<number | null>(null);
   /** 应用内视图：消息列表 ⇄ 通讯人 ⇄ 群聊 ⇄ 动态 ⇄ 我的 ⇄ 钱包 ⇄ 聊天全局设定
    *  （群聊从通讯人页进；钱包／设定从「我的」进）。 */
   const [view, setView] = useState<
@@ -226,6 +231,8 @@ export default function ChatApp() {
             signature={currentMask?.signature?.trim() || SIGNATURE_FALLBACK}
             /* 整页浮层开合上报：用来把底下的四个 tab 按钮临时收起来。 */
             onOverlayChange={setMomentsOverlay}
+            /* 底单／居中弹窗的遮罩浓度上报：用来在四个 tab 之上补压同浓黑遮罩。 */
+            onSheetDimChange={setMomentsDim}
             showToast={showToast}
           />
         ) : view === "mine" ? (
@@ -278,13 +285,31 @@ export default function ChatApp() {
       {!openChat &&
       !momentsOverlay &&
       (view === "list" || view === "contacts" || view === "moments" || view === "mine") ? (
-        <ChatTabBar
-          active={view}
-          onNavigate={(next) => {
-            setView(next);
-            setOpenChat(null);
-          }}
-        />
+        /* 外面这层只是给「补压的黑遮罩」当定位框：tab 高度随安全区浮动，
+           用 `inset: 0` 盖住整条最省事。遮罩盖在按钮之上＝tab 也罩进黑幕里；
+           点它就等同点别处的遮罩——让动态页把那单收掉。 */
+        <div style={{ flex: "none", position: "relative" }}>
+          <ChatTabBar
+            active={view}
+            onNavigate={(next) => {
+              setView(next);
+              setOpenChat(null);
+            }}
+          />
+          <div
+            aria-hidden
+            onClick={() => window.dispatchEvent(new Event("moments-dismiss-sheet"))}
+            style={{
+              position: "absolute",
+              inset: 0,
+              zIndex: 5,
+              background: `rgba(20,19,24,${momentsDim ?? 0})`,
+              opacity: momentsDim !== null ? 1 : 0,
+              transition: "opacity .22s ease",
+              pointerEvents: momentsDim !== null ? "auto" : "none",
+            }}
+          />
+        </div>
       ) : null}
 
       {/* 进过的对话全留着挂载，只有当前这一间露着：返回＝藏起来（display:none），
