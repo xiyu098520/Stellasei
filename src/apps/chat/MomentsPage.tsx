@@ -655,6 +655,7 @@ export default function MomentsPage({
   maskAvatar,
   signature,
   onOverlayChange,
+  onSheetDimChange,
   showToast,
 }: {
   /** 全部角色档案（用来把动态的作者名／头像补上）。 */
@@ -671,6 +672,9 @@ export default function MomentsPage({
   signature: string;
   /** 整页浮层（发布／编辑／看图／换封面单…）开合上报：上一层据此把底部四个 tab 按钮收起来。 */
   onOverlayChange: (open: boolean) => void;
+  /** 底单／居中弹窗的**遮罩浓度**上报：底单的黑色遮罩只盖得住这一页，够不着底下那排 tab。
+   *  上一层据此在 tab 之上补压一层**同浓**的黑遮罩（传 null＝没遮罩）。见本页 anyOverlay 注释。 */
+  onSheetDimChange: (alpha: number | null) => void;
   showToast: (msg: string) => void;
 }) {
   /* 我发过的动态：按面具读一册（跟 TA 的动态分开存，见 settings/chat.ts 的 self。）。
@@ -1455,6 +1459,46 @@ export default function MomentsPage({
   }, [anyOverlay, onOverlayChange]);
   useEffect(() => () => onOverlayChange(false), [onOverlayChange]);
 
+  /* 底单／居中弹窗那层黑遮罩**只盖得住这一页、够不着底下那排 tab**（tab 是上一层的
+     兄弟节点）——2026-10-13 恩熙：底单开着时四个 tab 也该罩在同一层黑幕之下。
+     做法：把当前遮罩的**浓度**报上去，上一层据它在 tab 之上补压一层**同浓**的黑遮罩。
+     ⚠︎ 删除动态那张居中确认弹的遮罩是 `.42`、底单是 `.36`，据实回传，接缝才对得上。 */
+  const sheetDim: number | null =
+    confirmDeleteState !== null
+      ? 0.42
+      : editorState !== null ||
+          moreItemState !== null ||
+          momentSetState !== null ||
+          coverSheetState ||
+          visSheetState !== null ||
+          remindSheetState ||
+          coverDraft !== null
+        ? 0.36
+        : null;
+  useLayoutEffect(() => {
+    onSheetDimChange(sheetDim);
+  }, [sheetDim, onSheetDimChange]);
+  useEffect(() => () => onSheetDimChange(null), [onSheetDimChange]);
+
+  /* 上一层在 tab 上补压的那层遮罩被点中时（tab 也罩在黑幕里了，点它就该跟点别处的
+     遮罩一样**收起当前底单／弹窗**）：一次性把这页所有底单与居中确认弹收掉。 */
+  useEffect(() => {
+    const dismiss = () => {
+      setEditor(null);
+      setMoreItem(null);
+      setMomentSet(null);
+      setCoverSheet(false);
+      setVisSheet(null);
+      setRemindSheet(false);
+      setConfirmDelete(null);
+      if (coverDraft) URL.revokeObjectURL(coverDraft.src);
+      coverDraftFile.current = null;
+      setCoverDraft(null);
+    };
+    window.addEventListener("moments-dismiss-sheet", dismiss);
+    return () => window.removeEventListener("moments-dismiss-sheet", dismiss);
+  }, [coverDraft]);
+
   /* 选好图那一下：**先试穿、不落库**——摊一条「重选／就用这张」的浮条，图上按住上下拖
      调位置（草稿 `.m-prev`）。按「就用这张」才压进仓库＋写进设定；「重选」再开系统选图。
      一来就落库的话，用户还没看清位置就把旧封面回收了，反悔都来不及。 */
@@ -1499,7 +1543,11 @@ export default function MomentsPage({
      （`object-position` 的 Y% 要**减**才让画面跟着手往下）。
      ⚠️ 拖动中**不 setState**——每帧 setState 会把整页重渲染一遍，手机端就卡了。
      拖的时候只直接改那张图自己的 `object-position`（一次 style 写入，极便宜），
-     松手那一刻才把最终值落回 state。 */
+     松手那一刻才把最终值落回 state。
+     ⚠️ 2026-10-13 恩熙（手指一滑就断、要反复划才挪一点）：**别再挂 `onPointerLeave`**。
+     触摸端手指一划出封面小框，浏览器就抛 `pointerleave`，把 `coverDrag` 清空、
+     一次拖动被腰斩成一小截。改成只认 `pointerup`／`pointercancel`，
+     配合 `setPointerCapture` 把整段手势都锁在这一处，才是「按住不放一直拖」。 */
   const onCoverPointerDown = (e: ReactPointerEvent) => {
     if (!coverDraft) return;
     coverDrag.current = { y: e.clientY, startPos: coverDraft.pos, cur: coverDraft.pos };
@@ -1752,7 +1800,6 @@ export default function MomentsPage({
           onPointerMove={onCoverPointerMove}
           onPointerUp={endCoverDrag}
           onPointerCancel={endCoverDrag}
-          onPointerLeave={endCoverDrag}
         >
           {/* 换过封面就走真照片：图**铺满整面**（`object-fit: cover`），
               上面压两层（跟默认底同一套「上深下浅」）——
@@ -2274,7 +2321,8 @@ export default function MomentsPage({
             position: "absolute",
             left: 16,
             right: 16,
-            bottom: "calc(var(--safe-area-bottom, 0px) + 20px)",
+            /* 2026-10-13 恩熙：这张封面预览卡要更贴近底部四个 tab → 20px 收到 8px。 */
+            bottom: "calc(var(--safe-area-bottom, 0px) + 8px)",
             zIndex: 60,
             display: "flex",
             alignItems: "center",
@@ -2346,8 +2394,8 @@ export default function MomentsPage({
               zIndex: 89,
               background: C.paper,
               borderRadius: "20px 20px 0 0",
-              /* 2026-10-13 恩熙：最下面那颗钮离底部 tab 太近 → 16px 拉到 28px。 */
-              padding: "18px 18px calc(var(--safe-area-bottom, 0px) + 28px)",
+              /* 2026-10-13 恩熙：最下面那颗钮离底部 tab 太远 → 28px 收到 12px。 */
+              padding: "18px 18px calc(var(--safe-area-bottom, 0px) + 12px)",
               boxShadow: "0 -12px 40px -18px rgba(20,19,24,.5)",
               pointerEvents: coverSheetAlive.closing ? "none" : undefined,
             }}
@@ -2444,8 +2492,8 @@ export default function MomentsPage({
               zIndex: 89,
               background: C.paper,
               borderRadius: "20px 20px 0 0",
-              /* 2026-10-13 恩熙：最下面那颗钮离底部 tab 太近 → 16px 拉到 28px。 */
-              padding: "18px 18px calc(var(--safe-area-bottom, 0px) + 28px)",
+              /* 2026-10-13 恩熙：最下面那颗钮离底部 tab 太远 → 28px 收到 12px。 */
+              padding: "18px 18px calc(var(--safe-area-bottom, 0px) + 12px)",
               boxShadow: "0 -12px 40px -18px rgba(20,19,24,.5)",
               pointerEvents: moreItemAlive.closing ? "none" : undefined,
             }}
@@ -2538,8 +2586,8 @@ export default function MomentsPage({
               zIndex: 97,
               background: C.paper,
               borderRadius: "20px 20px 0 0",
-              /* 2026-10-13 恩熙：最下面那颗钮离底部 tab 太近 → 16px 拉到 28px。 */
-              padding: "18px 18px calc(var(--safe-area-bottom, 0px) + 28px)",
+              /* 2026-10-13 恩熙：最下面那颗钮离底部 tab 太远 → 28px 收到 12px。 */
+              padding: "18px 18px calc(var(--safe-area-bottom, 0px) + 12px)",
               boxShadow: "0 -12px 40px -18px rgba(20,19,24,.5)",
               maxHeight: "74%",
               overflowY: "auto",
@@ -2757,8 +2805,8 @@ export default function MomentsPage({
               zIndex: 97,
               background: C.paper,
               borderRadius: "20px 20px 0 0",
-              /* 2026-10-13 恩熙：最下面那颗钮离底部 tab 太近 → 16px 拉到 28px。 */
-              padding: "18px 18px calc(var(--safe-area-bottom, 0px) + 28px)",
+              /* 2026-10-13 恩熙：最下面那颗钮离底部 tab 太远 → 28px 收到 12px。 */
+              padding: "18px 18px calc(var(--safe-area-bottom, 0px) + 12px)",
               boxShadow: "0 -12px 40px -18px rgba(20,19,24,.5)",
               maxHeight: "74%",
               overflowY: "auto",
