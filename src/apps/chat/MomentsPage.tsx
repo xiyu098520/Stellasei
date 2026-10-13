@@ -47,7 +47,7 @@ import {
   MessageCircle,
   Plus,
   Share2,
-  Settings,
+  SlidersVertical,
   Smartphone,
   SquarePen,
   Star,
@@ -1059,11 +1059,17 @@ export default function MomentsPage({
             /* 通铺＝没有圆角（颗粒 svg 同步 0）。 */
             borderRadius: 0,
             background:
-              /* 最底一截**化进封面下沿外的页底**：终点用纸色 `rgba(250,249,246,1)`
-                 （页底 `C.paper` 上盖着那层蓝雾的下沿色）——封面从顶上渗下来、到自己散开。 */
-              "linear-gradient(to bottom, rgba(250,249,246,0) 44%, rgba(250,249,246,1) 100%)," +
-              "radial-gradient(150% 110% at 82% 4%, rgba(255,255,255,.5) 0%, rgba(255,255,255,0) 58%)," +
-              "linear-gradient(158deg,#E2E8F2 0%,#D9E2EF 44%,#CFDBEC 100%)",
+              /* 草稿封面同款叠法（**上深下浅**）：
+                 ① 顶上压暗 `rgba(20,19,24,.52)→.10@20%→0@38%`——顶上那两行白字与两枚白描线图标
+                    要靠这层暗才浮得住（照片/底色一旦偏亮，白字就没了）；
+                 ② 底下化进页底：到 70% 起往纸色 `rgba(250,249,246,.94)` 化，
+                    「封面到哪儿为止」是**化开**的，不是切一刀；
+                 ③ 一抹柔光把暮蓝底子撑出层次。
+                 底子从浅蓝改成**暮蓝**（draft 的夜空照口吻）：底色一深，顶上白字才立得住。 */
+              "linear-gradient(180deg, rgba(20,19,24,.52) 0%, rgba(20,19,24,.10) 20%, rgba(20,19,24,0) 38%)," +
+              "linear-gradient(to bottom, rgba(250,249,246,0) 70%, rgba(250,249,246,.94) 100%)," +
+              "radial-gradient(150% 110% at 82% 4%, rgba(255,255,255,.34) 0%, rgba(255,255,255,0) 58%)," +
+              "linear-gradient(158deg,#2C3547 0%,#39465C 46%,#4C5A72 100%)",
             /* 通铺的一整面**不再「浮起来」**：三道白内边与那道深投影全撤。 */
             boxShadow: "none",
             /* 注意：**不能** `overflow: hidden`——下面那块身份区要**跨出封面下沿**去
@@ -1073,12 +1079,11 @@ export default function MomentsPage({
           }}
         >
           {/* 换过封面就走真照片：图**铺满整面**（`object-fit: cover`），
-              上面压两层——
-              ① 顶上一点白（`.34 → 0 @24%`）：压在封面里的顶栏图标与字是**深梅色**，
-                 照片若是暗的，AD 那几个字就没了；这层白只护住最上面那一小截，
-                 再往下就是照片本来的样子；
-              ② 底下化进页底：用的是跟默认渐变**同一枚** `rgba(250,249,246,1)`，
-                 所以「封面到哪儿为止」是**化开**的，不会忽然切一刀。 ── */}
+              上面压两层（跟默认底同一套「上深下浅」）——
+              ① 顶上压暗 `rgba(20,19,24,.52)→.10@20%→0@38%`：封面里的两行白字与白描线图标
+                 全靠这层暗浮住，照片再亮也读得清；
+              ② 底下化进页底：用的是跟默认渐变**同一枚**纸色，
+                 「封面到哪儿为止」是**化开**的，不会忽然切一刀。 ── */}
           {coverSrc ? (
             <>
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1099,8 +1104,8 @@ export default function MomentsPage({
                   position: "absolute",
                   inset: 0,
                   background:
-                    "linear-gradient(to bottom, rgba(255,255,255,.34) 0%, rgba(255,255,255,0) 24%)," +
-                    "linear-gradient(to bottom, rgba(250,249,246,0) 62%, rgba(250,249,246,1) 100%)",
+                    "linear-gradient(180deg, rgba(20,19,24,.52) 0%, rgba(20,19,24,.10) 20%, rgba(20,19,24,0) 38%)," +
+                    "linear-gradient(to bottom, rgba(250,249,246,0) 70%, rgba(250,249,246,1) 100%)",
                 }}
               />
             </>
@@ -1128,18 +1133,17 @@ export default function MomentsPage({
             <rect width="100%" height="100%" filter="url(#mp-cover-grain)" />
           </svg>
 
-          {/* ── 我是谁：头像**骑在封面的下沿上**——一半在封面里、一半落在封面外。
-                 所以头像不是「封面里的一个元素」，而是**压在封面边缘上的一枚印**。
-                 `top: calc(100% - 22px)`：60px 的头像**嵌进封面 38px、露在外面 22px**。
-                 ⚠︎ 头像往上坐，下面的名字／签名也跟着上移 8px —— 信息流顶部留白
-                 用 `108px` 补回来，别让它俩跟第一张卡贴住。
-                 名字与签名跟着头像落到封面**外**，右对齐成一列——封面外的底是雾白的页底，
-                 深梅色压在上面照样读得清，不用再垫白晕。 ── */}
+          {/* ── 我是谁：草稿身份块同款——**名字在左、头像在右，并作一行**。
+                 整块贴封面右下、骑在封面下沿上：`top: calc(100% - 28px)` 让 56px 的头像
+                 **嵌进封面 28px、露在外面 28px**（一半里一半外的那枚印）。
+                 ⚠︎ 头像往上坐，下面的签名也跟着上移，信息流顶部留白用 `108px` 补回来。
+                 名字与签名落在封面**外**的雾白页底上，墨色压得住。 ── */}
           <div
             style={{
               position: "absolute",
-              top: "calc(100% - 22px)",
-              right: 18,
+              top: "calc(100% - 28px)",
+              right: 24,
+              zIndex: 3,
               display: "flex",
               flexDirection: "column",
               alignItems: "flex-end",
@@ -1147,69 +1151,72 @@ export default function MomentsPage({
           >
             <div
               style={{
-                flex: "none",
-                width: 60,
-                height: 60,
-                /* 草稿身份块同款：白底方圆角（14），一圈白边把头像从雾里托出来，
-                   无头像时首字宋体雾蓝。 */
-                borderRadius: 14,
-                background: "#FFF",
-                color: C.accent,
-                fontFamily: SERIF,
-                border: "1px solid rgba(255,255,255,.78)",
-                boxShadow:
-                  "0 0 0 2px rgba(250,249,246,.9), 0 10px 22px -14px rgba(58,65,73,.5)",
                 display: "flex",
                 alignItems: "center",
-                justifyContent: "center",
-                fontSize: 21,
-                fontWeight: 600,
-                overflow: "hidden",
+                justifyContent: "flex-end",
+                gap: 14,
               }}
             >
-              {maskAvatar ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={maskAvatar}
-                  alt=""
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                />
-              ) : (
-                maskName.charAt(0)
-              )}
+              <div
+                style={{
+                  maxWidth: 200,
+                  fontSize: 18,
+                  fontWeight: 600,
+                  fontFamily: SERIF,
+                  letterSpacing: ".1em",
+                  color: C.ink,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {maskName}
+              </div>
+              <div
+                style={{
+                  flex: "none",
+                  width: 56,
+                  height: 56,
+                  /* 草稿同款：白底、圆角 16，无描边，用一圈极淡的影子把头像从雾里托出来。
+                     无头像时首字宋体雾蓝。 */
+                  borderRadius: 16,
+                  background: "#FFF",
+                  color: C.accent,
+                  fontFamily: SERIF,
+                  boxShadow:
+                    "0 10px 26px -12px rgba(58,65,73,.55), 0 0 0 1px rgba(58,65,73,.06)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 22,
+                  fontWeight: 600,
+                  overflow: "hidden",
+                }}
+              >
+                {maskAvatar ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={maskAvatar}
+                    alt=""
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                ) : (
+                  maskName.charAt(0)
+                )}
+              </div>
             </div>
 
-            <div
-              style={{
-                marginTop: 9,
-                maxWidth: 220,
-                fontSize: 17,
-                fontWeight: 500,
-                fontFamily: SERIF,
-                letterSpacing: ".1em",
-                /* 封面外已经没有那块浅底了，字还是走**深梅色**——跟封面里的口吻同一套，
-                   在雾白的页底上读得清。字重只给到 500：宋体一加粗就糊成黑块，
-                   「高级」靠的是**细**和**空**，不是靠重。 */
-                color: COVER_INK,
-                textAlign: "right",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
-              {maskName}
-            </div>
             {signature.trim() ? (
               <div
                 style={{
-                  marginTop: 3,
+                  marginTop: 8,
                   maxWidth: 220,
-                  maxHeight: 17,
+                  maxHeight: 18,
                   overflow: "hidden",
-                  fontSize: 10.5,
-                  lineHeight: 1.5,
-                  letterSpacing: ".04em",
-                  color: "rgba(58,65,73,.66)",
+                  fontSize: 12.5,
+                  lineHeight: 1.4,
+                  letterSpacing: ".02em",
+                  color: C.ink2,
                   textAlign: "right",
                 }}
               >
@@ -1424,94 +1431,108 @@ export default function MomentsPage({
       ) : null}
       </div>
 
-      {/* ── 顶栏：压在封面里时**不显形**（全透明、墨色图标与字），滚过封面下沿才落成
-             一层纸色实底＋墨字＋一条发丝线（草稿「雾蓝纸墨」同一套）。只有 `stuck`
-             翻面那一帧才重画，滚动途中不跟着抖。 ── */}
+      {/* ── 顶栏：草稿同款「**居中刊头**」——中文大字居中、斜体英文小字在下；
+             右上一枚**纯白描线**设置图标（无边框无底色，压在封面上，靠一层投影浮住）。
+             压在封面里时全透明、字与图标走白；滚过封面下沿才落成一层纸色实底＋墨字墨图标
+             ＋一条发丝线（草稿「雾蓝纸墨」同一套）。只有 `stuck` 翻面那一帧才重画，
+             滚动途中不跟着抖。 ── */}
       <div
         style={{
           position: "absolute",
           top: 0,
           left: 0,
           right: 0,
-          zIndex: 6,
+          zIndex: 7,
           height: "calc(var(--safe-area-top, 0px) + var(--sim-status-h, 0px) + 58px)",
           paddingTop: "calc(var(--safe-area-top, 0px) + var(--sim-status-h, 0px))",
-          paddingLeft: 16,
-          paddingRight: 16,
+          paddingLeft: 26,
+          paddingRight: 26,
           boxSizing: "border-box",
           display: "flex",
           alignItems: "center",
-          gap: 10,
+          justifyContent: "center",
           background: stuck ? "rgba(250,249,246,.9)" : "transparent",
           backdropFilter: stuck ? "blur(14px)" : "none",
           WebkitBackdropFilter: stuck ? "blur(14px)" : "none",
           borderBottom: `1px solid ${stuck ? C.line : "transparent"}`,
-          /* 吸顶过渡放缓（2026-10-13，恩熙：「过渡再自然一点」）：纸底先落稳托住字，
-             底下那两行标题与钮的颜色慢半拍（.08s）再缓缓转墨——两拍走，不像开关。 */
+          /* 吸顶过渡放缓：纸底先落稳托住字，底下那两行标题与钮的颜色慢半拍（.08s）
+             再缓缓转墨——两拍走，不像开关。 */
           transition:
             "background .32s cubic-bezier(.4,.2,.2,1), border-color .32s cubic-bezier(.4,.2,.2,1)",
         }}
       >
-        {/* ── 标题：中文在上、斜体英文小字在下（跟草稿/消息页同一副刊头排法）。
-              名称与英文留在这两行里。但**期号不回来**（不要 `No. 00X` 那种）。 ── */}
-        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
+        {/* ── 刊头：中文在上、斜体英文小字在下，两行**居中**（草稿 `.c-title` 排法）。
+              压在封面上时两行走白＋一层暗投影顶住（封面顶上已经压暗，白字浮得住）；
+              吸顶后转墨、投影撤掉。 ── */}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+          }}
+        >
           <div
             style={{
-              fontSize: 19,
+              fontSize: 22,
               fontWeight: 600,
               fontFamily: SERIF,
               letterSpacing: ".2em",
               paddingLeft: ".2em",
-              lineHeight: 1.2,
-              color: stuck ? C.ink : COVER_INK,
+              lineHeight: 1,
+              color: stuck ? C.ink : "#fff",
+              textShadow: stuck ? "none" : "0 1px 10px rgba(20,19,24,.55)",
               transition: "color .5s ease .08s",
               whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
             }}
           >
             星绥动态
           </div>
           <div
             style={{
-              fontSize: 10.5,
+              paddingTop: 2,
+              fontSize: 12.5,
               fontFamily: SERIF,
               fontStyle: "italic",
-              letterSpacing: ".16em",
+              letterSpacing: ".12em",
+              textIndent: ".12em",
               lineHeight: 1.2,
-              color: stuck ? C.ink3 : "rgba(58,65,73,.62)",
+              color: stuck ? C.ink3 : "rgba(255,255,255,.72)",
               transition: "color .5s ease .08s",
               whiteSpace: "nowrap",
-              overflow: "hidden",
             }}
           >
             STELLASEI MOMENTS
           </div>
         </div>
 
-        {/* 发动态的入口挪去了右下角那枚浮圆钮（见滚动区外那枚「发动态」），
-            顶栏只留动态设置一枚，不挤两枚小图标。 */}
+        {/* 发动态的入口在右下角那枚浮圆钮，顶栏只留动态设置一枚。
+            形制照草稿：**26px 纯描线滑杆图标**（无框无底），压封面时走白＋一层 drop-shadow，
+            吸顶后转墨、阴影撤掉。垂直对齐到刊头那一行（内容区 58px 的正中）。 */}
         <button
           type="button"
           className="mp-act"
           onClick={() => void openMomentSet()}
           aria-label="动态设置"
           style={{
-            flex: "none",
-            width: 34,
-            height: 34,
-            borderRadius: 11,
+            position: "absolute",
+            right: 24,
+            top: "calc(var(--safe-area-top, 0px) + var(--sim-status-h, 0px) + 29px)",
+            transform: "translateY(-50%)",
+            width: 26,
+            height: 26,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            border: `1px solid ${stuck ? C.line : "rgba(58,65,73,.22)"}`,
-            background: stuck ? "rgba(58,65,73,.06)" : "rgba(255,255,255,.62)",
-            color: stuck ? C.ink : COVER_INK,
-            transition: "color .5s ease .08s, background .32s cubic-bezier(.4,.2,.2,1), border-color .32s cubic-bezier(.4,.2,.2,1)",
+            padding: 0,
+            border: "none",
+            background: "transparent",
+            color: stuck ? C.ink : "#fff",
+            filter: stuck ? "none" : "drop-shadow(0 1px 5px rgba(20,19,24,.55))",
+            transition: "color .5s ease .08s, filter .5s ease .08s",
             cursor: "pointer",
           }}
         >
-          <Settings size={16} strokeWidth={1.9} />
+          <SlidersVertical size={21} strokeWidth={1.6} />
         </button>
       </div>
 
