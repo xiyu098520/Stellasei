@@ -1426,7 +1426,10 @@ export default function MomentsPage({
           backdropFilter: stuck ? "blur(14px)" : "none",
           WebkitBackdropFilter: stuck ? "blur(14px)" : "none",
           borderBottom: `1px solid ${stuck ? T.line : "transparent"}`,
-          transition: "background .18s ease, border-color .18s ease",
+          /* 吸顶过渡放缓（2026-10-13，恩熙：「过渡再自然一点」）：纸底先落稳托住字，
+             底下那两行标题与钮的颜色慢半拍（.08s）再缓缓转墨——两拍走，不像开关。 */
+          transition:
+            "background .32s cubic-bezier(.4,.2,.2,1), border-color .32s cubic-bezier(.4,.2,.2,1)",
         }}
       >
         {/* ── 标题：中文在上、英文小字在下（字距拉到 .3em）。
@@ -1441,6 +1444,7 @@ export default function MomentsPage({
               letterSpacing: ".16em",
               lineHeight: 1.2,
               color: stuck ? T.ink : COVER_INK,
+              transition: "color .5s ease .08s",
               whiteSpace: "nowrap",
               overflow: "hidden",
               textOverflow: "ellipsis",
@@ -1454,6 +1458,7 @@ export default function MomentsPage({
               letterSpacing: ".3em",
               lineHeight: 1.2,
               color: stuck ? T.ink3 : "rgba(91,42,64,.58)",
+              transition: "color .5s ease .08s",
               whiteSpace: "nowrap",
               overflow: "hidden",
             }}
@@ -1462,36 +1467,8 @@ export default function MomentsPage({
           </div>
         </div>
 
-        {/* 发动态：顶栏右端一枚入口，点开底部弹层写正文／标签／可见范围（2026-10-04）。 */}
-        <button
-          type="button"
-          className="mp-act"
-          onClick={() =>
-            setComposer({ text: "", tags: [], tagDraft: "", visibility: "public", visibleTo: [], visibleWorlds: [] })
-          }
-          aria-label="发动态"
-          style={{
-            flex: "none",
-            display: "flex",
-            alignItems: "center",
-            gap: 5,
-            height: 34,
-            padding: "0 12px 0 10px",
-            borderRadius: 11,
-            border: `1px solid ${stuck ? "rgba(20,19,24,.12)" : "rgba(91,42,64,.18)"}`,
-            background: stuck ? "rgba(20,19,24,.055)" : "rgba(255,255,255,.62)",
-            color: stuck ? T.ink : COVER_INK,
-            fontFamily: SANS,
-            fontSize: 12,
-            letterSpacing: ".06em",
-            cursor: "pointer",
-          }}
-        >
-          <SquarePen size={14} strokeWidth={1.9} />
-          发动态
-        </button>
-
-        {/* 动态设置：顶栏最右一枚入口，点开底部弹层拨「发动态间隔」（2026-10-05，恩熙定位置）。 */}
+        {/* 发动态的入口挪去了右下角那枚浮圆钮（见滚动区外那枚「发动态」），
+            顶栏只留动态设置一枚，不挤两枚小图标。 */}
         <button
           type="button"
           className="mp-act"
@@ -1508,12 +1485,50 @@ export default function MomentsPage({
             border: `1px solid ${stuck ? "rgba(20,19,24,.12)" : "rgba(91,42,64,.18)"}`,
             background: stuck ? "rgba(20,19,24,.055)" : "rgba(255,255,255,.62)",
             color: stuck ? T.ink : COVER_INK,
+            transition: "color .5s ease .08s, background .32s cubic-bezier(.4,.2,.2,1), border-color .32s cubic-bezier(.4,.2,.2,1)",
             cursor: "pointer",
           }}
         >
           <Settings size={16} strokeWidth={1.9} />
         </button>
       </div>
+
+      {/* 发动态：右下角浮一枚圆钮（2026-10-13 从顶栏胶囊挪来，草稿上定稿的形制）——
+          正圆 44、磨砂玻璃底（淡粉半透 ＋ blur，透得出背后的纸）、一圈白描边加顶棱白光、
+          粉描线「＋」。架在安全区上方，拇指一伸就到；发布弹层（z 80）与看图（z 70）
+          都盖得住它，浮钮自己只压内容（z 5）。
+          `translateZ(0)`：iOS 上 backdrop-filter 要元素进了独立合成层才执行。 */}
+      <button
+        type="button"
+        className="mp-act"
+        onClick={() =>
+          setComposer({ text: "", tags: [], tagDraft: "", visibility: "public", visibleTo: [], visibleWorlds: [] })
+        }
+        aria-label="发动态"
+        style={{
+          position: "absolute",
+          right: 20,
+          bottom: "calc(var(--safe-area-bottom, 0px) + 22px)",
+          zIndex: 5,
+          width: 44,
+          height: 44,
+          borderRadius: "50%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "rgba(248,224,236,.55)",
+          backdropFilter: "blur(14px)",
+          WebkitBackdropFilter: "blur(14px)",
+          border: "1px solid rgba(255,255,255,.7)",
+          boxShadow:
+            "0 10px 22px -12px rgba(58,65,73,.55), inset 0 1px 0 rgba(255,255,255,.9)",
+          color: T.pink,
+          transform: "translateZ(0)",
+          cursor: "pointer",
+        }}
+      >
+        <Plus size={19} strokeWidth={1.9} />
+      </button>
 
       {/* 配图放大层：点动态里那张图弹出来——大图 + 底下「保存图片」，点背景或右上角 X 关掉。
           大图特意放开原生长按（全局是禁掉的，见 globals.css）：手机端还能用系统菜单里的
@@ -1772,10 +1787,13 @@ export default function MomentsPage({
                 border: `1px solid ${T.line}`,
                 background: "rgba(20,19,24,.04)",
                 color: T.ink,
-                fontFamily: SANS,
-                fontSize: 13.5,
-                lineHeight: 1.7,
-                letterSpacing: ".02em",
+                /* 打字时就用思源宋体（2026-10-13，恩熙：「发布的动态文字要统一」）——
+                   发出去的正文卡片是宋体，输入时也是宋体，写时＝发后，不再「写黑体、
+                   发出去变宋体」跳一次。字号行距对齐正文卡（14.5/1.85 收半档）。 */
+                fontFamily: SERIF,
+                fontSize: 14,
+                lineHeight: 1.8,
+                letterSpacing: ".01em",
                 outline: "none",
                 boxSizing: "border-box",
               }}
@@ -1910,9 +1928,10 @@ export default function MomentsPage({
                       border: `1px solid rgba(232,106,155,.4)`,
                       background: "rgba(255,247,249,.92)",
                       color: T.ink,
-                      fontFamily: SANS,
+                      /* 同正文：文字描述也是「发布的字」，一并思源宋体。 */
+                      fontFamily: SERIF,
                       fontSize: 13,
-                      lineHeight: 1.7,
+                      lineHeight: 1.8,
                       outline: "none",
                       boxSizing: "border-box",
                     }}
