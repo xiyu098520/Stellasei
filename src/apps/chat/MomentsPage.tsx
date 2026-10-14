@@ -551,6 +551,46 @@ function ComposerThumb({
   );
 }
 
+/** 配图区那格「＋」，两处都用它：**没图时的起手格**（微信那种：先一个「＋」）与
+    **九宫格末尾的续加格**。点一下弹「这张图从哪来」那张底单（2026-10-15）。
+    尺寸＝铺满所在那一格，自己撑成方形（`paddingTop: 100%`）。 */
+function ComposerAddCell({ onPick }: { onPick: () => void }) {
+  return (
+    <button
+      type="button"
+      className="mp-act"
+      aria-label="加一张配图"
+      onClick={onPick}
+      style={{
+        position: "relative",
+        display: "block",
+        width: "100%",
+        /* ⚠️ 顺序要紧：`padding` 是**简写**，会把 `padding-top` 一起重置。必须写在
+           `paddingTop` 前面，否则方形高度被抹成 0、格子又 `overflow` 裁干净，整格就
+           「看不见」了（2026-10-14 配图一片空白的真凶）。 */
+        padding: 0,
+        paddingTop: "100%",
+        border: "1px dashed rgba(20,19,24,.18)",
+        borderRadius: 14,
+        background: "rgba(20,19,24,.03)",
+        cursor: "pointer",
+      }}
+    >
+      <Plus
+        size={20}
+        strokeWidth={1.7}
+        style={{
+          position: "absolute",
+          top: "50%",
+          left: "50%",
+          transform: "translate(-50%,-50%)",
+          color: C.ink3,
+        }}
+      />
+    </button>
+  );
+}
+
 /** 动态卡片九宫格里的一格配图：自己解引用串 → 铺满一张方形格；点开＝看大图。
     非我发的还能长按重画（`pressHandlers` 由条目那层给）。多图必须拆成子组件逐格渲染——
     `useMediaSrc` 一次只解一个引用串（见 media-asset.ts）。 */
@@ -991,10 +1031,16 @@ export default function MomentsPage({
   const composerAlive = usePresence(composerState, 260);
   const composer = composerAlive.shown;
 
-  /* 「配图」那枚按钮点开之后：先问图从哪来——`seals`＝四枚章的那面墙（相册／拍照／
-     小手机相册／文字描述）；`text`＝写文字描述的子面板。null＝没开着。
-     跟草稿同生共死：关弹层、发布完都收回。 */
-  const [imgPick, setImgPick] = useState<null | "seals" | "text">(null);
+  /* 配图区那个「＋」点开之后：
+     － 先弹一张**底部单**问图从哪来（`imgSheet`，2026-10-15 恩熙：照微信——没图时
+        就一个「＋」格子，点进去才问，不再在页内直接摊一排章）；
+     － 里头点了「文字描述」才进子面板（`imgPick === "text"`，在配图区位置摊输入框）。
+     null＝没开着。跟草稿同生共死：关弹层、发布完都收回。 */
+  const [imgPick, setImgPick] = useState<null | "text">(null);
+  /* 选图源那张底单：开合＋退场动画（跟其它底单同一套）。 */
+  const [imgSheetState, setImgSheet] = useState(false);
+  const imgSheetAlive = usePresence<true>(imgSheetState || null, 240);
+  const imgSheetOpen = imgSheetAlive.shown !== null;
   /* 文字描述的那份草稿（子面板里写的那段话）——确认了才落进 composer.imageText。 */
   const [textDraft, setTextDraft] = useState("");
   /* 发布中（开关开着时「文字描述」要先画真图、画完才落库）——挡住重复点。 */
@@ -1046,9 +1092,9 @@ export default function MomentsPage({
     if (overflow) showToast("最多 9 张，多的没收");
   };
 
-  /* 「配图」→ 四枚章里挑来源。相册／拍照共用那个藏起来的 input（拍照临时挂 `capture`，
-     走系统相册必须摘掉，不然 iOS 直接开相机把图库那一路砍掉）；小手机相册还没做，
-     如实说一句；文字描述开子面板写。 */
+  /* 「这张图从哪来」那张底单里挑来源。相册／拍照共用那个藏起来的 input（拍照临时挂
+     `capture`，走系统相册必须摘掉，不然 iOS 直接开相机把图库那一路砍掉）；小手机相册
+     还没做，如实说一句；文字描述开子面板写（在调用处换 `imgPick`）。 */
   const pickComposerSource = (source: "device" | "camera" | "stellasei") => {
     if (source === "stellasei") {
       showToast("小手机相册还在做，先留个位置");
@@ -1494,6 +1540,7 @@ export default function MomentsPage({
       setCoverSheet(false);
       setVisSheet(null);
       setRemindSheet(false);
+      setImgSheet(false);
       setConfirmDelete(null);
       if (coverDraft) URL.revokeObjectURL(coverDraft.src);
       coverDraftFile.current = null;
@@ -1656,31 +1703,6 @@ export default function MomentsPage({
           content: ''; position: absolute; top: 0; left: 56px; right: 2px;
           height: 1px; background: ${C.line2};
         }
-        /* 「配图」那四枚章（相册／拍照／小手机相册／文字描述）。
-           ⚠️ 章的底与边**必须写在样式表里、不能写内联**：内联样式永远压过样式表，
-           写内联的话下面「按下」那条规则一辈子不生效（聊天加号面板踩过同一个坑）。
-           蓝纸墨的语言：白面／雾蓝图标；按下整枚翻蓝、图标转纸白。 */
-        .mp-seal .mp-seal-face {
-          width: 46px;
-          height: 46px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          border-radius: 12px;
-          border: 1px solid rgba(90,115,145,.24);
-          color: #5A7391;
-          background: #FFF;
-          box-shadow: 0 6px 14px -10px rgba(20,19,24,.4);
-          transition: background .16s ease, border-color .16s ease, color .16s ease;
-        }
-        /* 枚本身不再走 .mp-act 那层淡出——它翻蓝，不需要再叠一层透明度。 */
-        .mp-seal:active { opacity: 1; }
-        /* 按下去那一瞬：整枚翻成蓝底、边收掉、图标转纸白（图标走 currentColor，跟着变）。 */
-        .mp-seal:active .mp-seal-face {
-          border-color: transparent;
-          color: #FFFDF8;
-          background: linear-gradient(180deg, #6B84A3 0%, #46617F 100%);
-        }
         /* ── 浮层「进退场」（2026-10-13）：只走 opacity 与 transform（GPU 合成，不碰
            布局），曲线照草稿的背板与底单。进场用 backwards 让首帧就落在起点、
            不闪一下；退场用 forwards 停在末帧，等节点真卸掉再收。
@@ -1708,7 +1730,6 @@ export default function MomentsPage({
         @keyframes spin { to { transform: rotate(360deg); } }
         @media (prefers-reduced-motion: reduce) {
           .mp-act { transition: none }
-          .mp-seal .mp-seal-face { transition: none }
           .mp-bd-in, .mp-bd-out, .mp-sh-in, .mp-sh-out,
           .mp-pop-in, .mp-pop-out, .mp-page-in, .mp-page-out { animation: none }
         }
@@ -2775,7 +2796,11 @@ export default function MomentsPage({
                     <button
                       type="button"
                       style={SHEET_CANCEL}
-                      onClick={() => setVisSheet((s) => (s ? { ...s, pane: "top" } : s))}
+                      /* 2026-10-15 恩熙：在这一页勾完世界／角色，点「完成」就该**直接回
+                         发布页**——以前只退到上一页「谁可以看」的目录，还得再点一次
+                         「完成」，白多一步。（勾人那几下点中就即时落库了，直接关不丢东西。
+                         想改档位（公开／仅自己可见…）走左上角那枚「‹」退回去即可。） */
+                      onClick={() => setVisSheet(null)}
                     >
                       完成
                     </button>
@@ -2856,6 +2881,96 @@ export default function MomentsPage({
             )}
             <button type="button" style={SHEET_CANCEL} onClick={() => setRemindSheet(false)}>
               完成
+            </button>
+          </div>
+        </>
+      ) : null}
+
+      {/* ── 选图源底单（2026-10-15 恩熙）：配图区那格「＋」一点，这张单从底下升上来问
+             「图从哪来」——拍摄／从手机相册选择（借系统那两路），外加咱们自己的
+             「小手机相册」（还没做，如实说一句）与「文字描述」（写段画面当图／开了
+             「配图自动生成」就照它画真图）。挑完这一单自己收走。 ── */}
+      {imgSheetOpen ? (
+        <>
+          <div
+            onClick={() => setImgSheet(false)}
+            className={imgSheetAlive.closing ? "mp-bd-out" : "mp-bd-in"}
+            style={{
+              position: "absolute",
+              inset: 0,
+              zIndex: 96,
+              background: "rgba(20,19,24,.36)",
+              pointerEvents: imgSheetAlive.closing ? "none" : undefined,
+            }}
+          />
+          <div
+            className={imgSheetAlive.closing ? "mp-sh-out" : "mp-sh-in"}
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 97,
+              background: C.paper,
+              borderRadius: "20px 20px 0 0",
+              padding: "18px 18px 12px",
+              boxShadow: "0 -12px 40px -18px rgba(20,19,24,.5)",
+              maxHeight: "74%",
+              overflowY: "auto",
+              pointerEvents: imgSheetAlive.closing ? "none" : undefined,
+            }}
+          >
+            <div style={SHEET_TITLE}>这张图从哪来</div>
+            <div style={SHEET_HINT}>挑一张，或者写一段画面当图。</div>
+            {(
+              [
+                { key: "camera", icon: Camera, title: "拍摄", sub: "现在就拍一张" },
+                {
+                  key: "device",
+                  icon: ImageIcon,
+                  title: "从手机相册选择",
+                  sub: "可以一次挑好几张，最多 9 张",
+                },
+                {
+                  key: "stellasei",
+                  icon: Smartphone,
+                  title: "小手机相册",
+                  sub: "还在做，先留个位置",
+                },
+                {
+                  key: "text",
+                  icon: TypeIcon,
+                  title: "文字描述",
+                  sub: "写段画面，它就当这张图",
+                },
+              ] as const
+            ).map((row) => (
+              <button
+                key={row.key}
+                type="button"
+                className="mp-sh-item"
+                style={SHEET_ITEM}
+                onClick={() => {
+                  /* 先问来源、再把这一单收走：
+                     － 相册／拍照：`pickComposerSource` 里头是**同步**点那个藏起来的
+                       input，iOS 认的正是这一下用户手势，所以这一句必须排在收单前面；
+                     － 文字描述：进子面板（在配图区位置摊输入框）。 */
+                  if (row.key === "text") setImgPick("text");
+                  else pickComposerSource(row.key);
+                  setImgSheet(false);
+                }}
+              >
+                <span style={SHEET_ICO}>
+                  <row.icon size={19} strokeWidth={1.6} />
+                </span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <b style={SHEET_B}>{row.title}</b>
+                  <i style={SHEET_I}>{row.sub}</i>
+                </span>
+              </button>
+            ))}
+            <button type="button" style={SHEET_CANCEL} onClick={() => setImgSheet(false)}>
+              取消
             </button>
           </div>
         </>
@@ -3192,9 +3307,11 @@ export default function MomentsPage({
                 只有新发动态才给。 */}
             {!composer.editId ? (
               <>
-            {/* 配图（2026-10-05；2026-10-05 二次改：先问图从哪来）：
-                点「配图」先摊四枚章——相册／拍照（共用藏起来的 input，拍照临时挂 `capture`）／
-                小手机相册（还没做，如实说一句）／文字描述（写段画面当图）。
+            {/* 配图（2026-10-05 起；2026-10-15 恩熙：改成微信那样）：
+                没图时就一个方形「＋」格子（`ComposerAddCell`），点它弹底部一张
+                「这张图从哪来」的单——拍摄／从手机相册选择／小手机相册（还没做）／
+                文字描述（写段画面当图）。相册与拍照共用藏起来的 input（拍照临时挂
+                `capture`）；点了「文字描述」才在配图区位置摊输入框（`imgPick === "text"`）。
                 选好摊一张小图（真图）或一张印着描述的相纸（文字当图），右上角一枚叉可拿掉。
                 带图时正文可留空。 */}
             <div style={{ marginTop: 12 }}>
@@ -3291,50 +3408,6 @@ export default function MomentsPage({
                     </span>
                   </div>
                 </div>
-              ) : imgPick === "seals" ? (
-                /* 四枚章：这张图从哪来。 */
-                <div>
-                  <div style={{ fontSize: 11, letterSpacing: ".08em", color: C.ink3 }}>
-                    这张图从哪来
-                  </div>
-                  <div style={{ marginTop: 10, display: "flex", gap: 20, alignItems: "flex-start" }}>
-                    {(
-                      [
-                        { key: "device", icon: ImageIcon, title: "相册" },
-                        { key: "camera", icon: Camera, title: "拍照" },
-                        { key: "stellasei", icon: Smartphone, title: "小手机相册" },
-                        { key: "text", icon: TypeIcon, title: "文字描述" },
-                      ] as const
-                    ).map((row) => (
-                      <button
-                        key={row.key}
-                        type="button"
-                        className="mp-act mp-seal"
-                        onClick={() =>
-                          row.key === "text" ? setImgPick("text") : pickComposerSource(row.key)
-                        }
-                        style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          alignItems: "center",
-                          gap: 6,
-                          padding: 0,
-                          border: "none",
-                          background: "transparent",
-                          cursor: "pointer",
-                        }}
-                      >
-                        <span className="mp-seal-face">
-                          <row.icon size={20} strokeWidth={1.6} />
-                        </span>
-                        <span style={{ fontFamily: SANS, fontSize: 10.5, color: C.ink2,
-                                       letterSpacing: ".03em" }}>
-                          {row.title}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
               ) : composer.images.length > 0 ? (
                 /* 九宫格：1 张＝一个大方格；2 张＝两个小方格；3 张＝一排三个；
                    4 张＝四宫格 2×2；5 张往上＝一排三个接着往下排。没满 9 张时末尾挂一格「＋」。 */
@@ -3354,33 +3427,8 @@ export default function MomentsPage({
                     </div>
                   ))}
                   {composerSlots > 0 ? (
-                    <button
-                      type="button"
-                      className="mp-act"
-                      aria-label="再加一张"
-                      onClick={() => setImgPick("seals")}
-                      style={{
-                        position: "relative",
-                        width: "100%",
-                        paddingTop: "100%",
-                        border: "1px dashed rgba(20,19,24,.18)",
-                        borderRadius: 14,
-                        background: "rgba(20,19,24,.03)",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <Plus
-                        size={20}
-                        strokeWidth={1.7}
-                        style={{
-                          position: "absolute",
-                          top: "50%",
-                          left: "50%",
-                          transform: "translate(-50%,-50%)",
-                          color: C.ink3,
-                        }}
-                      />
-                    </button>
+                    /* 续加格：点它弹「这张图从哪来」底单（2026-10-15）。 */
+                    <ComposerAddCell onPick={() => setImgSheet(true)} />
                   ) : null}
                 </div>
               ) : composer.imageText ? (
@@ -3441,29 +3489,12 @@ export default function MomentsPage({
                   </button>
                 </div>
               ) : (
-                <button
-                  type="button"
-                  className="mp-act"
-                  onClick={() => setImgPick("seals")}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    height: 36,
-                    padding: "0 14px",
-                    borderRadius: 10,
-                    border: "1px dashed rgba(20,19,24,.18)",
-                    background: "rgba(20,19,24,.03)",
-                    color: C.ink2,
-                    fontFamily: SANS,
-                    fontSize: 12.5,
-                    letterSpacing: ".04em",
-                    cursor: "pointer",
-                  }}
-                >
-                  <ImageIcon size={14} strokeWidth={1.9} />
-                  配图
-                </button>
+                /* 没图时：就一个方形「＋」格子（跟九宫格末尾那格同款）。
+                   2026-10-15 恩熙：照微信——先看见一个「＋」，点进去才问「图从哪来」；
+                   以前那枚虚线「配图」按钮、点开在页内摊一排章的做法已撤。 */
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                  <ComposerAddCell onPick={() => setImgSheet(true)} />
+                </div>
               )}
             </div>
 
