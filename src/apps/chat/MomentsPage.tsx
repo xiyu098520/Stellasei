@@ -624,6 +624,24 @@ function MomentThumb({
           <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} />
         </span>
       )}
+      {/* ⚠️ 临时诊断（定位配图空白，看完就删）：这一格读出来没有 */}
+      <span
+        style={{
+          position: "absolute",
+          left: 2,
+          top: 2,
+          zIndex: 2,
+          padding: "1px 4px",
+          borderRadius: 4,
+          background: "rgba(192,57,43,.9)",
+          color: "#FFFFFF",
+          fontSize: 9.5,
+          lineHeight: 1.5,
+          letterSpacing: ".02em",
+        }}
+      >
+        {src === undefined ? "读中" : src === "" ? "读不到" : "已取到"}
+      </span>
       {generating ? (
         <span
           style={{
@@ -1011,8 +1029,11 @@ export default function MomentsPage({
       showToast("最多 9 张哦");
       return;
     }
-    const list = Array.from(files).slice(0, room);
+    const picked = Array.from(files);
+    const list = picked.slice(0, room);
     if (list.length === 0) return;
+    /* 勾的比能收的多 → 只收满 9 张为止，回来提示一句「多的没收」（2026-10-14）。 */
+    const overflow = picked.length > list.length;
     const added: string[] = [];
     for (const file of list) {
       const url = URL.createObjectURL(file);
@@ -1036,6 +1057,7 @@ export default function MomentsPage({
     );
     setImgPick(null);
     setTextDraft("");
+    if (overflow) showToast("最多 9 张，多的没收");
   };
 
   /* 「配图」→ 四枚章里挑来源。相册／拍照共用那个藏起来的 input（拍照临时挂 `capture`，
@@ -1044,6 +1066,12 @@ export default function MomentsPage({
   const pickComposerSource = (source: "device" | "camera" | "stellasei") => {
     if (source === "stellasei") {
       showToast("小手机相册还在做，先留个位置");
+      return;
+    }
+    /* 已经满 9 张就别叫相册了：系统相册允许多选、App 管不住她勾几张，
+       与其叫出来再截断，不如当场说清楚（2026-10-14）。 */
+    if (composerSlots <= 0) {
+      showToast("最多 9 张哦");
       return;
     }
     const el = composerInput.current;
@@ -4226,6 +4254,22 @@ function MomentItem({
               #{t}
             </span>
           ))}
+        </div>
+      ) : null}
+
+      {/* ⚠️ 临时诊断（定位配图空白，看完就删）：我发的动态一共存了几张图 */}
+      {item.isSelf ? (
+        <div
+          style={{
+            gridColumn: "1 / -1",
+            marginTop: 12,
+            fontSize: 11,
+            lineHeight: 1.5,
+            color: "#C0392B",
+            letterSpacing: ".02em",
+          }}
+        >
+          临时诊断 · 存图 {momentImgs.length} 张
         </div>
       ) : null}
 
