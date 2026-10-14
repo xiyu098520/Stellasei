@@ -1460,21 +1460,11 @@ export default function MomentsPage({
   useEffect(() => () => onOverlayChange(false), [onOverlayChange]);
 
   /* 底单／居中弹窗那层黑遮罩**只盖得住这一页、够不着底下那排 tab**（tab 是上一层的
-     兄弟节点）——2026-10-13 恩熙：底单开着时四个 tab 也该罩在同一层黑幕之下。
-     做法：把当前遮罩的**浓度**报上去，上一层据它在 tab 之上补压一层**同浓**的黑遮罩。
-     ⚠︎ 删除动态那张居中确认弹的遮罩是 `.42`、底单是 `.36`，据实回传，接缝才对得上。 */
-  const sheetDim: number | null =
-    confirmDeleteState !== null
-      ? 0.42
-      : editorState !== null ||
-          moreItemState !== null ||
-          momentSetState !== null ||
-          coverSheetState ||
-          visSheetState !== null ||
-          remindSheetState ||
-          coverDraft !== null
-        ? 0.36
-        : null;
+     兄弟节点）。做法：把当前遮罩的**浓度**报上去，上一层据它在 tab 之上补压一层**同浓**的黑遮罩。
+     2026-10-14 恩熙更正：**普通底单**（换封面／这条动态／可见范围／提醒）底下那排 tab
+     **不变暗**；只有**删除动态那张居中确认弹**才让 tab 也一起变暗——所以只报它的 `.42`，
+     其余一律 null（null 时上一层那层遮罩透明且不拦点击）。 */
+  const sheetDim: number | null = confirmDeleteState !== null ? 0.42 : null;
   useLayoutEffect(() => {
     onSheetDimChange(sheetDim);
   }, [sheetDim, onSheetDimChange]);
@@ -2394,8 +2384,9 @@ export default function MomentsPage({
               zIndex: 89,
               background: C.paper,
               borderRadius: "20px 20px 0 0",
-              /* 2026-10-13 恩熙：最下面那颗钮离底部 tab 太远 → 28px 收到 12px。 */
-              padding: "18px 18px calc(var(--safe-area-bottom, 0px) + 12px)",
+              /* 2026-10-14 恩熙：离底部 tab 还是远 → 底下那排 tab 自己已经吃过一次安全区
+                 （`ChatApp` 的 tab 栏 `safe-area-bottom + 4px`），这儿再吃就重了一份 → 去掉。 */
+              padding: "18px 18px 12px",
               boxShadow: "0 -12px 40px -18px rgba(20,19,24,.5)",
               pointerEvents: coverSheetAlive.closing ? "none" : undefined,
             }}
@@ -2492,8 +2483,9 @@ export default function MomentsPage({
               zIndex: 89,
               background: C.paper,
               borderRadius: "20px 20px 0 0",
-              /* 2026-10-13 恩熙：最下面那颗钮离底部 tab 太远 → 28px 收到 12px。 */
-              padding: "18px 18px calc(var(--safe-area-bottom, 0px) + 12px)",
+              /* 2026-10-14 恩熙：离底部 tab 还是远 → 底下那排 tab 自己已经吃过一次安全区
+                 （`ChatApp` 的 tab 栏 `safe-area-bottom + 4px`），这儿再吃就重了一份 → 去掉。 */
+              padding: "18px 18px 12px",
               boxShadow: "0 -12px 40px -18px rgba(20,19,24,.5)",
               pointerEvents: moreItemAlive.closing ? "none" : undefined,
             }}
@@ -2586,8 +2578,9 @@ export default function MomentsPage({
               zIndex: 97,
               background: C.paper,
               borderRadius: "20px 20px 0 0",
-              /* 2026-10-13 恩熙：最下面那颗钮离底部 tab 太远 → 28px 收到 12px。 */
-              padding: "18px 18px calc(var(--safe-area-bottom, 0px) + 12px)",
+              /* 2026-10-14 恩熙：离底部 tab 还是远 → 底下那排 tab 自己已经吃过一次安全区
+                 （`ChatApp` 的 tab 栏 `safe-area-bottom + 4px`），这儿再吃就重了一份 → 去掉。 */
+              padding: "18px 18px 12px",
               boxShadow: "0 -12px 40px -18px rgba(20,19,24,.5)",
               maxHeight: "74%",
               overflowY: "auto",
@@ -2805,8 +2798,9 @@ export default function MomentsPage({
               zIndex: 97,
               background: C.paper,
               borderRadius: "20px 20px 0 0",
-              /* 2026-10-13 恩熙：最下面那颗钮离底部 tab 太远 → 28px 收到 12px。 */
-              padding: "18px 18px calc(var(--safe-area-bottom, 0px) + 12px)",
+              /* 2026-10-14 恩熙：离底部 tab 还是远 → 底下那排 tab 自己已经吃过一次安全区
+                 （`ChatApp` 的 tab 栏 `safe-area-bottom + 4px`），这儿再吃就重了一份 → 去掉。 */
+              padding: "18px 18px 12px",
               boxShadow: "0 -12px 40px -18px rgba(20,19,24,.5)",
               maxHeight: "74%",
               overflowY: "auto",
