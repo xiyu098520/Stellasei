@@ -587,8 +587,12 @@ function MomentThumb({
         position: "relative",
         display: "block",
         width: "100%",
-        paddingTop: "100%",
+        /* ⚠️ 顺序要紧：`padding` 是**简写**，会把 `padding-top` 一起重置。必须写在
+           `paddingTop` 前面，否则方形高度被抹成 0——格子塌成 0 高、又被 `overflow:hidden`
+           裁掉，图就「看不见」了。这就是「发布带图动态后配图一片空白」的真凶（2026-10-14）。
+           左右下三边仍要归 0，故留 `padding: 0` 打底。 */
         padding: 0,
+        paddingTop: "100%",
         border: "none",
         borderRadius: 8,
         background: "rgba(20,19,24,.03)",
@@ -624,24 +628,6 @@ function MomentThumb({
           <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} />
         </span>
       )}
-      {/* ⚠️ 临时诊断（定位配图空白，看完就删）：这一格读出来没有 */}
-      <span
-        style={{
-          position: "absolute",
-          left: 2,
-          top: 2,
-          zIndex: 2,
-          padding: "1px 4px",
-          borderRadius: 4,
-          background: "rgba(192,57,43,.9)",
-          color: "#FFFFFF",
-          fontSize: 9.5,
-          lineHeight: 1.5,
-          letterSpacing: ".02em",
-        }}
-      >
-        {src === undefined ? "读中" : src === "" ? "读不到" : "已取到"}
-      </span>
       {generating ? (
         <span
           style={{
@@ -4254,22 +4240,6 @@ function MomentItem({
               #{t}
             </span>
           ))}
-        </div>
-      ) : null}
-
-      {/* ⚠️ 临时诊断（定位配图空白，看完就删）：我发的动态一共存了几张图 */}
-      {item.isSelf ? (
-        <div
-          style={{
-            gridColumn: "1 / -1",
-            marginTop: 12,
-            fontSize: 11,
-            lineHeight: 1.5,
-            color: "#C0392B",
-            letterSpacing: ".02em",
-          }}
-        >
-          临时诊断 · 存图 {momentImgs.length} 张
         </div>
       ) : null}
 
