@@ -570,15 +570,17 @@ function ComposerAddCell({ onPick }: { onPick: () => void }) {
            「看不见」了（2026-10-14 配图一片空白的真凶）。 */
         padding: 0,
         paddingTop: "100%",
-        border: "1px dashed rgba(20,19,24,.18)",
+        /* 2026-10-15 恩熙：照微信——**实心浅灰块、不要虚线框**，中间一个细灰「＋」。
+           （虚线框那版她看着不对，已撤。） */
+        border: "none",
         borderRadius: 14,
-        background: "rgba(20,19,24,.03)",
+        background: "rgba(20,19,24,.055)",
         cursor: "pointer",
       }}
     >
       <Plus
         size={20}
-        strokeWidth={1.7}
+        strokeWidth={1.4}
         style={{
           position: "absolute",
           top: "50%",
@@ -3409,8 +3411,10 @@ export default function MomentsPage({
                   </div>
                 </div>
               ) : composer.images.length > 0 ? (
-                /* 九宫格：1 张＝一个大方格；2 张＝两个小方格；3 张＝一排三个；
-                   4 张＝四宫格 2×2；5 张往上＝一排三个接着往下排。没满 9 张时末尾挂一格「＋」。 */
+                /* 九宫格：**所有图格一律等大的正方形**，一行三个（4 张时排 2×2）；
+                   没满 9 张时末尾挂一格「＋」。
+                   2026-10-15 恩熙选 A：撤掉「单张图占两格」的大方格做法——那样旁边
+                   那格「＋」会被网格拉成竖长条，跟微信（所有格子等大）不一样。 */
                 <div
                   style={{
                     display: "grid",
@@ -3419,12 +3423,7 @@ export default function MomentsPage({
                   }}
                 >
                   {composer.images.map((r) => (
-                    <div
-                      key={r}
-                      style={composer.images.length === 1 ? { gridColumn: "span 2" } : undefined}
-                    >
-                      <ComposerThumb refStr={r} onRemove={() => removeComposerImageAt(r)} />
-                    </div>
+                    <ComposerThumb key={r} refStr={r} onRemove={() => removeComposerImageAt(r)} />
                   ))}
                   {composerSlots > 0 ? (
                     /* 续加格：点它弹「这张图从哪来」底单（2026-10-15）。 */
