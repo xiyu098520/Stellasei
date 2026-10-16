@@ -12,7 +12,7 @@ import {
 import { copyText } from "@/lib/clipboard";
 import { uuid } from "@/lib/uuid";
 import { APP_VERSION } from "@/lib/version";
-import { EN, HZ, LAT, SANS, SERIF } from "./shared";
+import { EN, HZ, LAT, SERIF } from "./shared";
 
 /* =======================================================================
  * 「我的」页（底部 tab 进入，微信「我」的骨架）
@@ -315,7 +315,7 @@ export default function MinePage({
         display: "flex",
         flexDirection: "column",
         background: T.bg,
-        fontFamily: SANS,
+        fontFamily: SERIF,
         color: T.ink,
         overflow: "hidden",
       }}
@@ -767,7 +767,7 @@ export default function MinePage({
                         padding: "13px 4px",
                         border: "none",
                         background: "none",
-                        fontFamily: SANS,
+                        fontFamily: SERIF,
                         textAlign: "left",
                         cursor: "pointer",
                       }}
@@ -862,7 +862,7 @@ export default function MinePage({
                     padding: "13px 4px",
                     border: "none",
                     background: "none",
-                    fontFamily: SANS,
+                    fontFamily: SERIF,
                     textAlign: "left",
                     cursor: "pointer",
                   }}
@@ -948,7 +948,7 @@ export default function MinePage({
                       padding: 0,
                       border: "none",
                       background: "none",
-                      fontFamily: SANS,
+                      fontFamily: SERIF,
                       fontSize: 12.5,
                       letterSpacing: ".04em",
                       color: T.ink2,
@@ -1454,7 +1454,7 @@ const primaryBtnStyle: CSSProperties = {
   color: "#FFFFFF",
   fontSize: 14,
   fontWeight: 600,
-  fontFamily: SANS,
+  fontFamily: SERIF,
   letterSpacing: ".14em",
   cursor: "pointer",
   boxShadow: "0 16px 30px -18px rgba(90,115,145,.75)",
@@ -1471,7 +1471,7 @@ const ghostDangerBtnStyle: CSSProperties = {
   color: T.danger,
   fontSize: 13,
   fontWeight: 600,
-  fontFamily: SANS,
+  fontFamily: SERIF,
   letterSpacing: ".12em",
   cursor: "pointer",
 };
@@ -1492,7 +1492,7 @@ const inputStyle: CSSProperties = {
   background: T.bg,
   padding: "11px 13px",
   fontSize: 14,
-  fontFamily: SANS,
+  fontFamily: SERIF,
   color: T.ink,
   outline: "none",
   letterSpacing: ".03em",
@@ -1505,7 +1505,7 @@ const textareaStyle: CSSProperties = {
   background: T.bg,
   padding: "11px 13px",
   fontSize: 13.5,
-  fontFamily: SANS,
+  fontFamily: SERIF,
   color: T.ink,
   outline: "none",
   letterSpacing: ".03em",
@@ -1521,7 +1521,7 @@ const selectStyle: CSSProperties = {
   background: T.bg,
   padding: "10px 6px",
   fontSize: 13,
-  fontFamily: SANS,
+  fontFamily: SERIF,
   color: T.ink,
   outline: "none",
   textAlign: "center",
@@ -1534,7 +1534,7 @@ const genderPillStyle: CSSProperties = {
   background: T.bg,
   color: T.ink2,
   fontSize: 13.5,
-  fontFamily: SANS,
+  fontFamily: SERIF,
   letterSpacing: ".1em",
   cursor: "pointer",
 };
@@ -1562,7 +1562,7 @@ const cancelBtnStyle: CSSProperties = {
   background: "rgba(20,19,24,.05)",
   color: T.ink2,
   fontSize: 14,
-  fontFamily: SANS,
+  fontFamily: SERIF,
   letterSpacing: ".14em",
   cursor: "pointer",
 };
@@ -1575,7 +1575,7 @@ const saveBtnStyle: CSSProperties = {
   color: "#FFFFFF",
   fontSize: 14,
   fontWeight: 700,
-  fontFamily: SANS,
+  fontFamily: SERIF,
   letterSpacing: ".14em",
   cursor: "pointer",
   boxShadow: "0 10px 20px -12px rgba(90,115,145,.95)",
@@ -1589,7 +1589,7 @@ const deleteBtnStyle: CSSProperties = {
   background: "transparent",
   color: T.danger,
   fontSize: 13,
-  fontFamily: SANS,
+  fontFamily: SERIF,
   letterSpacing: ".12em",
   cursor: "pointer",
 };
@@ -1602,7 +1602,7 @@ const deleteConfirmBtnStyle: CSSProperties = {
   color: "#FFFFFF",
   fontSize: 14,
   fontWeight: 700,
-  fontFamily: SANS,
+  fontFamily: SERIF,
   letterSpacing: ".14em",
   cursor: "pointer",
 };
