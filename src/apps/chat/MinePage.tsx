@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, type CSSProperties } from "react";
-import { Camera, ChevronLeft, ChevronRight, Copy, Plus } from "lucide-react";
+import { Camera, ChevronLeft, ChevronRight, Copy, Pencil, Plus } from "lucide-react";
 import {
   DEFAULT_MASK_ID,
   MASK_UID_RE,
@@ -12,7 +12,7 @@ import {
 import { copyText } from "@/lib/clipboard";
 import { uuid } from "@/lib/uuid";
 import { APP_VERSION } from "@/lib/version";
-import { AVATAR_GRADIENT, EN, SANS, T } from "./shared";
+import { EN, HZ, LAT, SANS, SERIF } from "./shared";
 
 /* =======================================================================
  * 「我的」页（底部 tab 进入，微信「我」的骨架）
@@ -24,13 +24,34 @@ import { AVATAR_GRADIENT, EN, SANS, T } from "./shared";
  * 编辑（新增／既有）＝再下一层：主页 ⇄ 面具册 ⇄ 编辑。
  * 名字由使用中的面具决定；全空时 TA 眼中只有「我」。
  *
- * 皮是 T：透粉白底、纯白卡、无衬线，黑只落在大标题与子页返回钮上，不整页翻黑；
- * 页头是「英文小字起头＋28/800 近黑大标题＋通栏册页线」（子页多一枚近黑圆返回钮）。
- * 零件（MaskAvatar／MenuItem／GroupLabel）在文件末尾本地改，**不动 `widgets.tsx`**。
+ * 皮走「雾蓝白灰」（照消息列表页那份），整页**再没有粉色**：
+ * 页头是「居中宋体中文压斜体英文」（子页在左侧多一枚透明返回钮）；
+ * 正文是「一册纸上的名册」——直角、发丝线、留白，中文大字压英文小字，不铺卡片不铺气泡。
+ * 零件（MaskAvatar／MenuItem／SectLabel／GroupLabel）在文件末尾本地改，**不动 `widgets.tsx`**。
  *
  * 签名并进面具：签名是面具自己的一个栏位——
- * 资料块上那行就是它（点整块进编辑改），面具编辑页在「名字」下面也有「签名」输入框。
+ * 主页刊头那行就是它（点一下就地改），面具编辑页在「名字」下面也有「签名」输入框。
  * ===================================================================== */
+
+/** 「我的」页自己的皮：雾蓝白灰（照消息列表页那份 HZ）。
+ *  **就地覆盖，不引全局那套粉**——恩熙定的：这一页不要再出现粉色。
+ *  这里仍叫 `T`，是为了让下面所有零件与样式定义原样落到「这一页的皮」上，改动面最小。
+ *  全局 `AVATAR_GRADIENT` 一点没动，只在 `MaskAvatar` 里另给一个雾蓝兜底。 */
+const T = {
+  bg: HZ.paper,
+  card: "#FFFFFF",
+  ink: HZ.ink,
+  ink2: HZ.ink2,
+  ink3: HZ.ink3,
+  pink: HZ.accent,
+  pinkSoft: HZ.accentSoft,
+  blue: HZ.accent,
+  blueDeep: HZ.accent,
+  blueSoft: HZ.accentSoft,
+  danger: "#C0563F",
+  line: HZ.line,
+  lineSoft: HZ.line2,
+} as const;
 
 /** 签名兜底文案（资料块／名片卡／动态页都用它）。 */
 export const SIGNATURE_FALLBACK = "所有心事都寄存在黄昏里";
@@ -255,15 +276,6 @@ export default function MinePage({
     return `${y}/${mo}/${d}`;
   };
 
-  /** 面具行的副行：性别·生日，否则人设摘要。 */
-  const maskSubline = (m: Mask) => {
-    const base = [m.gender, m.birth ? birthText(m.birth) : ""].filter(Boolean).join(" · ");
-    if (base) return base;
-    const p = m.persona.trim();
-    if (p) return p.length > 20 ? `${p.slice(0, 20)}…` : p;
-    return "尚未填写人设";
-  };
-
   /** 人设摘要（当前面具卡用）。 */
   const personaSummary = (m: Mask) => {
     const p = m.persona.trim();
@@ -294,9 +306,6 @@ export default function MinePage({
     else if (maskRoster) setMaskRoster(false);
   };
 
-  /** 其他面具（当前面具之外的那些）。 */
-  const others = masks.filter((m) => m.id !== current?.id);
-
   return (
     <div
       style={{
@@ -311,40 +320,45 @@ export default function MinePage({
         overflow: "hidden",
       }}
     >
-      {/* 交互：按下整卡／整行往里收一档（同通讯人页、消息列表） */}
+      {/* 交互：按下整行往里收一档（同通讯人页、消息列表）；
+          一册纸上的名册——行与行之间只压一条从「字头」划开的发丝线，不铺卡片不铺气泡。 */}
       <style>{`
-        .mp-card { transition: transform .16s ease, filter .16s ease; }
-        .mp-card:active { transform: scale(.982); filter: brightness(.97); }
-        .mp-hbtn { transition: transform .15s ease, opacity .15s ease; }
-        .mp-hbtn:active { transform: scale(.93); opacity: .78; }
-        .mp-row { transition: transform .16s ease, background-color .16s ease; }
-        /* 按住立刻染一层淡粉（过渡压到 .06s），松手再慢慢化开 */
+        .mp-row { position: relative; transition: transform .16s ease, background-color .16s ease; }
+        /* 按住立刻染一层淡雾蓝（过渡压到 .06s），松手再慢慢化开 */
         .mp-row:active { transform: scale(.986); background-color: ${T.pinkSoft}; transition-duration: .06s; }
+        /* 区内相邻两行：一条从「字头」划到右边的发丝线 */
+        .mp-grp .mp-row + .mp-row::before,
+        .mp-mlist .mp-mrow + .mp-mrow::before {
+          content: ''; position: absolute; top: 0; right: 4px;
+          height: 1px; background: ${T.lineSoft};
+        }
+        /* 设置行：字头＝左内边距 4 ＋图标 22 ＋图标右距 13 */
+        .mp-grp .mp-row + .mp-row::before { left: 39px; }
+        /* 面具行：字头＝左内边距 4 ＋头像 46 ＋间距 13 */
+        .mp-mlist .mp-mrow + .mp-mrow::before { left: 62px; }
+        .mp-hbtn { transition: transform .15s ease, opacity .15s ease; }
+        .mp-hbtn:active { transform: scale(.9); opacity: .7; }
         .mp-soft { transition: transform .16s ease, filter .16s ease; }
         .mp-soft:active { transform: scale(.96); filter: brightness(.97); }
         .mp-field::placeholder { color: ${T.ink3}; }
         @media (prefers-reduced-motion: reduce) {
-          .mp-card, .mp-hbtn, .mp-row, .mp-soft { transition: none; }
+          .mp-hbtn, .mp-row, .mp-soft { transition: none; }
         }
       `}</style>
 
-      {/* 页头：子页多一枚近黑圆返回钮＋一行英文小字起头，下面压一条 28/800 近黑大标题，
-          底下一根通栏粉线（同设置面板／通讯人页）。
-          返回钮一层一层退（编辑 → 面具册 → 主页），主页是 tab 根视图、不设返回 */}
+      {/* 页头：居中宋体中文压斜体英文（同消息页／通讯人页一套）。
+          子页在左边多一枚透明返回钮，一层一层退（编辑 → 面具册 → 主页），
+          主页是 tab 根视图，不设返回。 */}
       <header
         style={{
           position: "relative",
           flex: "none",
           zIndex: 20,
           overflow: "hidden",
-          padding: "calc(var(--safe-area-top, 0px) + var(--sim-status-h, 0px) + 10px) 20px 14px",
+          padding: "calc(var(--safe-area-top, 0px) + var(--sim-status-h, 0px) + 12px) 26px 12px",
         }}
       >
-        {/* 页头补装饰：撤黑不等于全白，页头得有东西垫着。
-            ①头顶一团淡粉晕——页头算是有「底」了，但不落成黑块；
-            ②右上角一行超大英文水印 MINE——侧边栏「超大字压上去」的缩小版：它跟大标题
-              「我的」是一个意思（中文大字＋英文水印配对，同侧边栏的「星绥通讯 / STELLASEI」），
-              又不会跟左边那行现有索引 THE MASKS 撞词。只露个轮廓，给这页一个记号。 */}
+        {/* 头顶一团雾蓝晕：页头算是有「底」了，但不落成色块 */}
         <i
           aria-hidden
           style={{
@@ -356,30 +370,12 @@ export default function MinePage({
             height: 250,
             borderRadius: 999,
             background:
-              "radial-gradient(circle at 50% 44%, rgba(232,106,155,.20) 0%, rgba(232,106,155,.07) 46%, rgba(232,106,155,0) 72%)",
+              "radial-gradient(circle at 50% 44%, rgba(90,115,145,.16) 0%, rgba(90,115,145,.05) 46%, rgba(90,115,145,0) 72%)",
             pointerEvents: "none",
           }}
         />
-        <span
-          aria-hidden
-          style={{
-            position: "absolute",
-            right: 14,
-            top: "calc(var(--safe-area-top, 0px) + var(--sim-status-h, 0px) + 6px)",
-            fontFamily: EN,
-            fontSize: 44,
-            fontWeight: 700,
-            lineHeight: 1,
-            letterSpacing: ".01em",
-            color: "rgba(232,106,155,.13)",
-            pointerEvents: "none",
-            userSelect: "none",
-          }}
-        >
-          MINE
-        </span>
 
-        <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", minHeight: 24 }}>
           {showBackBtn ? (
             <button
               type="button"
@@ -388,75 +384,41 @@ export default function MinePage({
               className="mp-hbtn"
               style={headerBtnStyle}
             >
-              <ChevronLeft size={19} strokeWidth={2.2} />
+              <ChevronLeft size={22} strokeWidth={1.5} />
             </button>
           ) : null}
-          <span
-            style={{
-              fontFamily: EN,
-              fontSize: 9,
-              letterSpacing: ".26em",
-              color: T.ink3,
-              textTransform: "uppercase",
-            }}
-          >
-            {header.en}
-          </span>
-        </div>
-
-        <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 10, marginTop: 14 }}>
-          <h1
-            style={{
-              margin: 0,
-              fontSize: 28,
-              fontWeight: 800,
-              letterSpacing: "-.01em",
-              lineHeight: 1,
-              color: T.ink,
-            }}
-          >
-            {header.cn}
-          </h1>
-          {/* 面具张数：一枚粉色小牌（只在主页出来，子页不占位） */}
-          {maskEdit === null ? (
+          <div style={{ textAlign: "center" }}>
             <span
               style={{
-                flex: "none",
-                minWidth: 24,
-                height: 22,
-                padding: "0 8px",
-                borderRadius: 999,
-                background: T.pink,
-                color: "#FFFFFF",
-                fontFamily: EN,
-                fontSize: 11,
-                fontWeight: 700,
-                letterSpacing: ".04em",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontVariantNumeric: "tabular-nums",
-                boxShadow: "0 8px 16px -10px rgba(232,106,155,.95)",
+                display: "block",
+                fontFamily: SERIF,
+                fontSize: 22,
+                fontWeight: 600,
+                letterSpacing: ".2em",
+                paddingLeft: ".2em",
+                color: T.pink,
+                lineHeight: 1,
               }}
             >
-              {masks.length}
+              {header.cn}
             </span>
-          ) : null}
+            <span
+              style={{
+                display: "block",
+                fontFamily: SERIF,
+                fontStyle: "italic",
+                fontSize: 12.5,
+                letterSpacing: ".12em",
+                textIndent: ".12em",
+                textTransform: "capitalize",
+                color: T.ink3,
+                paddingTop: 3,
+              }}
+            >
+              {header.en}
+            </span>
+          </div>
         </div>
-
-        <span
-          aria-hidden
-          style={{
-            position: "absolute",
-            left: 0,
-            right: 0,
-            bottom: 0,
-            height: 1,
-            background:
-              "linear-gradient(90deg, rgba(20,19,24,.04) 0%, rgba(232,106,155,.34) 50%, rgba(20,19,24,.04) 100%)",
-            pointerEvents: "none",
-          }}
-        />
       </header>
 
       {/* 内容区 */}
@@ -465,15 +427,15 @@ export default function MinePage({
           flex: 1,
           overflowY: "auto",
           overscrollBehavior: "none",
-          padding: "16px 20px calc(var(--safe-area-bottom, 0px) + 24px)",
+          padding: "20px 22px calc(var(--safe-area-bottom, 0px) + 28px)",
         }}
       >
         {maskEdit !== null ? (
           /* ==================== 面具编辑 ==================== */
-          <div style={{ ...cardGroupStyle, padding: "18px 16px" }}>
+          <div style={{ padding: "2px 0" }}>
             {/* 头像 */}
             <div
-              style={{ display: "flex", justifyContent: "center", marginBottom: 18 }}
+              style={{ display: "flex", justifyContent: "center", marginBottom: 22 }}
             >
               <button
                 type="button"
@@ -481,18 +443,17 @@ export default function MinePage({
                 aria-label="更换头像"
                 style={{ position: "relative", border: "none", background: "transparent", cursor: "pointer", padding: 0 }}
               >
-                <MaskAvatar mask={{ avatar: mAvatar, name: mName } as Mask} size={72} />
+                <MaskAvatar mask={{ avatar: mAvatar, name: mName } as Mask} size={76} />
                 <span
                   style={{
                     position: "absolute",
-                    right: -3,
-                    bottom: -3,
+                    right: 0,
+                    bottom: 0,
                     width: 26,
                     height: 26,
-                    borderRadius: "50%",
                     background: T.pink,
-                    /* 一圈白环把粉圆从头像上托起来（同侧边栏那枚粉圆钮的浮影） */
-                    boxShadow: "0 0 0 3px #FFFFFF, 0 8px 16px -8px rgba(232,106,155,.95)",
+                    /* 一圈白环把雾蓝方牌托起来 */
+                    boxShadow: "0 0 0 3px #FFFFFF, 0 8px 16px -8px rgba(90,115,145,.85)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -648,53 +609,23 @@ export default function MinePage({
           </div>
         ) : maskRoster ? (
           <>
-            {/* ==================== 面具册子页：名片（当前使用的面具，整卡点一下编辑） ==================== */}
+            {/* ==================== 面具册子页：当前面具（平铺，不铺卡片） ==================== */}
             {current ? (
               <div
                 onClick={() => openMaskEdit(current)}
                 data-tap="true"
-                className="mp-card"
+                className="mp-row"
                 style={{
                   position: "relative",
                   width: "100%",
                   boxSizing: "border-box",
-                  borderRadius: 22,
-                  overflow: "hidden",
-                  padding: 16,
-                  /* 粉白渐变：整页唯一一块带色的底 —— 这一页的门面，跟通讯人页的纯白方格墙一眼分得开 */
-                  background: `linear-gradient(135deg, ${T.pinkSoft} 0%, #FFFFFF 62%)`,
-                  boxShadow: "0 18px 38px -26px rgba(20,19,24,.75)",
+                  padding: 0,
                   cursor: "pointer",
                 }}
               >
-                {/* 左侧一条通高粉书脊：整卡「就是当前这一张」的记号，往下渐隐——
-                    跟侧边栏「当前项」同一种做法。垫在最前面，后面的内容都压在它上面。 */}
-                <i
-                  aria-hidden
-                  style={{
-                    position: "absolute",
-                    left: 0,
-                    top: 0,
-                    bottom: 0,
-                    width: 4,
-                    background: `linear-gradient(180deg, ${T.pink} 0%, rgba(232,106,155,.22) 100%)`,
-                    pointerEvents: "none",
-                  }}
-                />
-
-                {/* 顶行：「当前面具 / in use」，右端一枚实粉「使用中」 */}
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 700,
-                      letterSpacing: ".18em",
-                      color: T.ink,
-                      pointerEvents: "none",
-                    }}
-                  >
-                    当前面具
-                  </span>
+                {/* 顶行：一根雾蓝竖条 ＋ Current ／ 当前面具 ＋ 细线 ＋ 右端「编辑 ›」 */}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 4px 17px" }}>
+                  <i style={{ flex: "none", width: 4, height: 14, background: T.pink, pointerEvents: "none" }} />
                   <span
                     style={{
                       fontFamily: EN,
@@ -705,61 +636,52 @@ export default function MinePage({
                       pointerEvents: "none",
                     }}
                   >
-                    in use
+                    Current
                   </span>
-                  <i
+                  <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: ".18em", color: T.ink, pointerEvents: "none" }}>
+                    当前面具
+                  </span>
+                  <i style={{ flex: 1, minWidth: 12, height: 1, background: T.lineSoft, pointerEvents: "none" }} />
+                  <span
                     style={{
-                      flex: 1,
-                      minWidth: 12,
-                      height: 1,
-                      background: "rgba(20,19,24,.07)",
-                      pointerEvents: "none",
-                    }}
-                  />
-                  <span style={currentBadgeStyle}>使用中</span>
-                </div>
-
-                <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 16 }}>
-                  {/* 头像：白环把它从粉底上托起来，白环外再套一圈细粉线、底下一层浮影
-                      ——跟个人资料页那颗头像同一套做法，两页的头一样大一样亮 */}
-                  <div
-                    style={{
-                      flex: "none",
-                      padding: 3.5,
-                      borderRadius: 999,
-                      background: "#FFFFFF",
-                      boxShadow:
-                        "0 0 0 1px rgba(232,106,155,.30), 0 14px 28px -16px rgba(20,19,24,.5)",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 1,
+                      color: T.pink,
+                      fontSize: 11.5,
+                      fontWeight: 700,
+                      letterSpacing: ".1em",
                       pointerEvents: "none",
                     }}
                   >
-                    <MaskAvatar mask={current} size={82} />
-                  </div>
+                    编辑
+                    <ChevronRight size={13} strokeWidth={2.6} />
+                  </span>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: 15, padding: "0 4px" }}>
+                  <MaskAvatar mask={current} size={64} variant="deep" />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: "flex", alignItems: "baseline", gap: 7, minWidth: 0 }}>
-                      <span style={maskNoStyle}>{maskNoOf(current.id)}</span>
-                      <span
-                        style={{
-                          minWidth: 0,
-                          fontSize: 23,
-                          fontWeight: 800,
-                          letterSpacing: ".01em",
-                          lineHeight: 1.05,
-                          color: T.ink,
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          pointerEvents: "none",
-                        }}
-                      >
-                        {current.name.trim() || "我"}
-                      </span>
+                    <div
+                      style={{
+                        fontSize: 22,
+                        fontWeight: 800,
+                        letterSpacing: ".01em",
+                        lineHeight: 1.05,
+                        color: T.ink,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        pointerEvents: "none",
+                      }}
+                    >
+                      {current.name.trim() || "我"}
                     </div>
                     <div
                       style={{
                         fontSize: 11,
                         color: T.ink2,
-                        marginTop: 4,
+                        marginTop: 5,
                         letterSpacing: ".05em",
                         pointerEvents: "none",
                       }}
@@ -769,7 +691,7 @@ export default function MinePage({
                         : [current.gender, current.birth ? birthText(current.birth) : ""].filter(Boolean).join(" · ") ||
                           "还没填性别和生日"}
                     </div>
-                    {/* ID 胶囊本身是一枚按钮：真机上按它走的是它自己的 click（复制），不会连带整卡一起进编辑 */}
+                    {/* ID 一行：极淡，点一下复制；自带 stopPropagation，不会连带整卡进编辑 */}
                     <button
                       type="button"
                       onClick={(e) => {
@@ -783,204 +705,183 @@ export default function MinePage({
                         display: "inline-flex",
                         alignItems: "center",
                         gap: 5,
-                        marginTop: 8,
-                        padding: "4px 9px",
-                        borderRadius: 999,
-                        border: `1px solid ${T.line}`,
-                        background: "#FFFFFF",
-                        color: T.ink2,
+                        marginTop: 7,
+                        padding: 0,
+                        border: "none",
+                        background: "transparent",
+                        color: T.ink3,
+                        fontFamily: LAT,
                         fontSize: 10.5,
-                        fontFamily: SANS,
-                        fontWeight: 600,
                         letterSpacing: ".08em",
                         fontVariantNumeric: "tabular-nums",
                         cursor: "pointer",
                       }}
                     >
                       ID · {current.uid || "未设置"}
-                      <Copy size={11} strokeWidth={2.4} color={T.pink} />
+                      <Copy size={10} strokeWidth={2.2} color={T.ink3} />
                     </button>
                   </div>
                 </div>
 
-                {/* 签名行：签名是这张面具自己的，点这行直接改——
-                    自带 stopPropagation，不会连带整卡进编辑。 */}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSigDraft(signature);
-                    setSigOpen(true);
-                  }}
-                  className="mp-soft"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    width: "100%",
-                    boxSizing: "border-box",
-                    marginTop: 14,
-                    padding: "9px 12px",
-                    borderRadius: 14,
-                    border: `1px solid ${T.line}`,
-                    background: "rgba(255,255,255,.72)",
-                    color: T.ink2,
-                    fontFamily: SANS,
-                    fontSize: 12,
-                    letterSpacing: ".04em",
-                    cursor: "pointer",
-                    textAlign: "left",
-                  }}
-                >
-                  <span style={{ flex: "none", color: T.pink, fontWeight: 700, letterSpacing: ".06em" }}>
-                    签名
-                  </span>
-                  <span
-                    style={{
-                      flex: 1,
-                      minWidth: 0,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {signature.trim() || SIGNATURE_FALLBACK}
-                  </span>
-                  <ChevronRight size={13} strokeWidth={2.6} color={T.ink3} />
-                </button>
-
-                <p
-                  style={{
-                    margin: 0,
-                    fontSize: 12,
-                    color: T.ink2,
-                    marginTop: 10,
-                    lineHeight: 1.75,
-                    letterSpacing: ".04em",
-                    display: "-webkit-box",
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: "vertical",
-                    overflow: "hidden",
-                    pointerEvents: "none",
-                  }}
-                >
-                  {personaSummary(current)}
-                </p>
-
-                {/* 右下角一行粉色「编辑 ›」：把「整张卡都能点」这件事说出来 */}
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "flex-end",
-                    gap: 2,
-                    marginTop: 8,
-                    color: T.pink,
-                    fontSize: 11.5,
-                    fontWeight: 700,
-                    letterSpacing: ".1em",
-                    pointerEvents: "none",
-                  }}
-                >
-                  编辑
-                  <ChevronRight size={14} strokeWidth={2.6} />
+                {/* meta：签名／人设两行，各压一条发丝线；只读，要改去编辑页 */}
+                <div style={{ marginTop: 16, borderTop: `1px solid ${T.lineSoft}`, pointerEvents: "none" }}>
+                  <div style={{ display: "flex", gap: 11, padding: "11px 4px", borderBottom: `1px solid ${T.lineSoft}` }}>
+                    <span style={{ flex: "none", width: 30, fontSize: 11, fontWeight: 700, letterSpacing: ".1em", color: T.pink }}>
+                      签名
+                    </span>
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 12, lineHeight: 1.7, letterSpacing: ".03em", color: T.ink2 }}>
+                      {signature.trim() || SIGNATURE_FALLBACK}
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", gap: 11, padding: "11px 4px", borderBottom: `1px solid ${T.lineSoft}` }}>
+                    <span style={{ flex: "none", width: 30, fontSize: 11, fontWeight: 700, letterSpacing: ".1em", color: T.pink }}>
+                      人设
+                    </span>
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 12, lineHeight: 1.7, letterSpacing: ".03em", color: T.ink2 }}>
+                      {personaSummary(current)}
+                    </span>
+                  </div>
                 </div>
               </div>
             ) : null}
 
-            {/* ==================== 面具册：其他面具＋新增 ==================== */}
-            <div style={{ marginTop: 22 }}>
+            {/* ==================== 面具册：全部面具（当前行带「使用中」）＋新增 ==================== */}
+            <div style={{ marginTop: 26 }}>
               <GroupLabel cn="面具" en="masks" count={masks.length} dot={T.pink} />
-              <div style={{ ...cardGroupStyle, padding: "4px 8px 10px" }}>
-                {others.length === 0 ? (
-                  <p
-                    style={{
-                      margin: 0,
-                      padding: "8px 8px 2px",
-                      fontSize: 11.5,
-                      color: T.ink3,
-                      letterSpacing: ".04em",
-                      lineHeight: 1.75,
-                    }}
-                  >
-                    还只有这一张面具 —— 再添一张，换个人去说话。
-                  </p>
-                ) : (
-                  others.map((m) => (
-                    <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      {/* 整行可点（进编辑）：显式铺满、子元素不吃指针，按下一层淡粉 */}
-                      <div
-                        onClick={() => openMaskEdit(m)}
-                        data-tap="true"
-                        className="mp-row"
-                        style={{
-                          flex: 1,
-                          minWidth: 0,
-                          boxSizing: "border-box",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 12,
-                          padding: "10px 8px",
-                          borderRadius: 14,
-                          cursor: "pointer",
-                        }}
-                      >
-                        <MaskAvatar mask={m} size={44} />
-                        <div style={{ flex: 1, minWidth: 0, pointerEvents: "none" }}>
-                          <div style={{ display: "flex", alignItems: "baseline", gap: 6, minWidth: 0 }}>
-                            <span style={maskNoStyle}>{maskNoOf(m.id)}</span>
-                            <span
-                              style={{
-                                minWidth: 0,
-                                fontSize: 15,
-                                fontWeight: 700,
-                                color: T.ink,
-                                letterSpacing: ".04em",
-                                whiteSpace: "nowrap",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                              }}
-                            >
-                              {m.name.trim() || "我"}
-                            </span>
-                          </div>
-                          <div
+              <div className="mp-mlist">
+                {masks.map((m) => {
+                  const on = m.id === current?.id;
+                  const sub = m.signature.trim() || SIGNATURE_FALLBACK;
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => (on ? openMaskEdit(m) : void activateMask(m.id))}
+                      className="mp-mrow"
+                      style={{
+                        position: "relative",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 13,
+                        width: "100%",
+                        padding: "13px 4px",
+                        border: "none",
+                        background: "none",
+                        fontFamily: SANS,
+                        textAlign: "left",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <MaskAvatar mask={m} size={46} variant={on ? "deep" : "flat"} />
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+                          <span
                             style={{
-                              fontSize: 10.5,
-                              color: T.ink3,
-                              marginTop: 3,
+                              flex: "none",
+                              fontFamily: EN,
+                              fontSize: 10,
+                              fontWeight: 700,
+                              letterSpacing: ".1em",
+                              color: on ? T.pink : T.ink3,
+                              fontVariantNumeric: "tabular-nums",
+                            }}
+                          >
+                            {maskNoOf(m.id)}
+                          </span>
+                          <span
+                            style={{
+                              minWidth: 0,
+                              fontSize: 15,
+                              fontWeight: 700,
                               letterSpacing: ".04em",
+                              color: T.ink,
                               whiteSpace: "nowrap",
                               overflow: "hidden",
                               textOverflow: "ellipsis",
                             }}
                           >
-                            {m.id === DEFAULT_MASK_ID
-                              ? `默认面具${m.name.trim() || m.persona.trim() ? "" : " · 空白"}`
-                              : maskSubline(m)}
-                          </div>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => void activateMask(m.id)}
-                        className="mp-soft"
-                        style={useBtnStyle}
-                      >
-                        使用
-                      </button>
-                    </div>
-                  ))
-                )}
+                            {m.name.trim() || "我"}
+                          </span>
+                          {on ? (
+                            <span
+                              style={{
+                                flex: "none",
+                                fontSize: 9,
+                                fontWeight: 700,
+                                letterSpacing: ".1em",
+                                padding: "2px 7px",
+                                background: T.pinkSoft,
+                                color: T.pink,
+                              }}
+                            >
+                              使用中
+                            </span>
+                          ) : null}
+                        </span>
+                        <span
+                          style={{
+                            display: "block",
+                            marginTop: 5,
+                            fontSize: 11,
+                            letterSpacing: ".03em",
+                            color: T.ink2,
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                        >
+                          {sub}
+                          <span style={{ color: T.ink3, margin: "0 6px" }}>·</span>
+                          <span
+                            style={{
+                              fontFamily: LAT,
+                              fontSize: 10,
+                              letterSpacing: ".08em",
+                              color: T.ink3,
+                              fontVariantNumeric: "tabular-nums",
+                            }}
+                          >
+                            {m.uid || "未设置"}
+                          </span>
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
 
                 <button
                   type="button"
                   onClick={() => openMaskEdit("new")}
-                  className="mp-soft"
-                  style={addMaskBtnStyle}
+                  className="mp-mrow mp-soft"
+                  style={{
+                    position: "relative",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 13,
+                    width: "100%",
+                    padding: "13px 4px",
+                    border: "none",
+                    background: "none",
+                    fontFamily: SANS,
+                    textAlign: "left",
+                    cursor: "pointer",
+                  }}
                 >
-                  <Plus size={15} strokeWidth={2.3} />
-                  <span>新增面具</span>
+                  <span
+                    style={{
+                      flex: "none",
+                      width: 46,
+                      height: 46,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      border: "1px dashed rgba(90,115,145,.42)",
+                      color: T.pink,
+                    }}
+                  >
+                    <Plus size={20} strokeWidth={1.8} />
+                  </span>
+                  <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: ".04em", color: T.pink }}>新增面具</span>
                 </button>
               </div>
             </div>
@@ -988,178 +889,131 @@ export default function MinePage({
           </>
         ) : (
           <>
-            {/* ==================== 资料块：当前面具（微信「我」顶格那一块，整块点进编辑） ==================== */}
+            {/* ==================== 身份区：左对齐刊头（方牌即「面具册」入口） ==================== */}
             {current ? (
-              <div
-                onClick={() => openMaskEdit(current)}
-                data-tap="true"
-                className="mp-card"
-                style={{
-                  ...cardGroupStyle,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 16,
-                  padding: "20px 16px",
-                  cursor: "pointer",
-                }}
-              >
-                {/* 头像：白环托起，白环外套一圈细粉线（同名片卡那颗的做法） */}
-                <div
-                  style={{
-                    flex: "none",
-                    padding: 3,
-                    borderRadius: 999,
-                    background: "#FFFFFF",
-                    boxShadow: "0 0 0 1px rgba(232,106,155,.30), 0 14px 28px -18px rgba(20,19,24,.5)",
-                    pointerEvents: "none",
-                  }}
+              <div style={{ display: "flex", alignItems: "center", gap: 18, padding: "14px 4px 0" }}>
+                <button
+                  type="button"
+                  onClick={() => setMaskRoster(true)}
+                  aria-label="进入面具册"
+                  className="mp-hbtn"
+                  style={{ flex: "none", padding: 0, border: "none", background: "none", cursor: "pointer" }}
                 >
-                  <MaskAvatar mask={current} size={64} />
-                </div>
-                <div style={{ flex: 1, minWidth: 0, pointerEvents: "none" }}>
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 7, minWidth: 0 }}>
-                    <span style={maskNoStyle}>{maskNoOf(current.id)}</span>
-                    <span
-                      style={{
-                        minWidth: 0,
-                        fontSize: 21,
-                        fontWeight: 800,
-                        letterSpacing: ".01em",
-                        color: T.ink,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                      }}
-                    >
-                      {current.name.trim() || "我"}
-                    </span>
-                    <span style={currentBadgeStyle}>使用中</span>
-                  </div>
-                  {/* 签名：这张面具自己的那句话（点整块进编辑改） */}
+                  <MaskAvatar mask={current} size={80} variant="hero" />
+                </button>
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <div
                     style={{
-                      marginTop: 7,
-                      fontSize: 12.5,
-                      color: T.ink2,
-                      letterSpacing: ".04em",
+                      fontFamily: SERIF,
+                      fontSize: 24,
+                      fontWeight: 600,
+                      letterSpacing: ".1em",
+                      lineHeight: 1,
+                      color: T.ink,
                       whiteSpace: "nowrap",
                       overflow: "hidden",
                       textOverflow: "ellipsis",
                     }}
                   >
-                    {signature.trim() || SIGNATURE_FALLBACK}
+                    {current.name.trim() || "我"}
                   </div>
                   <div
                     style={{
-                      marginTop: 5,
+                      marginTop: 8,
+                      fontFamily: LAT,
                       fontSize: 10.5,
-                      color: T.ink3,
                       letterSpacing: ".06em",
+                      color: T.ink3,
                       fontVariantNumeric: "tabular-nums",
                       whiteSpace: "nowrap",
                       overflow: "hidden",
                       textOverflow: "ellipsis",
                     }}
                   >
-                    ID · {current.uid || "未设置"}
+                    @{current.uid || "未设置"}
                   </div>
+                  {/* 引文行：点一下就改签名 */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSigDraft(signature);
+                      setSigOpen(true);
+                    }}
+                    className="mp-soft"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      marginTop: 10,
+                      padding: 0,
+                      border: "none",
+                      background: "none",
+                      fontFamily: SANS,
+                      fontSize: 12.5,
+                      letterSpacing: ".04em",
+                      color: T.ink2,
+                      textAlign: "left",
+                      cursor: "pointer",
+                      maxWidth: "100%",
+                      minWidth: 0,
+                    }}
+                  >
+                    <i style={{ flex: "none", width: 16, height: 1, background: T.ink3 }} />
+                    <span style={{ minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {signature.trim() || SIGNATURE_FALLBACK}
+                    </span>
+                  </button>
                 </div>
-                <ChevronRight
-                  size={18}
-                  strokeWidth={2.2}
-                  color={T.ink3}
-                  style={{ flex: "none", pointerEvents: "none" }}
-                />
               </div>
             ) : null}
 
-            {/* ==================== 面具册：一张卡（进子页，不再摊在主页） ==================== */}
-            <div style={{ ...cardGroupStyle, padding: 4, marginTop: 14 }}>
-              <MenuItem
-                icon="mask"
-                label="面具册"
-                desc={`使用中 ${current?.name.trim() || "我"} · 共 ${masks.length} 张`}
-                color={T.pink}
-                bg={T.pinkSoft}
-                onClick={() => setMaskRoster(true)}
-              />
-            </div>
-
-            {/* ==================== 收藏／钱包／聊天全局设定（原侧边栏入口） ==================== */}
-            <div style={{ ...cardGroupStyle, padding: 4, marginTop: 14 }}>
-              <MenuItem
-                icon="bookmark"
-                label="我的收藏"
-                color="#B8712E"
-                bg="#F7EDE2"
-                onClick={() => showToast("我的收藏 · 预览")}
-              />
-              <MenuItem
-                icon="wallet"
-                label="我的钱包"
-                color="#2F9E8F"
-                bg="#E3F2EF"
-                onClick={onOpenWallet}
-              />
-              <MenuItem
-                icon="settings"
-                label="聊天全局设定"
-                color={T.blueDeep}
-                bg={T.blueSoft}
-                onClick={onOpenChatGlobal}
-              />
-            </div>
-
-            {/* ==================== 在线状态／拍一拍 ==================== */}
-            <div style={{ ...cardGroupStyle, padding: 4, marginTop: 14 }}>
-              <MenuItem
-                icon="status"
-                label="在线状态"
-                desc="在线"
-                color={T.blueDeep}
-                bg={T.blueSoft}
-                onClick={() => showToast("在线状态 · 预览")}
-              />
+            {/* ==================== 拍一拍（贴近资料区，属于「我」这一块） ==================== */}
+            <div className="mp-grp" style={{ marginTop: 20 }}>
               <MenuItem
                 icon="pat"
                 label="拍一拍"
-                desc="设置拍一拍文案"
-                color={T.pink}
-                bg={T.pinkSoft}
+                desc="点右边就地改文案"
+                edit="拍了拍我的小世界"
+                onEditClick={() => showToast("拍一拍 · 预览")}
                 onClick={() => showToast("拍一拍 · 预览")}
               />
             </div>
 
-            {/* ==================== 检查更新／帮助与反馈 ==================== */}
-            <div style={{ ...cardGroupStyle, padding: 4, marginTop: 14 }}>
+            {/* ==================== 资产 ==================== */}
+            <SectLabel en="Assets" cn="资产" />
+            <div className="mp-grp">
+              <MenuItem icon="bookmark" label="我的收藏" onClick={() => showToast("我的收藏 · 预览")} />
+              <MenuItem icon="wallet" label="我的钱包" onClick={onOpenWallet} />
+            </div>
+
+            {/* ==================== 设置 ==================== */}
+            <SectLabel en="Settings" cn="设置" />
+            <div className="mp-grp">
+              <MenuItem icon="settings" label="聊天全局设定" onClick={onOpenChatGlobal} />
+            </div>
+
+            {/* ==================== 关于 ==================== */}
+            <SectLabel en="About" cn="关于" />
+            <div className="mp-grp">
               {/* iOS 主屏幕 App 从快照复活、不重新加载页面，改版后可能一直跑旧代码；
                   这里给一个手动重载入口兜底（原侧边栏同款）。 */}
               <MenuItem
                 icon="update"
                 label="检查更新"
                 desc={`当前版本 v${APP_VERSION}`}
-                color="#8A6FD0"
-                bg="#EFEBF8"
                 onClick={() => window.location.reload()}
               />
-              <MenuItem
-                icon="help"
-                label="帮助与反馈"
-                color="#4E7FC4"
-                bg="#E9F0FA"
-                onClick={() => showToast("帮助与反馈 · 预览")}
-              />
+              <MenuItem icon="help" label="帮助与反馈" onClick={() => showToast("帮助与反馈 · 预览")} />
             </div>
 
-            {/* ==================== 退出（原侧边栏「退出」） ==================== */}
-            <div style={{ ...cardGroupStyle, padding: 4, marginTop: 14 }}>
-              <MenuItem
-                icon="exit"
-                label="退出星绥通讯"
-                color={T.danger}
-                bg="rgba(229,72,77,.08)"
-                onClick={onExit}
-              />
+            {/* ==================== 底部动作 ==================== */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 11, marginTop: 28 }}>
+              <button type="button" onClick={() => current && openMaskEdit(current)} style={primaryBtnStyle}>
+                编辑资料
+              </button>
+              <button type="button" onClick={onExit} style={ghostDangerBtnStyle}>
+                退出星绥通讯
+              </button>
             </div>
           </>
         )}
@@ -1242,18 +1096,45 @@ export default function MinePage({
 
 /* ---------------- 元件与样式 ---------------- */
 
-/** 面具头像：有图显图，无图渐变底＋名字首字（空名「我」）。 */
-function MaskAvatar({ mask, size }: { mask: Mask; size: number }) {
+/** 方牌三档深浅：flat 列表默认、deep 当前、hero 刊头大牌。 */
+const AVATAR_VARIANTS = {
+  flat: {
+    background: "linear-gradient(155deg,#9CB2CA 0%,#7A93B1 52%,#5F7A99 100%)",
+    ring: "0 0 0 2.5px rgba(90,115,145,.11)",
+    weight: 600,
+  },
+  deep: {
+    background: "linear-gradient(155deg,#8AA1BC 0%,#64809E 55%,#4A6588 100%)",
+    ring: "0 0 0 2.5px rgba(90,115,145,.14)",
+    weight: 700,
+  },
+  hero: {
+    background: "linear-gradient(155deg,#8FA6C1 0%,#6A85A3 55%,#4F6A8C 100%)",
+    ring: "0 0 0 3.5px rgba(90,115,145,.12)",
+    weight: 600,
+  },
+} as const;
+
+/** 面具头像：有图显图，无图雾蓝方牌＋名字首字（空名「我」）。 */
+function MaskAvatar({
+  mask,
+  size,
+  variant = "flat",
+}: {
+  mask: Mask;
+  size: number;
+  variant?: "flat" | "deep" | "hero";
+}) {
+  const v = AVATAR_VARIANTS[variant];
   if (mask.avatar) {
     return (
       <div
         style={{
           width: size,
           height: size,
-          borderRadius: "50%",
           overflow: "hidden",
           flex: "none",
-          boxShadow: "0 8px 18px -10px rgba(232,106,155,.7)",
+          boxShadow: "0 0 0 2.5px rgba(90,115,145,.14), 0 10px 18px -12px rgba(46,62,82,.6)",
         }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1266,17 +1147,17 @@ function MaskAvatar({ mask, size }: { mask: Mask; size: number }) {
       style={{
         width: size,
         height: size,
-        borderRadius: "50%",
-        background: AVATAR_GRADIENT,
+        background: v.background,
         flex: "none",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         color: "#FFF",
-        fontSize: size * 0.36,
-        fontWeight: 600,
-        letterSpacing: ".05em",
-        boxShadow: "0 8px 18px -10px rgba(232,106,155,.85)",
+        fontFamily: SERIF,
+        fontSize: size >= 74 ? 27 : size >= 60 ? 22 : size >= 44 ? 17 : Math.round(size * 0.37),
+        fontWeight: v.weight,
+        letterSpacing: ".08em",
+        boxShadow: `${v.ring}, inset 0 1.5px 0 rgba(255,255,255,.42), inset 0 -12px 18px -14px rgba(26,44,68,.55), 0 12px 20px -12px rgba(46,62,82,.6), 0 2px 4px rgba(46,62,82,.12)`,
       }}
     >
       {(mask.name.trim() || "我").charAt(0)}
@@ -1287,13 +1168,12 @@ function MaskAvatar({ mask, size }: { mask: Mask; size: number }) {
 /** 分组索引签：一根小竖色条＋名字＋英文，再一条细线拉到右端，最右是条数（同通讯人页）。 */
 function GroupLabel({ cn, en, count, dot }: { cn: string; en: string; count: number; dot?: string }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 2px 7px" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px 4px 9px" }}>
       <i
         style={{
           flex: "none",
           width: 4,
           height: 14,
-          borderRadius: 2,
           background: dot ?? T.ink,
         }}
       />
@@ -1329,20 +1209,42 @@ function GroupLabel({ cn, en, count, dot }: { cn: string; en: string; count: num
   );
 }
 
-/** 设置行：一枚彩色小方块图标＋标题／副行，右端一枚箭头（按下一层淡粉）。 */
+/** 章节签（比 GroupLabel 更轻）：英文小字·中文小字＋一条拉到右端的细线，无竖条。 */
+function SectLabel({ en, cn }: { en: string; cn: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "baseline", gap: 7, padding: "34px 4px 10px" }}>
+      <span
+        style={{
+          fontFamily: LAT,
+          fontSize: 9.5,
+          letterSpacing: ".3em",
+          color: T.ink3,
+          textTransform: "uppercase",
+        }}
+      >
+        {en}
+      </span>
+      <span style={{ fontFamily: LAT, fontSize: 9.5, color: T.ink3 }}>·</span>
+      <span style={{ fontSize: 11, letterSpacing: ".26em", color: T.ink2 }}>{cn}</span>
+      <span style={{ flex: 1, alignSelf: "center", height: 1, background: T.lineSoft, minWidth: 12 }} />
+    </div>
+  );
+}
+
+/** 设置行：一枚雾蓝细线图标＋标题／副行；右端一枚箭头，或就地编辑入口（虚线底＋铅笔）。 */
 function MenuItem({
   icon,
   label,
   desc,
-  color,
-  bg,
+  edit,
+  onEditClick,
   onClick,
 }: {
   icon: string;
   label: string;
   desc?: string;
-  color: string;
-  bg?: string;
+  edit?: string;
+  onEditClick?: () => void;
   onClick?: () => void;
 }) {
   return (
@@ -1355,26 +1257,23 @@ function MenuItem({
         alignItems: "center",
         boxSizing: "border-box",
         width: "100%",
-        padding: "13px 12px",
-        borderRadius: 14,
+        padding: "13px 4px",
         cursor: "pointer",
       }}
     >
       <div
         style={{
-          width: 30,
-          height: 30,
-          borderRadius: 9,
-          background: bg ?? T.pinkSoft,
+          width: 22,
+          height: 22,
           flex: "none",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          marginRight: 12,
+          marginRight: 13,
           pointerEvents: "none",
         }}
       >
-        <MenuIcon type={icon} color={color} />
+        <MenuIcon type={icon} color={T.pink} />
       </div>
       <div style={{ flex: 1, minWidth: 0, pointerEvents: "none" }}>
         <p style={{ margin: 0, fontSize: 14, fontWeight: 600, letterSpacing: ".06em", color: T.ink }}>{label}</p>
@@ -1395,7 +1294,39 @@ function MenuItem({
           </p>
         ) : null}
       </div>
-      <ChevronRight size={15} strokeWidth={1.8} color={T.ink3} style={{ flex: "none", marginLeft: 8, pointerEvents: "none" }} />
+      {edit !== undefined ? (
+        <span
+          onClick={(e) => {
+            e.stopPropagation();
+            onEditClick?.();
+          }}
+          className="mp-soft"
+          style={{
+            flex: "none",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+            marginLeft: 8,
+            maxWidth: "46%",
+            fontSize: 12,
+            letterSpacing: ".02em",
+            color: T.pink,
+            borderBottom: "1px dashed rgba(90,115,145,.45)",
+          }}
+        >
+          <span style={{ minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {edit}
+          </span>
+          <Pencil size={11} strokeWidth={1.9} style={{ flex: "none" }} />
+        </span>
+      ) : (
+        <ChevronRight
+          size={15}
+          strokeWidth={1.8}
+          color={T.ink3}
+          style={{ flex: "none", marginLeft: 8, pointerEvents: "none" }}
+        />
+      )}
     </div>
   );
 }
@@ -1493,81 +1424,53 @@ function MenuIcon({ type, color }: { type: string; color: string }) {
   }
 }
 
-/* 页头返回钮：近黑圆＋白图标（同设置面板那枚，按下走 .mp-hbtn 缩一档） */
+/* 页头返回钮：透明细线箭头，绝对定位贴左（按下走 .mp-hbtn 缩一档）。 */
 const headerBtnStyle: CSSProperties = {
-  width: 36,
-  height: 36,
-  flex: "none",
+  position: "absolute",
+  left: 0,
+  top: 0,
+  bottom: 0,
+  margin: "auto 0",
+  height: 24,
+  width: 24,
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  background: T.ink,
+  padding: 0,
   border: "none",
-  borderRadius: 999,
-  color: "#FFFFFF",
+  background: "none",
+  color: T.ink,
   cursor: "pointer",
-  boxShadow: "0 4px 12px -4px rgba(20,19,24,.5)",
 };
 
-const cardGroupStyle: CSSProperties = {
-  background: T.card,
-  borderRadius: 18,
-  overflow: "hidden",
-  boxShadow: "0 10px 26px -22px rgba(20,19,24,.7)",
-};
-
-/* 实粉小牌：只会落在浅粉底／白底上，白字压得住 */
-const currentBadgeStyle: CSSProperties = {
-  flex: "none",
-  fontSize: 9.5,
-  fontWeight: 700,
-  padding: "3px 8px",
-  borderRadius: 999,
+/* 底部主按钮：实心雾蓝、直角、白字。 */
+const primaryBtnStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "15px 0",
+  border: "none",
   background: T.pink,
   color: "#FFFFFF",
-  letterSpacing: ".08em",
-  boxShadow: "0 8px 16px -10px rgba(232,106,155,.95)",
-};
-
-/* 面具编号：淡灰、等宽数字，安静地待在名字前面。 */
-const maskNoStyle: CSSProperties = {
-  flex: "none",
+  fontSize: 14,
+  fontWeight: 600,
   fontFamily: SANS,
-  fontSize: 10.5,
-  fontWeight: 700,
-  letterSpacing: ".1em",
-  color: T.ink3,
-  fontVariantNumeric: "tabular-nums",
-};
-
-const useBtnStyle: CSSProperties = {
-  flex: "none",
-  padding: "6px 14px",
-  borderRadius: 999,
-  border: "none",
-  background: T.pinkSoft,
-  color: T.pink,
-  fontSize: 11.5,
-  fontWeight: 700,
-  fontFamily: SANS,
-  letterSpacing: ".1em",
+  letterSpacing: ".14em",
   cursor: "pointer",
+  boxShadow: "0 16px 30px -18px rgba(90,115,145,.75)",
 };
 
-const addMaskBtnStyle: CSSProperties = {
-  width: "100%",
+/* 底部危险按钮：浅底砖红字、直角。 */
+const ghostDangerBtnStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  gap: 6,
-  padding: "12px 0",
-  marginTop: 6,
+  padding: "15px 0",
   border: "none",
-  borderRadius: 14,
-  background: T.pinkSoft,
-  color: T.pink,
+  background: "rgba(58,65,73,.05)",
+  color: T.danger,
   fontSize: 13,
-  fontWeight: 700,
+  fontWeight: 600,
   fontFamily: SANS,
   letterSpacing: ".12em",
   cursor: "pointer",
@@ -1587,7 +1490,6 @@ const inputStyle: CSSProperties = {
   boxSizing: "border-box",
   border: `1px solid ${T.line}`,
   background: T.bg,
-  borderRadius: 12,
   padding: "11px 13px",
   fontSize: 14,
   fontFamily: SANS,
@@ -1601,7 +1503,6 @@ const textareaStyle: CSSProperties = {
   boxSizing: "border-box",
   border: `1px solid ${T.line}`,
   background: T.bg,
-  borderRadius: 12,
   padding: "11px 13px",
   fontSize: 13.5,
   fontFamily: SANS,
@@ -1618,7 +1519,6 @@ const selectStyle: CSSProperties = {
   minWidth: 0,
   border: `1px solid ${T.line}`,
   background: T.bg,
-  borderRadius: 12,
   padding: "10px 6px",
   fontSize: 13,
   fontFamily: SANS,
@@ -1630,7 +1530,6 @@ const selectStyle: CSSProperties = {
 const genderPillStyle: CSSProperties = {
   flex: 1,
   padding: "10px 0",
-  borderRadius: 12,
   border: `1px solid ${T.line}`,
   background: T.bg,
   color: T.ink2,
@@ -1640,7 +1539,7 @@ const genderPillStyle: CSSProperties = {
   cursor: "pointer",
 };
 
-/* 选中：实粉底白字（跟条数牌、使用中牌同一颗粉） */
+/* 选中：实雾蓝底白字（跟底部主按钮同一颗蓝） */
 const genderPillActiveStyle: CSSProperties = {
   ...genderPillStyle,
   border: "none",
@@ -1659,7 +1558,6 @@ const fieldHintStyle: CSSProperties = {
 const cancelBtnStyle: CSSProperties = {
   flex: 1,
   padding: "12px 0",
-  borderRadius: 12,
   border: "none",
   background: "rgba(20,19,24,.05)",
   color: T.ink2,
@@ -1672,7 +1570,6 @@ const cancelBtnStyle: CSSProperties = {
 const saveBtnStyle: CSSProperties = {
   flex: 1,
   padding: "12px 0",
-  borderRadius: 12,
   border: "none",
   background: T.pink,
   color: "#FFFFFF",
@@ -1681,15 +1578,14 @@ const saveBtnStyle: CSSProperties = {
   fontFamily: SANS,
   letterSpacing: ".14em",
   cursor: "pointer",
-  boxShadow: "0 10px 20px -12px rgba(232,106,155,.95)",
+  boxShadow: "0 10px 20px -12px rgba(90,115,145,.95)",
 };
 
 const deleteBtnStyle: CSSProperties = {
   width: "100%",
   marginTop: 14,
   padding: "11px 0",
-  borderRadius: 12,
-  border: `1px solid rgba(229,72,77,.3)`,
+  border: `1px solid rgba(192,86,63,.32)`,
   background: "transparent",
   color: T.danger,
   fontSize: 13,
@@ -1701,7 +1597,6 @@ const deleteBtnStyle: CSSProperties = {
 const deleteConfirmBtnStyle: CSSProperties = {
   flex: 1,
   padding: "12px 0",
-  borderRadius: 12,
   border: "none",
   background: T.danger,
   color: "#FFFFFF",
@@ -1725,7 +1620,6 @@ const modalOverlayStyle: CSSProperties = {
 
 const modalCardStyle: CSSProperties = {
   background: T.card,
-  borderRadius: 18,
   padding: "22px 20px",
   width: "100%",
   maxWidth: 260,
