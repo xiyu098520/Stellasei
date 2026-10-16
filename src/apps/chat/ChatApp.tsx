@@ -249,10 +249,9 @@ export default function ChatApp() {
               void saveMasks(nextMasks);
             }}
             onMasksChange={setMasks}
-            /* 次级入口都从这页进：钱包／聊天全局设定／退出 App（原侧边栏的活）。 */
+            /* 次级入口都从这页进：钱包／聊天全局设定（原侧边栏的活）。 */
             onOpenWallet={() => setView("wallet")}
             onOpenChatGlobal={() => setView("chat-global")}
-            onExit={closeApp}
             showToast={showToast}
           />
         ) : view === "wallet" ? (

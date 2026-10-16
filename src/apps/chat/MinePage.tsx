@@ -17,7 +17,7 @@ import { EN, HZ, LAT, SERIF } from "./shared";
 /* =======================================================================
  * 「我的」页（底部 tab 进入，微信「我」的骨架）
  * 顶部资料块（当前面具：头像＋名字＋签名，整块点进编辑）→ 面具册入口卡（进子页）
- * → 分组卡片行（收藏／钱包／聊天全局设定 · 在线状态／拍一拍 · 检查更新／帮助 · 退出）。
+ * → 分组行（收藏／钱包／聊天全局设定／检查更新／帮助与反馈）。
  * 原侧边栏（已撤）的入口全部收进这页；导航大梁换成了底部 tab。
  *
  * 面具不再摊在主页：**面具册是一张卡**，点进去才见名片（当前面具）＋列表＋新增。
@@ -70,7 +70,6 @@ export default function MinePage({
   onMasksChange,
   onOpenWallet,
   onOpenChatGlobal,
-  onExit,
   showToast,
 }: {
   signature: string;
@@ -81,8 +80,6 @@ export default function MinePage({
   onOpenWallet: () => void;
   /* 聊天全局设定（同上）。 */
   onOpenChatGlobal: () => void;
-  /* 退出星绥通讯（原侧边栏「退出」）。 */
-  onExit: () => void;
   showToast: (msg: string) => void;
 }) {
   /* ---------- 页内层级 ---------- */
@@ -1005,16 +1002,6 @@ export default function MinePage({
               />
               <MenuItem icon="help" label="帮助与反馈" onClick={() => showToast("帮助与反馈 · 预览")} />
             </div>
-
-            {/* ==================== 底部动作 ==================== */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 11, marginTop: 28 }}>
-              <button type="button" onClick={() => current && openMaskEdit(current)} style={primaryBtnStyle}>
-                编辑资料
-              </button>
-              <button type="button" onClick={onExit} style={ghostDangerBtnStyle}>
-                退出星绥通讯
-              </button>
-            </div>
           </>
         )}
       </div>
@@ -1440,39 +1427,6 @@ const headerBtnStyle: CSSProperties = {
   border: "none",
   background: "none",
   color: T.ink,
-  cursor: "pointer",
-};
-
-/* 底部主按钮：实心雾蓝、直角、白字。 */
-const primaryBtnStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "15px 0",
-  border: "none",
-  background: T.pink,
-  color: "#FFFFFF",
-  fontSize: 14,
-  fontWeight: 600,
-  fontFamily: SERIF,
-  letterSpacing: ".14em",
-  cursor: "pointer",
-  boxShadow: "0 16px 30px -18px rgba(90,115,145,.75)",
-};
-
-/* 底部危险按钮：浅底砖红字、直角。 */
-const ghostDangerBtnStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "15px 0",
-  border: "none",
-  background: "rgba(58,65,73,.05)",
-  color: T.danger,
-  fontSize: 13,
-  fontWeight: 600,
-  fontFamily: SERIF,
-  letterSpacing: ".12em",
   cursor: "pointer",
 };
 
