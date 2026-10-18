@@ -15,6 +15,7 @@ import {
   Camera,
   Check,
   ChevronLeft,
+  ChevronRight,
   ChevronUp,
   Clock,
   Copy,
@@ -159,10 +160,10 @@ import {
 import { sweepOrphanMedia } from "@/lib/chat/media-sweep";
 import { readQrNote } from "@/lib/chat/qr-read";
 import {
-  AVATAR_GRADIENT,
-  CHAT_BG_DEFAULT,
   CHAT_PAGE_SIZE,
+  HZ,
   KAI,
+  LAT,
   SANS,
   SERIF,
   T,
@@ -316,6 +317,103 @@ function IconPayCode({ size = 21, strokeWidth = 1.5 }: { size?: number; strokeWi
    点开进线下场合那一页（OfflineScenePage），小说笔法写一场，不再一条条发消息。
    与「重新回复」并列摆，同为糖色通栏（都不是「发内容」）。 */
 const PLUS_OFFLINE_ACTION = { name: "去见他", icon: User } as const;
+
+/* 加号面板的九枚双色图标：雾蓝细线 ＋ 闭合形状里一层极淡雾蓝。
+   跟草稿逐笔一样，所以不用 lucide——它只有一个色，也画不出那层填充。 */
+function PlusGlyph({ name, size = 21 }: { name: string; size?: number }) {
+  const common = {
+    width: size,
+    height: size,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.5,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  };
+  switch (name) {
+    case "图片":
+      return (
+        <svg {...common}>
+          <rect x="3" y="4.5" width="18" height="15" fill="currentColor" fillOpacity={0.09} />
+          <circle cx="8.5" cy="10" r="1.6" fill="currentColor" fillOpacity={0.24} />
+          <path d="M3 16.5l5-4.5 4 3.5 3-2.5 6 5" />
+        </svg>
+      );
+    case "语音消息":
+      return (
+        <svg {...common}>
+          <rect x="9" y="2.5" width="6" height="11" rx="3" fill="currentColor" fillOpacity={0.2} />
+          <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3.5" />
+        </svg>
+      );
+    case "视频通话":
+      return (
+        <svg {...common}>
+          <rect x="2.5" y="6" width="13" height="12" fill="currentColor" fillOpacity={0.09} />
+          <path d="M15.5 10.5l6-3.5v10l-6-3.5z" fill="currentColor" fillOpacity={0.14} />
+        </svg>
+      );
+    case "语音通话":
+      return (
+        <svg {...common}>
+          <path
+            d="M20.5 16.9v2.6a1.7 1.7 0 0 1-1.9 1.7 17 17 0 0 1-7.4-2.6 16.7 16.7 0 0 1-5.1-5.1A17 17 0 0 1 3.5 6a1.7 1.7 0 0 1 1.7-1.9h2.6a1.7 1.7 0 0 1 1.7 1.5c.1.9.3 1.7.6 2.5a1.7 1.7 0 0 1-.4 1.8l-1.1 1.1a13.6 13.6 0 0 0 5.1 5.1l1.1-1.1a1.7 1.7 0 0 1 1.8-.4c.8.3 1.6.5 2.5.6a1.7 1.7 0 0 1 1.5 1.7z"
+            fill="currentColor"
+            fillOpacity={0.09}
+          />
+        </svg>
+      );
+    case "红包":
+      return (
+        <svg {...common}>
+          <rect x="4" y="3" width="16" height="18" fill="currentColor" fillOpacity={0.09} />
+          <path d="M4 8.5l8 5.2 8-5.2" />
+        </svg>
+      );
+    case "转账":
+      return (
+        <svg {...common}>
+          <rect x="2.5" y="5.5" width="19" height="13" fill="currentColor" fillOpacity={0.09} />
+          <path d="M2.5 10h19" />
+          <path d="M6 14.5h4" />
+        </svg>
+      );
+    case "文件":
+      return (
+        <svg {...common}>
+          <path
+            d="M13.5 3H6.5A1.5 1.5 0 0 0 5 4.5v15A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V8.5z"
+            fill="currentColor"
+            fillOpacity={0.09}
+          />
+          <path d="M13.5 3v5.5H19" />
+        </svg>
+      );
+    case "位置":
+      return (
+        <svg {...common}>
+          <path
+            d="M12 21.5s7-5.8 7-11a7 7 0 1 0-14 0c0 5.2 7 11 7 11z"
+            fill="currentColor"
+            fillOpacity={0.09}
+          />
+          <circle cx="12" cy="10.2" r="2.6" />
+        </svg>
+      );
+    case "收款码":
+      return (
+        <svg {...common}>
+          <rect x="3.5" y="3.5" width="7" height="7" fill="currentColor" fillOpacity={0.13} />
+          <rect x="13.5" y="3.5" width="7" height="7" fill="currentColor" fillOpacity={0.13} />
+          <rect x="3.5" y="13.5" width="7" height="7" fill="currentColor" fillOpacity={0.13} />
+          <path d="M13.5 13.5h3v3h-3zM18.5 18.5h2v2h-2z" fill="currentColor" fillOpacity={0.28} />
+        </svg>
+      );
+    default:
+      return null;
+  }
+}
 
 /* 「重新回复」不填提示词时的兜底（放开空输入）：空着点确认
    就是「让它自己重新生成」。原样重跑结果往往和上一条几乎一样，所以补一句换说法的
@@ -4961,62 +5059,45 @@ export default function ChatWindow({
     }
   };
 
-  /* TA 气泡样式：真消息与流式预览共用同一份，保证「预览转正」零跳变。
-     pre-wrap 只为清单消息（splitReply 保留了换行的「一、二、三」那种条目）
-     服务——普通消息在拆条时换行就被当条边界切掉了，身上不带 \n，
-     所以这条对它没有任何影响。
-     边与影两处：
-     ①边用粉调的 .22，不用 T.line（中性灰）——灰边压在白里发脏，跟整页的粉对不上；
-       底是半透之后，这枚边还得把气泡的轮廓交代住，不然白气泡坐到浅色壁纸上就没了边界。
-     ②影用两层粉——贴身的 1px 定边界，
-       底下 14px 的晕往后收（-8px 让它只落在气泡下缘外），气泡才像搁在纸上，
-       而不是用笔在白底上画了个框。
-     ⚠️ 半透的底：跟她自己那侧同一套口径，传了照片壁纸时壁纸从气泡里淡淡透上来。
-       ①**不许上毛玻璃（backdrop-filter）**：一屏十几二十条，一屏多枚模糊在 iPhone 上会掉帧
-         （globals.css 那条玻璃材质的警告：开销与面积成正比，别铺到一屏多枚）——只用 alpha。
-       ②**alpha 不许再往下调**：这里坐的是深色字（T.ink），透太多就把壁纸的深浅直接拉到字底下，
-         字跟照片的花纹打架；白底坐深色字本来就比粉底坐白字更吃透，不跟她那侧的粉底强行对齐。
-       ③两处顺带：影收一档（半透的底再压重影就又透出暗斑），
-         补一道极淡的白文字影帮深色字从照片里浮出来；渐变幅度保留（幅度一小整块就塌成一张平纸）。
-       ④字体：正文换**宋体**（`SERIF`＝站内自托管的思源宋，零新增加载）——
-         气泡里「说出口的话」读起来像写下来的，跟黑体的界面（按钮、列表、设置）拉开一层；
-         **只动气泡这一层、UI 一律不动**。行距同时拉大（宋体比黑体紧、笔画又细，
-         不拉会显挤显薄）；字号在 fontSize。 */
+  /* 气泡以草稿为准：TA 白底细边、我淡雾蓝底，字都是雾墨色；没有阴影、没有渐变。
+     pre-wrap 留给清单消息（splitReply 保留了换行的那种条目）。 */
   const assistantBubbleStyle: CSSProperties = {
     position: "relative",
     background: "#FFFFFF",
-    borderRadius: 8,
-    padding: "5px 8px",
+    borderRadius: 15,
+    padding: "9px 14px",
     fontFamily: SERIF,
     fontSize,
-    lineHeight: 1.75,
+    lineHeight: 1.72,
     letterSpacing: ".02em",
-    color: T.ink,
-    boxShadow: "2px 2px 0 rgba(20,19,24,.10)",
+    color: HZ.ink,
+    border: "1px solid rgba(58,65,73,.11)",
+    boxShadow: "none",
+    wordBreak: "break-word",
+    whiteSpace: "pre-wrap",
+  };
+
+  const myBubbleStyle: CSSProperties = {
+    position: "relative",
+    background: "#DCE4EE",
+    borderRadius: 15,
+    padding: "9px 14px",
+    fontFamily: SERIF,
+    fontSize,
+    lineHeight: 1.72,
+    letterSpacing: ".02em",
+    color: HZ.ink,
+    border: "none",
+    boxShadow: "none",
     wordBreak: "break-word",
     whiteSpace: "pre-wrap",
   };
 
   /* 分组判定：同一个人的连发算作一组；系统提示、跨天都要断开。
-     组首挂头像、组尾挂时间／已读，组内其余行留空位对齐，不按每条各挂头像、
-     各缀一行时间的老骨架排。 */
+     组首挂「头像 · 名字 · 日期／已读／时间」，组内只叠气泡。 */
   const isSysMsg = (x?: ChatMessage) => !!x && (x.role === "system" || x.type === "system");
   const sameGroup = (a?: ChatMessage, b?: ChatMessage) =>
     !!a && !!b && !isSysMsg(a) && !isSysMsg(b) && a.role === b.role && sameDay(a.createdAt, b.createdAt);
-
-  /* 组内不再重复挂头像，留一个与头像等宽的空位，保证气泡边线仍然对齐。
-     消息行与流式预览共用这一枚空位——两边的间距判据必须是一套，
-     流式那边若另排一套，第一条跟第二条气泡之间的间距就会不一致。 */
-  const avatarSpacerEl = <div style={{ width: 38, flex: "none" }} />;
-
-  /* 组首那枚头像**不许撑高它所在这一行**。气泡通常比头像矮，两者顶对齐时
-     行高就被 38px 的头像顶住，气泡底下白白空出 3～5px——于是「组首→第二条」永远比组内
-     其余几处松。把头像改成绝对定位脱流，行高只由气泡说了算，组内每一处就都是同一个间距。 */
-  const avatarSlotEl = (el: React.ReactNode) => (
-    <div style={{ position: "relative", width: 38, flex: "none" }}>
-      <div style={{ position: "absolute", top: 0, left: 0 }}>{el}</div>
-    </div>
-  );
 
   /* 拉黑期间 TA 冒出来的话，在 TA 那头一律显示「发送失败」——可我这边内容照样看得见，
      只在气泡旁边多挂一枚红感叹号。哪几条算「拉黑期间」，让聊天记录自己切：
@@ -5035,50 +5116,36 @@ export default function ChatWindow({
   /* 流式预览那几条还没落库、不在 messages 里，只能用「此刻是不是还在拉黑期间」判。 */
   const blockedNowActive = inBlockedPeriod;
 
-  /* 那枚红感叹号：红底白叹号的正圆，横挂在气泡右边、卡在**气泡自己**的竖直中线上。
-     它记的是「TA 那边发送失败」，不是我这边的失败——所以不许挪到气泡左边，
-     也不许跟时间／已读那些小字排在一行里。
-
-     ⚠️ 叹号必须跟**气泡**一起装进同一条 flex 行（见 failMarkRowStyle），靠这一行居中；
-     不许挂在整列上让它 alignSelf: "center"：整列里除了气泡，上头还有「思考 ▾」那行、
-     底下还有时间小字这一行，按整列算中线的结果就是被这两样往下拽——看着永远偏下，
-     且气泡一高一低偏多少还不一样。 */
-  const failMarkRowStyle: CSSProperties = {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    minWidth: 0,
-  };
-  const failMarkEl = (
-    <span
+  /* 发送失败：照草稿，气泡下面一行小字「! 发送失败」，不再挂一枚红圆在气泡旁边。 */
+  const failLineEl = (
+    <div
       style={{
-        flex: "none",
-        width: 17,
-        height: 17,
-        borderRadius: "50%",
-        background: "#E64340",
-        color: "#FFFFFF",
-        fontSize: 12,
-        fontWeight: 700,
-        lineHeight: "17px",
-        textAlign: "center",
+        display: "flex",
+        alignItems: "center",
+        gap: 5,
+        marginTop: 1,
+        fontSize: 10,
+        letterSpacing: ".04em",
+        color: "#C0563F",
       }}
     >
-      !
-    </span>
+      <span style={{ fontSize: 12, fontWeight: 700, lineHeight: 1 }}>!</span>
+      发送失败
+    </div>
   );
 
   /* ---------- 单条消息渲染 ---------- */
   const renderMsg = (m: ChatMessage, i?: number, arr: ChatMessage[] = messages) => {
     const groupedWithPrev = i !== undefined && i > 0 && sameGroup(arr[i - 1], m);
-    const lastOfGroup = !(i !== undefined && sameGroup(m, arr[i + 1]));
     /* 组内行收紧一点：连发的几条贴成一叠，跟组间留白拉开层次。
        上下必须分开给——**组首只在「上方」撑开组间距、下沿跟组内一样收**，组尾反过来。
        组首行若上下同给 6px，于是「第一条→第二条」是 8px、「第二条→第三条」只有 4px，
        组内头一处永远比后面松一倍。
        数值：组内每一处 7px（上下各 3.5），组间 12px。组内收得太紧（如 4px）会显得跟组间
        没差别——层次要有，但别糊成一坨。 */
-    const rowPadding = `${groupedWithPrev ? 3.5 : 6}px 14px ${lastOfGroup ? 6 : 3.5}px`;
+    /* 分组节奏照草稿：一组＝「消息头 ＋ 一叠气泡」，组与组之间留 26px、组内每条 11px。
+       组头只在组首出现（头像 · 名字 · 日期/已读/时间），组内不再逐条缀时间。 */
+    const paddingTop = groupedWithPrev ? 11 : 26;
 
     if (m.role === "system" || m.type === "system") {
       return (
@@ -5089,7 +5156,7 @@ export default function ChatWindow({
             flexDirection: "column",
             alignItems: "center",
             gap: 6,
-            padding: "14px 16px 8px",
+            padding: "20px 22px 12px",
           }}
         >
           {/* 系统消息要一眼看清，不能跟背景融在一起：原来是一行 11.5px 的灰字（T.ink2）
@@ -5114,14 +5181,16 @@ export default function ChatWindow({
           >
             <span
               style={{
-                padding: "5px 20px",
-                background:
-                  "linear-gradient(90deg, rgba(249,223,233,0) 0%, rgba(249,223,233,.95) 16%, rgba(249,223,233,.95) 84%, rgba(249,223,233,0) 100%)",
-                fontSize: 10.5,
-                lineHeight: 1.75,
-                color: "#B33E70",
-                letterSpacing: ".12em",
-                textIndent: ".12em",
+                padding: "5px 12px",
+                background: m.content.includes("加入黑名单")
+                  ? "rgba(192,86,63,.09)"
+                  : HZ.accentSoft,
+                borderRadius: 8,
+                fontFamily: SERIF,
+                fontSize: 11,
+                lineHeight: 1.6,
+                color: m.content.includes("加入黑名单") ? "#C0563F" : "#4A6588",
+                letterSpacing: ".06em",
                 textAlign: "center",
               }}
             >
@@ -5169,12 +5238,12 @@ export default function ChatWindow({
                 gap: 5,
                 padding: "5px 14px",
                 borderRadius: 999,
-                border: `1px solid ${T.line}`,
-                background: T.card,
+                border: `1px solid ${HZ.line}`,
+                background: "#FFFFFF",
                 fontSize: 11,
                 lineHeight: 1,
                 letterSpacing: ".1em",
-                color: T.pink,
+                color: HZ.accent,
                 cursor: isTyping ? "default" : "pointer",
                 opacity: isTyping ? 0.5 : 1,
               }}
@@ -5189,28 +5258,7 @@ export default function ChatWindow({
 
     const isMe = m.role === "user";
     const body = renderBody(m);
-    /* 时间每条气泡都挂自己那条的，不许「消失」；
-       「已读」是整串的状态，仍只在这一串的最后一条报一次。 */
-    const meta = (
-      <div
-        style={{
-          marginTop: 3,
-          fontSize: 9.5,
-          color: T.ink3,
-          letterSpacing: ".06em",
-          fontVariantNumeric: "tabular-nums",
-          display: "flex",
-          alignItems: "center",
-          gap: 5,
-          alignSelf: "flex-end",
-        }}
-      >
-        <span>{msgTime(m.createdAt)}</span>
-        {m.isRead && isMe && lastOfGroup ? (
-          <span style={{ color: T.pink, letterSpacing: ".14em" }}>已读</span>
-        ) : null}
-      </div>
-    );
+    /* 时间与已读上收到「消息头」那一行（照草稿），气泡底下不再逐条缀时间。 */
     /* 外语聊天的译文行：贴着气泡**正下方**的一行小字，靠哪一侧跟那条气泡一致。
        他那一侧显示的是「他说的外语 → 中文」，我这一侧显示的是「我原本打的那句中文」；
        各自那个「显示翻译」关掉就不露（译文照旧存在消息里，随时开回来）。
@@ -5223,44 +5271,61 @@ export default function ChatWindow({
       (m.role === "user" ? trSet?.in.show === true : trSet?.out.show === true) &&
       !!m.translated &&
       !showTrans.has(m.id);
-    /* 译文行跟**引用块同一套**纸底＋竖线（半透明奶白底 + 3px 竖线）——只一根很淡的
-       竖线、没有底色，换个壁纸就糊没了，这样任何壁纸下都压得住。
-       字号／衬线仍按译文自己的来（它是译文，不跟引文混同）。 */
     const transLine = showTransLine ? (
       <div
         style={{
           alignSelf: isMe ? "flex-end" : "flex-start",
-          maxWidth: "100%",
-          marginTop: 5,
-          padding: "6px 13px",
-          borderRadius: 16,
-          background: "rgba(255,253,248,.44)",
-          borderLeft: isMe ? "none" : "3px solid rgba(20,19,24,.44)",
-          borderRight: isMe ? "3px solid rgba(232,106,155,.74)" : "none",
-          fontFamily: SERIF,
-          fontSize: 11,
-          lineHeight: 1.65,
-          letterSpacing: ".02em",
-          color: isMe ? "rgba(160,52,98,.85)" : "rgba(20,19,24,.62)",
-          wordBreak: "break-word",
-          whiteSpace: "pre-wrap",
+          maxWidth: 214,
+          marginTop: -5,
+          padding: "6px 10px 7px",
+          background: isMe ? "#FFFFFF" : "#E9EFF6",
+          borderLeft: `3px solid ${HZ.accent}`,
+          borderRadius: "0 4px 4px 0",
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
         }}
       >
-        {/* 语音那行的中文译文同样不露方括号语气标签（跟「转文字」的原文一个口径，
-            见 stripVoiceTags）；其余消息的译文照旧原样显示。 */}
-        {m.type === "voice" ? stripVoiceTags(m.translated ?? "") : m.translated}
+        <span
+          style={{
+            flex: "none",
+            fontFamily: SERIF,
+            fontSize: 8.5,
+            fontWeight: 600,
+            letterSpacing: ".06em",
+            color: "#FFFFFF",
+            background: HZ.accent,
+            borderRadius: 3,
+            padding: "0 4px 1px",
+            lineHeight: 1.5,
+          }}
+        >
+          译
+        </span>
+        <p
+          style={{
+            flex: 1,
+            minWidth: 0,
+            margin: 0,
+            fontFamily: SERIF,
+            fontSize: 12,
+            lineHeight: 1.7,
+            letterSpacing: ".02em",
+            color: HZ.ink2,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {/* 语音那行的中文译文同样不露方括号语气标签（跟「转文字」的原文一个口径，
+              见 stripVoiceTags）；其余消息的译文照旧原样显示。 */}
+          {m.type === "voice" ? stripVoiceTags(m.translated ?? "") : m.translated}
+        </p>
       </div>
     ) : null;
-    /* 引用块：左边一根细竖线那种（微信/Telegram 一个路数），不用「一整块淡粉底 ＋ 顶上
-       一行小字『引用』」那版——
-       ①不摆「引用」那两个字：单聊里引用的一定是对方（TA 的气泡引用我、我的气泡引用 TA），
-         一根竖线 ＋ 原话自带引号，已经把「这是引来的话」说清楚了，再顶一行小标签纯属多余装饰。
-       ②不给整块底色：气泡自己已经是一块色，再压一层淡粉就是「补丁感」的来源；
-         一根竖线既能划分区域、又不糊。
-       ③原话在库里存的是「发信人：原话」（那是给模型看的写法，见 quoteMsg），
-         这里把前缀摘掉。只认气泡对面那个名字、摘不掉就原样显示——免得把原话里
-         本来就有的冒号当分隔符剪坏。
-       ④字色比正文浅一档（我侧白半透、对方侧 T.ink2）：引文是次要信息，不该跟正文抢。 */
+    /* 引用块：气泡正下方一张窄注脚——左边一根雾蓝竖条、底是极淡的雾蓝
+       （我侧那几条用白底，跟淡雾蓝气泡分得开），名字与原文挤在同一行、超出一行就省略。
+       原话在库里存的是「发信人：原话」（给模型看的写法），这里把前缀摘掉。 */
     const quoteSender = isMe ? charName : myName;
     const quoteBody = m.quote
       ? m.quote.startsWith(`${quoteSender}：`)
@@ -5271,38 +5336,39 @@ export default function ChatWindow({
       <div
         style={{
           alignSelf: isMe ? "flex-end" : "flex-start",
-          marginBottom: 7,
-          padding: "6px 13px",
-          borderRadius: 16,
-          background: "rgba(255,253,248,.44)",
-          borderLeft: isMe ? "none" : "3px solid rgba(20,19,24,.44)",
-          borderRight: isMe ? "3px solid rgba(232,106,155,.74)" : "none",
+          maxWidth: 214,
+          marginTop: -5,
+          padding: "6px 10px 7px 11px",
+          background: isMe ? "#FFFFFF" : "#E9EFF6",
+          borderLeft: `3px solid ${HZ.accent}`,
+          borderRadius: "0 4px 4px 0",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
         }}
       >
-        <div
+        <span
           style={{
-            fontSize: Math.max(9.5, fontSize - 3.5),
-            lineHeight: 1.45,
-            letterSpacing: ".02em",
-            color: isMe ? "rgba(232,106,155,.66)" : "rgba(20,19,24,.46)",
+            fontFamily: SERIF,
+            fontSize: 10,
+            letterSpacing: ".04em",
+            color: HZ.accent,
+            marginRight: 6,
           }}
         >
           {quoteSender}
-        </div>
-        <div
+        </span>
+        <span
           style={{
-            fontSize: Math.max(10.5, fontSize - 2),
-            lineHeight: 1.5,
+            fontFamily: SERIF,
+            fontSize: 12,
+            lineHeight: 1.7,
             letterSpacing: ".02em",
-            color: isMe ? "rgba(160,52,98,.85)" : "rgba(20,19,24,.62)",
-            display: "-webkit-box",
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: "vertical",
-            overflow: "hidden",
+            color: HZ.ink2,
           }}
         >
           {quoteBody}
-        </div>
+        </span>
       </div>
     ) : null;
 
@@ -5327,106 +5393,94 @@ export default function ChatWindow({
           }
         : {};
 
-    if (isMe) {
-      return (
+    /* 一组＝「消息头 ＋ 一叠气泡」：组首 26px 起头（含头像那一行），组内每条 11px。 */
+    const headerEl = groupedWithPrev ? null : (
+      <div
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          marginBottom: 9,
+          justifyContent: isMe ? "flex-end" : "flex-start",
+        }}
+      >
+        {isMe
+          ? null
+          : avatarBox({
+              avatar: actualCharAvatar,
+              fallbackChar: charName.charAt(0),
+              /* 点 TA 的头像进「心声档案」。只挂 TA 这一侧，
+                 我自己的头像不接（那一页讲的是他心里的事）。
+                 这是心声**唯一的入口**（聊天里那截「心声 ▾」已摘掉）。 */
+              onClick: () => setShowInnerPage(true),
+            })}
         <div
-          key={m.id}
           style={{
             display: "flex",
-            alignItems: "flex-start",
-            gap: 9,
-            padding: rowPadding,
-            justifyContent: "flex-end",
+            flexDirection: "column",
+            gap: 2,
+            minWidth: 0,
+            alignItems: isMe ? "flex-end" : "flex-start",
           }}
-          {...longHandlers}
-          {...mediaBlockers}
         >
-          <div
+          <span
             style={{
-              maxWidth: 300,
-              display: "flex",
-              flexDirection: "column",
-              minWidth: 0,
-              alignItems: "flex-end",
+              fontFamily: SERIF,
+              fontSize: 13.5,
+              fontWeight: 500,
+              letterSpacing: ".07em",
+              color: HZ.ink,
             }}
           >
-            {quoteBlock}
-            {noBubble ? (
-              body
-            ) : (
-              /* 我这侧的气泡：粉底整档提亮，并换成**半透明的粉**（alpha .70）——上传了照片
-                 壁纸时，壁纸会从气泡里淡淡透上来，气泡不再是糊在照片上的一块实心色，
-                 读起来是一层浮着的薄粉玻璃。
-                 ①为什么不用毛玻璃（backdrop-filter）：聊天一屏就是十几二十条气泡，
-                   一屏多枚模糊在 iPhone 上是真会掉帧的（globals.css 那条玻璃材质的警告写着
-                   「开销与面积成正比，小件随便用，别铺到一屏多枚」）⇒ **只用 alpha 透明，不加模糊**；
-                   她若想要更「雾」的，再单独给气泡上小半径模糊（记得配 translateZ(0)）。
-                 ②底线：**alpha 不许再往下调**——白字坐在粉上本来就不宽裕，再透一档就发花；
-                   .70 是白字还压得住的最透处。另补一道极淡的文字影，帮白字从照片里浮出来。
-                 ③渐变幅度保留（顶 rgba(241,146,185) → 底 rgba(225,108,150)）：幅度一小，
-                   整块就塌成一张平纸。
-                 ④影从深粉收了一档（.22→.14、.36→.28）：气泡本身就是半透的，
-                   影再重就又把它压回实心。内高光同理收到 .38。
-                 ⑤字体：正文与对面那一侧（TA 气泡）一同换**宋体**（`SERIF`）、行距拉大——
-                   两侧口径必须对齐，别一侧宋体一侧黑体。
-                 主色 T.pink 没动，顶栏、按钮那些还用它。 */
-              <div
-                style={{
-                  position: "relative",
-                  background: T.ink,
-                  color: "#FFFDF8",
-                  borderRadius: 8,
-                  padding: "5px 8px",
-                  fontFamily: SERIF,
-                  fontSize,
-                  lineHeight: 1.75,
-                  letterSpacing: ".02em",
-                  boxShadow: "-2px 2px 0 rgba(232,106,155,.40)",
-                  wordBreak: "break-word",
-                }}
-              >
-                {body}
-              </div>
-            )}
-            {transLine}
-            {meta}
-          </div>
-          {groupedWithPrev
-            ? avatarSpacerEl
-            : avatarSlotEl(
-                avatarBox({
-                  avatar: actualMyAvatar,
-                  fallbackChar: myName.charAt(0),
-                  gradient: "linear-gradient(135deg,#F49BBE,#E86A9B)",
-                  ring: "me",
-                })
-              )}
+            {isMe ? myName : charName}
+          </span>
+          <span
+            style={{
+              fontFamily: LAT,
+              fontSize: 10,
+              letterSpacing: ".08em",
+              color: HZ.ink3,
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            {dayLabel(m.createdAt)} ·{" "}
+            {isMe ? `已读${msgTime(m.createdAt)}` : msgTime(m.createdAt)}
+          </span>
         </div>
-      );
-    }
+        {isMe
+          ? avatarBox({
+              avatar: actualMyAvatar,
+              fallbackChar: myName.charAt(0),
+              me: true,
+            })
+          : null}
+      </div>
+    );
 
     return (
       <div
         key={m.id}
-        style={{ display: "flex", alignItems: "flex-start", gap: 9, padding: rowPadding }}
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: isMe ? "flex-end" : "flex-start",
+          padding: `${paddingTop}px 20px 0`,
+        }}
         {...longHandlers}
         {...mediaBlockers}
       >
-        {groupedWithPrev
-          ? avatarSpacerEl
-          : avatarSlotEl(
-              avatarBox({
-                avatar: actualCharAvatar,
-                fallbackChar: charName.charAt(0),
-                gradient: AVATAR_GRADIENT,
-                /* 点 TA 的头像进「心声档案」。只挂 TA 这一侧，
-                   我自己的头像不接（那一页讲的是他心里的事）。
-                   这是心声**唯一的入口**（聊天里那截「心声 ▾」已摘掉）。 */
-                onClick: () => setShowInnerPage(true),
-                ring: "char",
-              })
-            )}
-        <div style={{ maxWidth: 300, display: "flex", flexDirection: "column", minWidth: 0 }}>
+        {headerEl}
+        <div
+          style={{
+            maxWidth: 272,
+            display: "flex",
+            flexDirection: "column",
+            gap: 11,
+            minWidth: 0,
+            alignItems: isMe ? "flex-end" : "flex-start",
+          }}
+        >
           {/* 心声**从聊天里摘掉**了：聊天流里那条「心声 ▾」整个删掉，
               心声只从 TA 头像那一页看（心声档案，含历史抽屉，每一轮都在）。
               数据侧一个字没动：`innerVoice`／`innerSnapshot` 照旧挂在那一轮的第一条 TA
@@ -5437,8 +5491,8 @@ export default function ChatWindow({
               样式走「不明显的」：一行淡灰小字贴在气泡上方，无底无边框，
               混在背景里不抢眼，点字才展开全文——长文限高滚动、可长按选中复制
               （chat-body 全局禁选中，这里内联样式压回去，同 errorText 的做法）。 */}
-          {m.reasoningText && showReasoning ? (
-            <div style={{ marginBottom: 2, display: "flex", flexDirection: "column", gap: 3 }}>
+          {!isMe && m.reasoningText && showReasoning ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
               <button
                 type="button"
                 onClick={() => toggleReasoningOpen(m.id)}
@@ -5451,7 +5505,7 @@ export default function ChatWindow({
                   fontSize: 9.5,
                   lineHeight: 1.4,
                   letterSpacing: ".08em",
-                  color: T.ink2,
+                  color: HZ.ink2,
                   opacity: 0.66,
                   cursor: "pointer",
                   WebkitTapHighlightColor: "transparent",
@@ -5463,12 +5517,12 @@ export default function ChatWindow({
                 <div
                   style={{
                     background: "rgba(255,255,255,.6)",
-                    border: `1px solid ${T.line}`,
+                    border: `1px solid ${HZ.line}`,
                     borderRadius: 10,
                     padding: "8px 10px",
                     fontSize: 10,
                     lineHeight: 1.7,
-                    color: T.ink2,
+                    color: HZ.ink2,
                     letterSpacing: 0,
                     whiteSpace: "pre-wrap",
                     wordBreak: "break-word",
@@ -5483,31 +5537,18 @@ export default function ChatWindow({
               ) : null}
             </div>
           ) : null}
+          {noBubble ? body : <div style={isMe ? myBubbleStyle : assistantBubbleStyle}>{body}</div>}
           {quoteBlock}
-          {noBubble ? (
-            <div style={failMarkRowStyle}>
-              {body}
-              {failedIds.has(m.id) ? failMarkEl : null}
-            </div>
-          ) : (
-            <div style={failMarkRowStyle}>
-              <div style={assistantBubbleStyle}>
-                {body}
-              </div>
-              {failedIds.has(m.id) ? failMarkEl : null}
-            </div>
-          )}
           {transLine}
-          {meta}
+          {!isMe && failedIds.has(m.id) ? failLineEl : null}
         </div>
       </div>
     );
   };
 
   /* ---------- 背景 ---------- */
-  /* 自传壁纸优先，否则用默认底色。不再有彩色预设可选（只保留
-     可以上传壁纸背景的），底色将来由全局样式统一决定，这里就一个值。 */
-  const actualBg = conv?.chatBgUrl ? `url(${conv.chatBgUrl}) center/cover` : CHAT_BG_DEFAULT;
+  /* 自传壁纸优先，否则用默认底色。底色跟页面一个纸白，不再垫那层粉白渐变。 */
+  const actualBg = conv?.chatBgUrl ? `url(${conv.chatBgUrl}) center/cover` : HZ.paper;
 
   const menuLeft = menuPos.x;
   const menuTop = menuPos.y;
@@ -5569,6 +5610,7 @@ export default function ChatWindow({
       <style>{`
         @keyframes vp { 0%,100% { transform: scaleY(.45); } 50% { transform: scaleY(1.3); } }
         @keyframes caretBlink { 0%,45% { opacity: 1; } 50%,100% { opacity: 0; } }
+        @keyframes typingDot { 0%,60%,100% { opacity: .25; } 30% { opacity: 1; } }
         /* 顶栏那对头像中间的小粉心会轻轻跳一下，做出「传信」的感觉：
            只动 transform，幅度压得小、
            周期拉得慢——是「在看的人才会发现它在动」的那种分量。
@@ -5589,31 +5631,8 @@ export default function ChatWindow({
            （全 App 生效，输入框除外）；这里留着，是因为它多写了一条 .chat-body *，
            比全局那条靠继承更硬，老 WebView 上更稳。 */
         .chat-body, .chat-body * { -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }
-        /* 加号面板里那一枚枚章。
-           ⚠️ 章的底与边**必须写在样式表里、不能写内联**：内联样式永远压过样式表，
-           写内联的话下面这条「按下」规则一辈子不生效（现象：点下去只有文字会变、图标不变色，就是这个原因）。 */
-        .plus-seal .seal-face {
-          width: 50px;
-          height: 50px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          border: 1.5px solid rgba(255,253,248,.7);
-          color: #E86A9B;
-          background-image:
-            radial-gradient(circle, rgba(255,253,248,.10) 1px, transparent 1.2px),
-            linear-gradient(180deg, #272130 0%, #17141C 100%);
-          background-size: 11px 11px, 100% 100%;
-          background-position: 50% 50%, 0 0;
-        }
-        /* 按下去那一瞬：整枚翻成粉底、边收掉、图标转纸白（图标走 currentColor，跟着变）。 */
-        .plus-seal:active .seal-face {
-          border-color: transparent;
-          color: #FFFDF8;
-          background-image: linear-gradient(180deg, #E8709C 0%, #C9346A 100%);
-        }
-        /* 输入框占位字：墨底上压纸白（淡一档），别用深色——深色落在墨条上就没了。 */
-        .chat-input::placeholder { color: rgba(255,253,248,.42); }
+        /* 输入框占位字：纸底上压一档淡灰。 */
+        .chat-input::placeholder { color: #B3B8BE; }
       `}</style>
 
       {/* 顶栏：外头这条 header 不铺发丝线，正中浮起一颗白胶囊，两枚头像退到它最左最右，
@@ -5640,48 +5659,75 @@ export default function ChatWindow({
           position: "relative",
           flex: "none",
           zIndex: 20,
-          background: T.ink,
+          background: HZ.paper,
           padding:
-            "calc(var(--safe-area-top, 0px) + max(var(--sim-status-h, 0px) - 10px, 6px)) 14px 12px",
+            "calc(var(--safe-area-top, 0px) + max(var(--sim-status-h, 0px) - 10px, 6px)) 16px 11px",
+          borderBottom: `1px solid ${HZ.line2}`,
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            height: 26,
-          }}
-        >
+        <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 11 }}>
           <button
             type="button"
             onClick={onBack}
             aria-label="返回"
-            style={{ ...headerBtnStyle, width: "auto", height: "auto", color: "#FFFDF8", padding: 0 }}
+            style={{
+              flex: "none",
+              width: 24,
+              height: 24,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              border: "none",
+              background: "none",
+              padding: 0,
+              color: HZ.ink,
+              cursor: "pointer",
+            }}
           >
-            <ChevronLeft size={27} strokeWidth={2.5} />
+            <ChevronLeft size={22} strokeWidth={1.5} />
           </button>
-          <button
-            type="button"
-            onClick={() => setShowChatSettings(true)}
-            aria-label="聊天设置"
-            style={{ ...headerBtnStyle, width: "auto", height: "auto", color: "#FFFDF8", padding: 0 }}
+          <span
+            style={{
+              flex: "none",
+              width: 44,
+              height: 44,
+              borderRadius: 13,
+              background: actualCharAvatar ? `url(${actualCharAvatar}) center/cover` : "#FFFFFF",
+              border: `1px solid ${HZ.line2}`,
+              color: HZ.accent,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontFamily: SERIF,
+              fontSize: 17,
+              fontWeight: 600,
+              overflow: "hidden",
+            }}
           >
-            <MoreHorizontal size={26} strokeWidth={2.6} />
-          </button>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", marginTop: 2 }}>
-          <div style={{ flex: 1, minWidth: 0, textAlign: "right", paddingRight: 13 }}>
+            {!actualCharAvatar ? charName.charAt(0) : null}
+          </span>
+          <div
+            style={{
+              position: "relative",
+              top: 1,
+              flex: 1,
+              minWidth: 0,
+              display: "flex",
+              flexDirection: "column",
+              gap: 3,
+            }}
+          >
             <span
               style={{
-                display: "block",
+                display: "flex",
+                alignItems: "center",
+                gap: 7,
                 fontFamily: SERIF,
-                fontSize: 26,
-                fontWeight: 700,
-                letterSpacing: ".03em",
-                color: "#FFFDF8",
-                lineHeight: 1.05,
-                textShadow: "2px 2px 0 rgba(224,65,122,.55)",
+                fontSize: 18,
+                fontWeight: 600,
+                letterSpacing: ".09em",
+                color: HZ.accent,
+                lineHeight: 1.1,
                 whiteSpace: "nowrap",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
@@ -5691,18 +5737,16 @@ export default function ChatWindow({
             </span>
             <span
               style={{
-                display: "block",
-                marginTop: 5,
-                fontSize: 10,
-                color: "rgba(255,253,248,.55)",
+                fontFamily: SERIF,
+                fontSize: 11,
                 letterSpacing: ".05em",
+                color: HZ.ink3,
                 whiteSpace: "nowrap",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
-                /* 外语聊天：签名也用日语写；下面那行**点一下切中文**、再点切回来。
-                   可点时才显示虚线与小手指（没开外语／还没翻好就照旧纯文本）。 */
+                /* 外语聊天：签名也用日语写；点一下切中文、再点切回来。 */
                 cursor: sigTrans ? "pointer" : "default",
-                textDecoration: sigTrans ? "underline dashed rgba(255,253,248,.28)" : "none",
+                textDecoration: sigTrans ? `underline dashed ${HZ.line}` : "none",
                 textUnderlineOffset: 3,
               }}
               onClick={sigTrans ? () => setSigCn((v) => !v) : undefined}
@@ -5711,85 +5755,47 @@ export default function ChatWindow({
               {sigCn && sigTrans ? sigTrans : signature}
             </span>
           </div>
-          <div style={{ flex: "none", display: "flex", alignItems: "center", gap: 6 }}>
-            <span
-              style={{
-                flex: "none",
-                width: 44,
-                height: 44,
-                background: actualCharAvatar ? `url(${actualCharAvatar}) center/cover` : "transparent",
-                border: "3px solid rgba(255,253,248,.85)",
-                color: "#FFFDF8",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 19,
-                fontWeight: 700,
-                fontFamily: SERIF,
-                boxShadow: "-4px 4px 0 rgba(255,253,248,.20)",
-                overflow: "hidden",
-              }}
-            >
-              {!actualCharAvatar ? charName.charAt(0) : null}
-            </span>
-            <span
-              style={{
-                flex: "none",
-                width: 44,
-                height: 44,
-                background: actualMyAvatar ? `url(${actualMyAvatar}) center/cover` : "transparent",
-                border: `3px solid ${T.pink}`,
-                color: T.pink,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 19,
-                fontWeight: 700,
-                fontFamily: SERIF,
-                boxShadow: "4px 4px 0 rgba(224,65,122,.55)",
-                overflow: "hidden",
-              }}
-            >
-              {!actualMyAvatar ? myName.charAt(0) : null}
-            </span>
-          </div>
-          <div style={{ flex: 1, minWidth: 0, textAlign: "left", paddingLeft: 13 }}>
-            <span
-              style={{
-                display: "block",
-                fontFamily: SERIF,
-                fontSize: 26,
-                fontWeight: 700,
-                letterSpacing: ".03em",
-                color: "#FFFDF8",
-                lineHeight: 1.05,
-                textShadow: "2px 2px 0 rgba(224,65,122,.55)",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
-              {myName}
-            </span>
-            {userSignature.trim() ? (
-              <span
-                style={{
-                  display: "block",
-                  marginTop: 5,
-                  fontSize: 10,
-                  color: "rgba(255,253,248,.55)",
-                  letterSpacing: ".05em",
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                {userSignature}
-              </span>
-            ) : (
-              <span aria-hidden style={{ display: "block", height: 15, marginTop: 5 }} />
-            )}
-          </div>
+          <button
+            type="button"
+            onClick={() => setShowChatSettings(true)}
+            aria-label="聊天设置"
+            style={{
+              flex: "none",
+              width: 24,
+              height: 24,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              border: "none",
+              background: "none",
+              padding: 0,
+              color: HZ.ink,
+              cursor: "pointer",
+            }}
+          >
+            <MoreHorizontal size={22} strokeWidth={2} />
+          </button>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 9, paddingLeft: 2 }}>
+          <Heart size={10} strokeWidth={1.9} style={{ flex: "none", color: HZ.accent, opacity: 0.75 }} />
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "baseline",
+              gap: 4,
+              fontStyle: "italic",
+              fontFamily: SERIF,
+              fontSize: 9.5,
+              letterSpacing: ".1em",
+              color: HZ.ink3,
+            }}
+          >
+            一起说过
+            <b style={{ fontFamily: SERIF, fontSize: 9.5, fontWeight: 500, letterSpacing: ".06em", color: HZ.ink2 }}>
+              {messages.length}
+            </b>
+            句
+          </span>
         </div>
       </header>
 
@@ -5862,24 +5868,27 @@ export default function ChatWindow({
                  分页后按**上屏这一份**判（shownMessages），否则最上头那条不补日期。 */
               <Fragment key={m.id}>
                 {i === 0 || !sameDay(shownMessages[i - 1].createdAt, m.createdAt) ? (
-                  /* 时间线：一段**粉墨带**，两端化开就没了——
-                     没有边、没有圆角、也没有影，读起来是「印在纸上的一段色带」，
-                     不是「一个装东西的盒子」。字压深到 #B33E70，小字才不飘。
-                     跟系统提示（「已加入黑名单」那种）是同一套材质。 */
-                  <div style={{ display: "flex", justifyContent: "center", padding: "14px 16px 2px" }}>
+                  /* 时间线：左右两根细线夹一枚小字，安静地落在纸白上。 */
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 11,
+                      padding: "24px 22px 12px",
+                    }}
+                  >
+                    <span style={{ flex: 1, height: 1, background: HZ.line2 }} />
                     <span
                       style={{
-                        padding: "3px 18px",
-                        color: "#B33E70",
-                        fontSize: 10.5,
-                        letterSpacing: ".16em",
-                        textIndent: ".16em",
-                        background:
-                          "linear-gradient(90deg, rgba(249,223,233,0) 0%, rgba(249,223,233,.92) 20%, rgba(249,223,233,.92) 80%, rgba(249,223,233,0) 100%)",
+                        fontFamily: LAT,
+                        fontSize: 9,
+                        letterSpacing: ".18em",
+                        color: HZ.ink3,
                       }}
                     >
                       {dayLabel(m.createdAt)}
                     </span>
+                    <span style={{ flex: 1, height: 1, background: HZ.line2 }} />
                   </div>
                 ) : null}
                 {renderMsg(m, i, shownMessages)}
@@ -5887,73 +5896,90 @@ export default function ChatWindow({
             ))
           : null}
         {/* 流式预览：已定型的气泡按真气泡同款先上屏，尾巴挂一根打字光标。
-            这里必须与 renderMsg 的分组排法共用同一套判据
-            （组首 6px／组内 2px、组首才挂头像、组尾才挂时间），否则两处间距不是一套，
-            看过去忽大忽小，转正那一刻还会当场跳一下；共用后转正前后纹丝不动。 */}
-        {streamBubbles.map((text, i) => {
-          const firstOfGroup = i === 0;
-          const lastOfGroup = i === streamBubbles.length - 1;
-          return (
-            <div
-              key={`stream-${i}`}
-              style={{
-                display: "flex",
-                alignItems: "flex-start",
-                gap: 9,
-                /* 与 renderMsg 的 rowPadding 同一算式：上＝组首 6／组内 3.5，下＝组尾 6／组内 3.5。 */
-                padding: `${firstOfGroup ? 6 : 3.5}px 14px ${lastOfGroup ? 6 : 3.5}px`,
-              }}
-            >
-              {firstOfGroup
-                ? avatarSlotEl(
-                    avatarBox({
-                      avatar: actualCharAvatar,
-                      fallbackChar: charName.charAt(0),
-                      gradient: AVATAR_GRADIENT,
-                      ring: "char",
-                    })
-                  )
-                : avatarSpacerEl}
-              <div style={{ maxWidth: 300, display: "flex", flexDirection: "column", minWidth: 0 }}>
-                {/* 气泡与红叹号同一行、按行居中——跟落库后的 renderMsg 一个排法（见 failMarkRowStyle）。 */}
-                <div style={failMarkRowStyle}>
-                  <div style={assistantBubbleStyle}>
-                    {text}
-                    {i === streamTailIndex ? (
-                      <span
-                        style={{
-                          display: "inline-block",
-                          width: 1.5,
-                          height: "1em",
-                          marginLeft: 2,
-                          verticalAlign: "-0.15em",
-                          background: T.ink2,
-                          animation: "caretBlink 1s steps(1) infinite",
-                        }}
-                      />
-                    ) : null}
-                  </div>
-                  {blockedNowActive ? failMarkEl : null}
-                </div>
-                {/* 发送时间每条都露：和真气泡的 meta 同款（含 marginTop 3），转正时纹丝不动。 */}
-                {streamStamps[i] ? (
-                  <div
+            排法与 renderMsg 共用一套：组首 26px 起头（含头像那一行）、组内每条 11px、
+            气泡栈 272px 宽，转正那一刻纹丝不动。 */}
+        {streamBubbles.map((text, i) => (
+          <div
+            key={`stream-${i}`}
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-start",
+              padding: `${i === 0 ? 26 : 11}px 20px 0`,
+            }}
+          >
+            {i === 0 ? (
+              <div
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  marginBottom: 9,
+                }}
+              >
+                {avatarBox({
+                  avatar: actualCharAvatar,
+                  fallbackChar: charName.charAt(0),
+                })}
+                <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                  <span
                     style={{
-                      marginTop: 3,
-                      fontSize: 9.5,
-                      color: T.ink3,
-                      letterSpacing: ".06em",
-                      fontVariantNumeric: "tabular-nums",
-                      alignSelf: "flex-end",
+                      fontFamily: SERIF,
+                      fontSize: 13.5,
+                      fontWeight: 500,
+                      letterSpacing: ".07em",
+                      color: HZ.ink,
                     }}
                   >
-                    {msgTime(streamStamps[i])}
-                  </div>
+                    {charName}
+                  </span>
+                  {streamStamps[0] ? (
+                    <span
+                      style={{
+                        fontFamily: LAT,
+                        fontSize: 10,
+                        letterSpacing: ".08em",
+                        color: HZ.ink3,
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      {dayLabel(streamStamps[0])} · {msgTime(streamStamps[0])}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+            <div
+              style={{
+                maxWidth: 272,
+                display: "flex",
+                flexDirection: "column",
+                gap: 11,
+                minWidth: 0,
+                alignItems: "flex-start",
+              }}
+            >
+              <div style={assistantBubbleStyle}>
+                {text}
+                {i === streamTailIndex ? (
+                  <span
+                    style={{
+                      display: "inline-block",
+                      width: 1.5,
+                      height: "1em",
+                      marginLeft: 2,
+                      verticalAlign: "-0.15em",
+                      background: HZ.ink2,
+                      animation: "caretBlink 1s steps(1) infinite",
+                    }}
+                  />
                 ) : null}
               </div>
+              {blockedNowActive ? failLineEl : null}
             </div>
-          );
-        })}
+          </div>
+        ))}
         {/* 「TA 正在输入…」：只要这一轮还在跑就挂着，**不再要求「一条预览气泡都还没有」**。
            不能拿 `streamBubbles.length === 0` 当条件：返回再进来时模型多半已经吐了字、
            预览气泡早就在长了，这行就被那条规则藏了（页面切走再回来就看不见「正在输入」）。
@@ -5965,36 +5991,74 @@ export default function ChatWindow({
           <div
             style={{
               display: "flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "8px 16px 4px",
-              color: T.ink3,
-              fontSize: 11,
-              letterSpacing: ".1em",
+              flexDirection: "column",
+              alignItems: "flex-start",
+              padding: "26px 20px 0",
             }}
           >
-            {avatarBox({
-              avatar: actualCharAvatar,
-              fallbackChar: charName.charAt(0),
-              gradient: AVATAR_GRADIENT,
-              ring: "char",
-            })}
-            <span>
-              {/* 一律只写「正在输入…」——不分阶段、也不带秒数。 */}
-              <b style={{ color: T.pink, fontWeight: 500 }}>{charName}</b> 正在输入…
-            </span>
+            <div
+              style={{
+                width: "100%",
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                marginBottom: 9,
+              }}
+            >
+              {avatarBox({
+                avatar: actualCharAvatar,
+                fallbackChar: charName.charAt(0),
+              })}
+              <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                <span
+                  style={{
+                    fontFamily: SERIF,
+                    fontSize: 13.5,
+                    fontWeight: 500,
+                    letterSpacing: ".07em",
+                    color: HZ.ink,
+                  }}
+                >
+                  {charName}
+                </span>
+                <span
+                  style={{
+                    fontFamily: LAT,
+                    fontSize: 10,
+                    letterSpacing: ".08em",
+                    color: HZ.ink3,
+                  }}
+                >
+                  正在输入…
+                </span>
+              </div>
+            </div>
+            <div style={assistantBubbleStyle}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 3, height: 14 }}>
+                {[0, 1, 2].map((k) => (
+                  <b
+                    key={k}
+                    style={{
+                      width: 3,
+                      height: 3,
+                      background: HZ.ink3,
+                      animation: `typingDot 1.2s ${k * 0.2}s infinite`,
+                    }}
+                  />
+                ))}
+              </span>
+            </div>
           </div>
         ) : null}
         </div>
       </main>
 
-      {/* 底部输入条：实底**墨色**，跟顶栏一头一尾、中间留浅。
-          墨底必须实心：不能做成顶栏那种薄纱——照片从一堆控件底下透上来，读起来是脏的。 */}
+      {/* 底部输入条：纸白底，跟顶栏同一张纸，中间留浅。 */}
       <div
         style={{
           position: "relative",
           flex: "none",
-          background: T.ink,
+          background: HZ.paper,
           zIndex: 30,
           paddingBottom: "calc(var(--safe-area-bottom, 0px) + 6px)",
         }}
@@ -6013,14 +6077,14 @@ export default function ChatWindow({
                 alignItems: "center",
                 justifyContent: "center",
                 gap: 8,
-                background: "linear-gradient(180deg,#FFFFFF 0%,#FFF1F6 100%)",
-                border: "1px solid rgba(232,106,155,.28)",
-                borderRadius: 20,
+                background: "#FFFFFF",
+                border: `1px solid ${HZ.line}`,
+                borderRadius: 18,
                 padding: "12px 14px",
                 fontSize: 14.5,
-                color: T.pink,
-                boxShadow:
-                  "0 4px 14px rgba(232,106,155,.10), inset 0 0 0 1px rgba(232,106,155,.06)",
+                fontFamily: SERIF,
+                color: HZ.accent,
+                boxShadow: "none",
               }}
             >
               <Heart size={17} strokeWidth={1.8} />
@@ -6032,7 +6096,7 @@ export default function ChatWindow({
                 textAlign: "center",
                 fontSize: 12,
                 letterSpacing: ".02em",
-                color: T.ink3,
+                color: HZ.ink3,
               }}
             >
               见面还没结束，这会儿在线上发不了消息。
@@ -6044,14 +6108,14 @@ export default function ChatWindow({
             才像同一样东西。不要贴边通栏＋单行省略号，也不摆淡粉底块与「引用」小标签，
             只留一根竖线（跟气泡里那个同一套脸）。 */}
         {quoteText ? (
-          <div style={{ padding: "10px 14px 0" }}>
+          <div style={{ padding: "10px 16px 0" }}>
             <div
               style={{
                 display: "flex",
                 alignItems: "center",
                 gap: 8,
                 paddingLeft: 10,
-                borderLeft: "2px solid rgba(232,106,155,.6)",
+                borderLeft: `2px solid ${HZ.accent}`,
               }}
             >
               <div
@@ -6061,7 +6125,7 @@ export default function ChatWindow({
                   fontSize: 12,
                   lineHeight: 1.5,
                   letterSpacing: ".02em",
-                  color: "rgba(255,253,248,.66)",
+                  color: HZ.ink2,
                   display: "-webkit-box",
                   WebkitLineClamp: 2,
                   WebkitBoxOrient: "vertical",
@@ -6074,7 +6138,7 @@ export default function ChatWindow({
                 type="button"
                 onClick={() => setQuoteText("")}
                 aria-label="取消引用"
-                style={{ ...smallBtnStyle, marginTop: 1, color: "rgba(255,253,248,.72)" }}
+                style={{ ...smallBtnStyle, marginTop: 1, color: HZ.ink2 }}
               >
                 <X size={13} strokeWidth={1.8} />
               </button>
@@ -6085,16 +6149,18 @@ export default function ChatWindow({
             · 小飞机＝发送，不论连续发送开不开都只是发出去，它不会让他回；
             · 爱心＝强制回复，常驻在发送键左边，只在开了连续发送、又攒着话没回时才亮
               （见 canForceReply）；没开连续发送时 TA 本来就每条都回，它就淡着待命。 */}
-        <div style={{ padding: "10px 14px 4px" }}>
+        <div style={{ padding: "10px 16px 10px" }}>
         <div
           style={{
             display: "flex",
             alignItems: "flex-end",
-            gap: 9,
+            gap: 6,
+            background: "#EDEEE9",
+            borderRadius: 18,
+            padding: "5px 6px 5px 10px",
           }}
         >
-          {/* 加号：黑底 ＋ 一圈白边 ＋ 底下一层灰白的影（跟旁边那颗爱心一张脸）。
-              点开面板时整颗换成粉渐层，一眼看得出面板是开着的。 */}
+          {/* 加号：无底圆形，点开面板时转成 ✕。 */}
           <button
             type="button"
             onClick={() => {
@@ -6104,18 +6170,13 @@ export default function ChatWindow({
             aria-label="更多功能"
             style={{
               ...inputBtnStyle,
-              width: 32,
-              height: 32,
-              borderRadius: 8,
-              background: showPlus
-                ? "linear-gradient(180deg,#E8709C 0%,#C9346A 100%)"
-                : "#0F0D13",
-              border: "1.5px solid #FFFDF8",
-              color: "#FFFDF8",
-              boxShadow: showPlus
-                ? "inset 0 1px 0 rgba(255,255,255,.26), 0 3px 0 rgba(224,65,122,.45)"
-                : "0 3px 0 rgba(255,253,248,.30)",
-              transition: "all .18s",
+              width: 34,
+              height: 34,
+              borderRadius: 999,
+              background: "transparent",
+              border: "none",
+              color: HZ.ink,
+              transition: "color .18s",
             }}
           >
             <span
@@ -6174,25 +6235,19 @@ export default function ChatWindow({
               border: "none",
               outline: "none",
               resize: "none",
-              /* 书写框：深墨里压出的一道**墨槽**——内阴影 ＋ 一圈极淡的纸白内描边，
-                 所以它是「凹进去的一块」，不是浮在上头的白框。
-                 光标颜色交给 caretColor：用系统原生那根，只是把它染成粉色，
-                 零成本（自绘一根会闪的光标会让合成器一直醒着，见上面那条约定的注）。 */
-              background: "rgba(255,253,248,.10)",
-              borderRadius: 8,
-              padding: "8px 13px",
-              fontSize: 15,
-              fontFamily: SANS,
-              color: "#FFFDF8",
-              caretColor: T.pink,
-              lineHeight: 1.45,
+              background: "transparent",
+              borderRadius: 0,
+              padding: "6px 4px",
+              fontSize: 14.5,
+              fontFamily: SERIF,
+              color: HZ.ink,
+              caretColor: HZ.accent,
+              lineHeight: 1.5,
               letterSpacing: ".02em",
-              boxShadow: "inset 0 3px 8px rgba(0,0,0,.42), inset 0 0 0 1px rgba(255,253,248,.09)",
+              boxShadow: "none",
             }}
           />
-          {/* 爱心：强制回复，常驻在小飞机左边，一张脸跟加号一样——黑底 ＋ 白边 ＋ 底下
-              那层灰白影；只在「连续发送、又攒着话没回」时才亮（见 canForceReply），
-              亮起来才换成粉渐层，一眼看得出点得动。 */}
+          {/* 爱心：强制回复，常驻在小飞机左边；点了才亮，平时淡着待命。 */}
           <button
             type="button"
             onClick={forceReply}
@@ -6200,19 +6255,14 @@ export default function ChatWindow({
             aria-label="强制回复"
             style={{
               ...inputBtnStyle,
-              width: 36,
-              height: 36,
-              borderRadius: 8,
-              background: canForceReply
-                ? "linear-gradient(180deg,#E8709C 0%,#C9346A 100%)"
-                : "#0F0D13",
-              border: "1.5px solid #FFFDF8",
-              color: "#FFFDF8",
+              width: 34,
+              height: 34,
+              borderRadius: 999,
+              background: "transparent",
+              border: "none",
+              color: canForceReply ? HZ.accent : HZ.ink3,
               cursor: canForceReply ? "pointer" : "default",
-              boxShadow: canForceReply
-                ? "inset 0 1px 0 rgba(255,255,255,.26), 0 3px 0 rgba(224,65,122,.45)"
-                : "0 3px 0 rgba(255,253,248,.30)",
-              transition: "background .18s, box-shadow .18s",
+              transition: "color .18s",
             }}
           >
             <Heart size={18} strokeWidth={1.8} fill="currentColor" />
@@ -6226,11 +6276,10 @@ export default function ChatWindow({
                 ...inputBtnStyle,
                 width: 36,
                 height: 36,
-                borderRadius: 8,
-                background: "linear-gradient(180deg,#E8709C 0%,#C9346A 100%)",
-                color: "#FFFDF8",
-                boxShadow:
-                  "inset 0 1px 0 rgba(255,255,255,.26), 0 3px 0 rgba(224,65,122,.45)",
+                borderRadius: 999,
+                background: HZ.accent,
+                color: "#FFFFFF",
+                boxShadow: "none",
               }}
             >
               <SquareStop size={20} strokeWidth={1.6} />
@@ -6245,13 +6294,12 @@ export default function ChatWindow({
                 ...inputBtnStyle,
                 width: 36,
                 height: 36,
-                borderRadius: 8,
-                background: "linear-gradient(180deg,#E8709C 0%,#C9346A 100%)",
-                color: "#FFFDF8",
+                borderRadius: 999,
+                background: HZ.accent,
+                color: "#FFFFFF",
                 opacity: loaded && !translatingMy ? 1 : 0.45,
                 cursor: loaded && !translatingMy ? "pointer" : "default",
-                boxShadow:
-                  "inset 0 1px 0 rgba(255,255,255,.26), 0 3px 0 rgba(224,65,122,.45)",
+                boxShadow: "none",
               }}
             >
               {/* 正把那句话翻成外语：小飞机先歇成省略号，免得连点两下发两条。 */}
@@ -6262,16 +6310,8 @@ export default function ChatWindow({
         </div>
           </>
         )}
-        {/* 加号面板：形是「一面印章墙」：
-            · 整块跟输入条同一个墨底，从底下一体长出来，不是「飘在上头的一张白纸」；
-            · 板面压两层极淡的东西：11px 点阵（跟章面同一套，纸的肌理）＋
-              顶上一道径向光（顶亮底沉，像一片被灯照到的墨）；
-            · 九枚方章摆成 3×3：外框 1.5px 纸白、章面是浅墨竖直渐变 ＋ 居中铺的同一层点阵、
-              章心一枚线描图标（桃粉，跟小飞机／引用弧线同一个粉），标签在章下；
-            · 底下一条两端化开的粉带断开，压两条并排的「套印墨条」
-              （去见他／重新回复）：墨底 ＋ 纸白细边，主的那条字后压一层粉色错影，
-              跟顶栏那两个字是同一个套印做法。
-            点下去那一枚会整枚翻成粉底白图标，规则在下面 <style> 的 .plus-seal。 */}
+        {/* 加号面板：从输入条上沿长出来的一层薄抽屉——雾蓝纸底、圆上角、一道小把手。
+            九枚图标无圈无格，双色（雾蓝细线 ＋ 极淡雾蓝填充），底下两枚白色动作条。 */}
         {showPlus && !offlineOpen ? (
           <div
             style={{
@@ -6279,26 +6319,33 @@ export default function ChatWindow({
               bottom: "100%",
               left: 0,
               right: 0,
-              background: T.ink,
-              backgroundImage:
-                "radial-gradient(circle, rgba(255,253,248,.06) 1px, transparent 1.2px), " +
-                "radial-gradient(130% 85% at 50% 0%, rgba(255,253,248,.10) 0%, transparent 65%)",
-              backgroundSize: "11px 11px, 100% 100%",
-              backgroundPosition: "50% 50%, 0 0",
-              padding: "16px 16px 12px",
+              background: HZ.paper2,
+              borderRadius: "18px 18px 0 0",
+              boxShadow: "inset 0 1px 0 rgba(255,255,255,.75)",
+              padding: "9px 12px 8px",
             }}
           >
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", rowGap: 15 }}>
+            <div
+              style={{
+                width: 30,
+                height: 3,
+                borderRadius: 999,
+                background: "rgba(58,65,73,.11)",
+                margin: "0 auto 9px",
+              }}
+            />
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", rowGap: 2 }}>
               {PLUS_ITEMS.map((item) => (
                 <button
                   key={item.name}
                   type="button"
                   onClick={() => onPlusClick(item.name)}
-                  className="plus-seal"
                   style={{
+                    height: 62,
                     display: "flex",
                     flexDirection: "column",
                     alignItems: "center",
+                    justifyContent: "center",
                     gap: 8,
                     padding: 0,
                     border: "none",
@@ -6306,72 +6353,95 @@ export default function ChatWindow({
                     cursor: "pointer",
                     fontFamily: SERIF,
                     fontSize: 10.5,
-                    letterSpacing: ".08em",
-                    color: "rgba(255,253,248,.62)",
+                    letterSpacing: ".06em",
+                    color: HZ.ink2,
                   }}
                 >
-                  <span className="seal-face">
-                    <item.icon size={21} strokeWidth={1.5} />
+                  <span style={{ display: "flex", color: HZ.accent }}>
+                    <PlusGlyph name={item.name} size={21} />
                   </span>
                   {item.name}
                 </button>
               ))}
             </div>
-            {/* 两端化开的粉带：把「发内容」和「做一件事」在视觉上断开。 */}
-            <div
-              style={{
-                height: 2,
-                margin: "12px 0",
-                background:
-                  "linear-gradient(90deg, rgba(249,223,233,0) 0%, rgba(249,223,233,.85) 22%, rgba(249,223,233,.85) 78%, rgba(249,223,233,0) 100%)",
-              }}
-            />
-            {/* 两条并排的套印墨条：去见他（主，字后压粉错影）／重新回复（次）。 */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9 }}>
+            <div style={{ display: "flex", gap: 9, marginTop: 11, padding: "0 2px 6px" }}>
               <button
                 type="button"
                 onClick={() => onPlusClick(PLUS_OFFLINE_ACTION.name)}
                 style={{
+                  flex: 1,
+                  height: 46,
                   display: "flex",
                   alignItems: "center",
-                  justifyContent: "center",
                   gap: 8,
-                  height: 44,
-                  borderRadius: 8,
-                  border: "1.5px solid rgba(255,253,248,.42)",
-                  background: "rgba(255,253,248,.06)",
-                  color: "#FFFDF8",
+                  padding: "0 11px",
+                  border: "1px solid rgba(58,65,73,.06)",
+                  borderRadius: 13,
+                  background: "linear-gradient(180deg,#FFFFFF 0%,#FCFCFB 100%)",
+                  color: HZ.accent,
                   fontFamily: SERIF,
-                  fontSize: 13,
-                  letterSpacing: ".08em",
-                  textShadow: "2px 2px 0 rgba(224,65,122,.55)",
+                  fontSize: 11.5,
+                  letterSpacing: ".1em",
                   cursor: "pointer",
                 }}
               >
-                <PLUS_OFFLINE_ACTION.icon size={18} strokeWidth={1.5} />
+                <span
+                  style={{
+                    width: 24,
+                    height: 24,
+                    flex: "none",
+                    borderRadius: 999,
+                    background: "rgba(90,115,145,.08)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <PLUS_OFFLINE_ACTION.icon size={14} strokeWidth={1.5} />
+                </span>
                 {PLUS_OFFLINE_ACTION.name}
+                <span style={{ marginLeft: "auto", display: "flex", opacity: 0.42 }}>
+                  <ChevronRight size={12} strokeWidth={1.5} />
+                </span>
               </button>
               <button
                 type="button"
                 onClick={() => onPlusClick(PLUS_ACTION.name)}
                 style={{
+                  flex: 1,
+                  height: 46,
                   display: "flex",
                   alignItems: "center",
-                  justifyContent: "center",
                   gap: 8,
-                  height: 44,
-                  borderRadius: 8,
-                  border: "1.5px solid rgba(255,253,248,.42)",
-                  background: "transparent",
-                  color: "rgba(255,253,248,.72)",
+                  padding: "0 11px",
+                  border: "1px solid rgba(58,65,73,.06)",
+                  borderRadius: 13,
+                  background: "linear-gradient(180deg,#FFFFFF 0%,#FCFCFB 100%)",
+                  color: HZ.ink2,
                   fontFamily: SERIF,
-                  fontSize: 13,
-                  letterSpacing: ".08em",
+                  fontSize: 11.5,
+                  letterSpacing: ".1em",
                   cursor: "pointer",
                 }}
               >
-                <PLUS_ACTION.icon size={18} strokeWidth={1.5} />
+                <span
+                  style={{
+                    width: 24,
+                    height: 24,
+                    flex: "none",
+                    borderRadius: 999,
+                    background: "rgba(90,115,145,.08)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <PLUS_ACTION.icon size={14} strokeWidth={1.5} />
+                </span>
                 {PLUS_ACTION.name}
+                <span style={{ marginLeft: "auto", display: "flex", opacity: 0.42 }}>
+                  <ChevronRight size={12} strokeWidth={1.5} />
+                </span>
               </button>
             </div>
           </div>
@@ -6388,23 +6458,29 @@ export default function ChatWindow({
               bottom: "100%",
               left: 0,
               right: 0,
-              background: T.ink,
-              backgroundImage:
-                "radial-gradient(circle, rgba(255,253,248,.06) 1px, transparent 1.2px), " +
-                "radial-gradient(130% 85% at 50% 0%, rgba(255,253,248,.10) 0%, transparent 65%)",
-              backgroundSize: "11px 11px, 100% 100%",
-              backgroundPosition: "50% 50%, 0 0",
-              padding: "16px 16px 14px",
+              background: HZ.paper2,
+              borderRadius: "18px 18px 0 0",
+              boxShadow: "inset 0 1px 0 rgba(255,255,255,.75)",
+              padding: "9px 12px 14px",
             }}
           >
+            <div
+              style={{
+                width: 30,
+                height: 3,
+                borderRadius: 999,
+                background: "rgba(58,65,73,.11)",
+                margin: "0 auto 9px",
+              }}
+            />
             <div
               style={{
                 textAlign: "center",
                 fontFamily: SERIF,
                 fontSize: 10.5,
                 letterSpacing: ".1em",
-                color: "rgba(255,253,248,.5)",
-                marginBottom: 15,
+                color: HZ.ink3,
+                marginBottom: 14,
               }}
             >
               这张图从哪来
@@ -6426,38 +6502,37 @@ export default function ChatWindow({
                   key={row.key}
                   type="button"
                   onClick={() => pickImageSource(row.key)}
-                  className="plus-seal"
                   style={{
                     display: "flex",
                     flexDirection: "column",
                     alignItems: "center",
-                    padding: 0,
+                    padding: "4px 0",
                     border: "none",
                     background: "transparent",
                     cursor: "pointer",
                   }}
                 >
-                  <span className="seal-face">
-                    <row.icon size={21} strokeWidth={1.5} />
+                  <span style={{ display: "flex", color: HZ.accent }}>
+                    <row.icon size={22} strokeWidth={1.5} />
                   </span>
                   <span
                     style={{
-                      marginTop: 8,
+                      marginTop: 7,
                       fontFamily: SERIF,
                       fontSize: 10.5,
-                      letterSpacing: ".08em",
-                      color: "rgba(255,253,248,.62)",
+                      letterSpacing: ".06em",
+                      color: HZ.ink2,
                     }}
                   >
                     {row.title}
                   </span>
                   <span
                     style={{
-                      marginTop: 3,
+                      marginTop: 2,
                       fontFamily: SERIF,
                       fontSize: 9,
                       letterSpacing: ".04em",
-                      color: "rgba(255,253,248,.38)",
+                      color: HZ.ink3,
                     }}
                   >
                     {row.note}
@@ -6478,24 +6553,20 @@ export default function ChatWindow({
               bottom: "100%",
               left: 0,
               right: 0,
-              backgroundImage:
-                "radial-gradient(circle, rgba(232,106,155,.05) 1px, transparent 1.2px), " +
-                "linear-gradient(180deg,#FFFFFF 0%,#FFF8FB 55%,#FFF1F6 100%)",
-              backgroundSize: "7px 7px, 100% 100%",
-              borderRadius: "22px 22px 0 0",
+              background: HZ.paper2,
+              borderRadius: "18px 18px 0 0",
               boxShadow:
-                "0 -14px 38px rgba(190,72,112,.14), inset 0 1px 0 rgba(255,255,255,.9), " +
-                "inset 0 0 0 1px rgba(232,106,155,.10)",
+                "inset 0 1px 0 rgba(255,255,255,.75), inset 0 0 0 1px rgba(58,65,73,.05)",
               padding: "9px 12px 14px",
-              borderTop: "1px solid rgba(232,106,155,.18)",
+              borderTop: `1px solid ${HZ.line2}`,
             }}
           >
             <div
               style={{
-                width: 36,
-                height: 4,
+                width: 30,
+                height: 3,
                 borderRadius: 999,
-                background: "rgba(232,106,155,.22)",
+                background: "rgba(58,65,73,.11)",
                 margin: "0 auto 10px",
               }}
             />
@@ -6503,8 +6574,7 @@ export default function ChatWindow({
               style={{
                 fontSize: 12,
                 letterSpacing: ".08em",
-                color: T.ink2,
-                opacity: 0.75,
+                color: HZ.ink3,
                 fontFamily: SERIF,
                 padding: "0 4px 9px",
               }}
@@ -6520,8 +6590,8 @@ export default function ChatWindow({
                 marginBottom: 10,
                 padding: "8px",
                 borderRadius: 16,
-                background: "rgba(20,19,24,.035)",
-                border: "1px solid rgba(232,106,155,.10)",
+                background: "#FFFFFF",
+                border: `1px solid ${HZ.line2}`,
               }}
             >
               <img
@@ -6554,9 +6624,9 @@ export default function ChatWindow({
                 marginBottom: 10,
                 padding: "10px 12px",
                 borderRadius: 14,
-                border: "1px solid rgba(232,106,155,.20)",
+                border: `1px solid ${HZ.line}`,
                 background: "#FFFFFF",
-                color: T.ink,
+                color: HZ.ink,
                 fontSize: 13.5,
                 lineHeight: 1.5,
                 fontFamily: SERIF,
@@ -6571,9 +6641,9 @@ export default function ChatWindow({
                   flex: 1,
                   height: 42,
                   borderRadius: 14,
-                  border: "1px solid rgba(232,106,155,.24)",
+                  border: `1px solid ${HZ.line}`,
                   background: "#FFFFFF",
-                  color: T.ink2,
+                  color: HZ.ink2,
                   fontSize: 14,
                   fontFamily: SERIF,
                   cursor: "pointer",
@@ -6589,11 +6659,11 @@ export default function ChatWindow({
                   height: 42,
                   borderRadius: 14,
                   border: "none",
-                  background: "linear-gradient(180deg,#F09CBE 0%,#E06E90 100%)",
+                  background: HZ.accent,
                   color: "#FFFFFF",
                   fontSize: 14,
                   fontFamily: SERIF,
-                  boxShadow: "0 3px 10px rgba(232,106,155,.30), inset 0 1px 0 rgba(255,255,255,.45)",
+                  boxShadow: "none",
                   cursor: "pointer",
                 }}
               >
@@ -7523,18 +7593,16 @@ export default function ChatWindow({
 function avatarBox({
   avatar,
   fallbackChar,
-  gradient,
   onClick,
-  ring,
+  me,
 }: {
   avatar: string;
   fallbackChar: string;
-  gradient: string;
   /* 只有聊天里 TA 那枚头像传它（点进「心声档案」）。
-     其余各处（我自己的、流式预览、别的页面）都不传，行为一个字节没变。 */
+     其余各处（我自己的、流式预览、别的页面）都不传。 */
   onClick?: () => void;
-  /* 聊天页消息区才传：角色黑框、我粉框（乙版头像）。不传保持旧粉环。 */
-  ring?: "char" | "me";
+  /* 我这一侧：淡雾蓝底、深一档的雾蓝字。 */
+  me?: boolean;
 }) {
   return (
     <div
@@ -7552,23 +7620,18 @@ function avatarBox({
         cursor: onClick ? "pointer" : undefined,
         WebkitTapHighlightColor: onClick ? "transparent" : undefined,
         flex: "none",
-        width: 38,
-        height: 38,
-        borderRadius: ring ? 8 : "50%",
-        background: avatar ? "#fff" : gradient,
-        color: "#FFF",
+        width: 42,
+        height: 42,
+        borderRadius: 7,
+        background: me ? HZ.accentSoft : "#FFFFFF",
+        color: me ? "#4A6588" : HZ.accent,
+        border: `1px solid ${HZ.line2}`,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        fontSize: 13,
+        fontSize: 16,
         fontWeight: 600,
         overflow: "hidden",
-        boxShadow:
-          ring === "me"
-            ? "0 0 0 1.5px #E86A9B, 0 1px 2px rgba(232,106,155,.14), 0 4px 10px rgba(232,106,155,.16)"
-            : ring === "char"
-              ? "0 0 0 1.5px #141318, 0 1px 2px rgba(20,19,24,.10), 0 4px 10px rgba(20,19,24,.10)"
-              : "0 0 0 1px rgba(232,106,155,.5),0 0 0 3px rgba(232,106,155,.13),inset 0 1px 2px rgba(255,255,255,.35)",
       }}
     >
       {avatar ? (
