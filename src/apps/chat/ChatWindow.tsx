@@ -5262,7 +5262,8 @@ export default function ChatWindow({
     /* 外语聊天的译文行：贴着气泡**正下方**的一行小字，靠哪一侧跟那条气泡一致。
        他那一侧显示的是「他说的外语 → 中文」，我这一侧显示的是「我原本打的那句中文」；
        各自那个「显示翻译」关掉就不露（译文照旧存在消息里，随时开回来）。
-       走 alignSelf＋maxWidth（同引用块那招）：它自己按文字长短收，绝不把上头的气泡撑宽。 */
+       走 alignSelf＋maxWidth（同引用块那招）：它自己按文字长短收，绝不把上头的气泡撑宽。
+       1.12.96：不再收成一行省略，整段自然换行显示（恩熙定）。 */
     const trSet = conv?.translate;
     /* 语音点开「转文字」时，原文（他说出口的那句）顶上来，中文译文行先让开；
        收起原文，中文译文行自动恢复。所以这里多挂一个 `!showTrans.has(m.id)`。
@@ -5275,20 +5276,22 @@ export default function ChatWindow({
       <div
         style={{
           alignSelf: isMe ? "flex-end" : "flex-start",
-          maxWidth: 214,
+          maxWidth: 272,
           marginTop: -5,
-          padding: "6px 10px 7px",
+          padding: "7px 11px 8px",
           background: isMe ? "#FFFFFF" : "#E9EFF6",
           borderLeft: `3px solid ${HZ.accent}`,
           borderRadius: "0 4px 4px 0",
           display: "flex",
-          alignItems: "center",
-          gap: 6,
+          alignItems: "flex-start",
+          gap: 7,
+          wordBreak: "break-word",
         }}
       >
         <span
           style={{
             flex: "none",
+            marginTop: 3,
             fontFamily: SERIF,
             fontSize: 8.5,
             fontWeight: 600,
@@ -5312,9 +5315,7 @@ export default function ChatWindow({
             lineHeight: 1.7,
             letterSpacing: ".02em",
             color: HZ.ink2,
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
+            wordBreak: "break-word",
           }}
         >
           {/* 语音那行的中文译文同样不露方括号语气标签（跟「转文字」的原文一个口径，
