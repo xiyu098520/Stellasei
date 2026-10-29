@@ -531,8 +531,10 @@ function ChatTabBar({
               style={{
                 fontFamily: LAT,
                 fontSize: 8.5,
-                letterSpacing: ".12em",
-                paddingLeft: ".12em",
+                /* 字距从 .12em 放到 .18em：小到 8.5px 的拉丁大写，
+                   字距一松就成一条「细轨」，不再是挤在一起的标签。 */
+                letterSpacing: ".18em",
+                paddingLeft: ".18em",
                 textTransform: "uppercase",
               }}
             >

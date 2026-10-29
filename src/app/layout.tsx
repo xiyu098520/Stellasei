@@ -115,6 +115,15 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="zh-CN" className="h-full antialiased">
       <body className="h-full overflow-hidden">
+        {/* 中文衬线（霞鹜文楷）：一枚单独的样式表，里面是 982 条 @font-face 分片，
+            每条自带 unicode-range——浏览器**只下当前这屏用到的字**（十几片、几百 KB），
+            不是 22MB 整包。放 public 下、用相对 url()，dev 与 GitHub Pages 的子路径
+            都能自己解析对，不必在 CSS 里拼 basePath。 */}
+        <link
+          rel="stylesheet"
+          precedence="default"
+          href={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/fonts/fonts.css`}
+        />
         {/* 必须排在 children 之前：整页一旦卡住，靠它给出人话和刷新。 */}
         <script dangerouslySetInnerHTML={{ __html: BOOT_WATCHDOG }} />
         {children}

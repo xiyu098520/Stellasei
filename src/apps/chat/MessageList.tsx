@@ -206,16 +206,17 @@ export default function MessageList({
         }}
       >
         <div style={{ position: "relative", display: "flex", justifyContent: "center" }}>
-          {/* 中心标题块：中文压着斜体英文，两行一体（整组中心＝两键中线）；
-              中英文贴近（行高 1、上距 0），只留字面自己的呼吸缝 */}
+          {/* 中心标题块：宋体刊头压着一行宽字距小写拉丁，两行一体（整组中心＝两键中线） */}
           <div style={{ textAlign: "center" }}>
             <span
               style={{
                 fontFamily: SERIF,
-                fontSize: 22,
-                fontWeight: 600,
-                letterSpacing: ".2em",
-                paddingLeft: ".2em",
+                fontSize: 23,
+                /* 宋体只有 Regular／Bold 两档可用，600 会被落到 Bold、笔画糊成一片；
+                   500 落在 Regular 上，刊头要的是「细而挺」，不是「粗而稳」。 */
+                fontWeight: 500,
+                letterSpacing: ".24em",
+                paddingLeft: ".24em",
                 color: HZ.accent,
                 lineHeight: 1,
               }}
@@ -224,13 +225,15 @@ export default function MessageList({
             </span>
             <div
               style={{
-                fontFamily: SERIF,
-                fontStyle: "italic",
-                fontSize: 12.5,
-                letterSpacing: ".12em",
-                textIndent: ".12em",
+                /* 改成**大写＋宽字距的等宽小字**，跟下面的分区小标同一套，
+                   整页的拉丁字面才是一家人。 */
+                fontFamily: LAT,
+                fontSize: 9.5,
+                letterSpacing: ".34em",
+                textIndent: ".34em",
+                textTransform: "uppercase",
                 color: HZ.ink3,
-                padding: "1px 0 0",
+                padding: "5px 0 0",
               }}
             >
               Messages
@@ -477,13 +480,14 @@ function EmptyState({ cn, hint }: { cn: string; hint: string }) {
       <span
         style={{ width: 32, height: 4, borderRadius: 999, background: HZ.accent, opacity: 0.7, marginBottom: 20 }}
       />
-      <div style={{ fontFamily: SERIF, fontSize: 17, fontWeight: 600, color: HZ.ink, letterSpacing: ".08em" }}>
+      <div style={{ fontFamily: SERIF, fontSize: 17, fontWeight: 500, color: HZ.ink, letterSpacing: ".1em" }}>
         {cn}
       </div>
       <div
         style={{
           marginTop: 10,
           fontSize: 12.5,
+          fontWeight: 300,
           color: HZ.ink2,
           letterSpacing: ".04em",
           lineHeight: 1.6,
@@ -503,7 +507,7 @@ function Sect({ en, cn }: { en: string; cn: string }) {
         style={{
           fontFamily: LAT,
           fontSize: 9.5,
-          letterSpacing: ".3em",
+          letterSpacing: ".32em",
           color: HZ.ink3,
           textTransform: "uppercase",
         }}
@@ -511,7 +515,11 @@ function Sect({ en, cn }: { en: string; cn: string }) {
         {en}
       </span>
       <span style={{ fontFamily: LAT, fontSize: 9.5, color: HZ.ink3 }}>·</span>
-      <span style={{ fontSize: 11, letterSpacing: ".26em", color: HZ.ink2 }}>{cn}</span>
+      {/* 中文那格加重一档、字距收一点：拉丁是「线」，中文是「点」，
+          两者分量拉开，这一行才有层次，不会读成一条同样粗的灰线。 */}
+      <span style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: ".2em", color: HZ.ink2 }}>
+        {cn}
+      </span>
     </div>
   );
 }
@@ -581,9 +589,11 @@ function ConversationRow({
             style={{
               minWidth: 0,
               fontFamily: SERIF,
-              fontSize: 15.5,
-              fontWeight: 600,
-              letterSpacing: ".08em",
+              fontSize: 16,
+              /* 同上：宋体的 600 会落到 Bold，一行名字压得太黑；
+                 500 走 Regular，靠字号与字距撑分量。 */
+              fontWeight: 500,
+              letterSpacing: ".06em",
               color: pinned ? HZ.accent : HZ.ink,
               whiteSpace: "nowrap",
               overflow: "hidden",
@@ -627,8 +637,12 @@ function ConversationRow({
 
         <div
           style={{
-            marginTop: 4,
+            marginTop: 5,
             fontSize: 12.5,
+            /* 预览压到 300：它永远只是「陪跑」的一行，轻一档整个行就浮起来，
+               名字那一行自然成了主位（参考图里正文也是极轻的一档灰）。 */
+            fontWeight: 300,
+            lineHeight: 1.4,
             letterSpacing: ".02em",
             color: hot ? HZ.ink : HZ.ink2,
             whiteSpace: "nowrap",
@@ -654,7 +668,8 @@ function ConversationRow({
         <span
           style={{
             fontFamily: LAT,
-            fontSize: 10,
+            fontSize: 9.5,
+            letterSpacing: ".06em",
             color: HZ.ink3,
             fontVariantNumeric: "tabular-nums",
           }}

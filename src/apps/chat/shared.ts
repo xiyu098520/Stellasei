@@ -69,14 +69,16 @@ export const SANS =
 /** 小字拉丁（分区小标、时间、未读数字、tab 英文）：等宽，冷静克制。 */
 export const LAT = 'ui-monospace, "SFMono-Regular", Consolas, monospace';
 
-/** 中文宋体：全 App 统一用它。
-    不下载字体——直接吃系统宋体（iOS/macOS 的「Songti SC」是与思源宋体最接近的
-    那一支），零请求、零换装闪。 */
+/** 中文衬线：全 App 统一用它。
+    1.13.3 起换成**真字体文件**「霞鹜文楷 GB」——系统宋体（Songti SC／SimSun）
+    做不出参考图那种笔锋与柔度，这是根子上的差别，调字号字距都补不回来。
+    分片托管在 public/fonts（见 layout.tsx），每片自带 unicode-range，
+    屏上出现哪几个字才下哪几片；系统宋体全部留在后面兜底，缺字不会变方块。 */
 export const SERIF =
-  "'Songti SC', 'STSong', 'Noto Serif CJK SC', 'Source Han Serif SC', 'SimSun', Georgia, serif";
-/** 中文楷体（系统楷体，零下载、零闪）。自带笔锋，用在红封套这种中式卡面上。 */
+  "'LXGW WenKai GB', 'Songti SC', 'STSong', 'Noto Serif CJK SC', 'Source Han Serif SC', 'SimSun', Georgia, serif";
+/** 中文楷体：霞鹜文楷本身就是楷体，与衬线共用同一支（同一份分片，不额外下载）。 */
 export const KAI =
-  "'Kaiti SC', 'STKaiti', 'KaiTi', 'Songti SC', Georgia, serif";
+  "'LXGW WenKai GB', 'Kaiti SC', 'STKaiti', 'KaiTi', 'Songti SC', Georgia, serif";
 
 /** 英文装饰衬线（斜体小字：messages / pinned / lucky money…）。 */
 export const EN = "var(--font-serif)";
