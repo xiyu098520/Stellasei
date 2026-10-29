@@ -63,7 +63,9 @@ export function SplashScreen({ onFinish }: { onFinish: () => void }) {
         // 自动退场已经起步（>2.3s）就别再重启淡出动画——那会把淡下去的一层
         // 重新拉回不透明、闪一下；此时直接卸载。
         onClick={() => beginLeave(Date.now() - mountedAt.current < 2300)}
-        className={`splash-panel absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#0b0a14]${
+        // 底色在 globals.css 的 .splash-panel 里，别改用 Tailwind 的任意值类名：
+        // 它紧贴下面的 `${` 会被扫描器读成带 `$` 的无效类，规则直接不生成。
+        className={`splash-panel absolute inset-0 z-50 flex flex-col items-center justify-center${
           leaving ? " splash-leaving" : ""
         }`}
       >
