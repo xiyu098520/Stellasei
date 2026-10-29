@@ -1988,6 +1988,7 @@ export default function MomentsPage({
                   fontSize: 12.5,
                   lineHeight: 1.4,
                   letterSpacing: ".02em",
+                  fontFamily: SERIF,
                   color: C.ink2,
                   textAlign: "right",
                 }}
