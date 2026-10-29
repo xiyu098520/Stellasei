@@ -14,6 +14,10 @@ import { useEffect, useRef, useState } from "react";
  *   盖着、「点击任意处进入」也点不动。现在退场有两条线：
  *   CSS 的 `splash-auto-out` 到点自己把它淡成 `visibility:hidden`（脚本在不在都算数），
  *   JS 只负责到点把这层从渲染里摘掉。
+ * - **1.12.99：连「点一下就走」也不经过 JS 了。** 原先它挂在 React 的 onClick 上，
+ *   应用包没起来时点了没反应。现在这层是个 `<label for>`，点它＝浏览器原生去勾选
+ *   那枚隐藏 radio，CSS 据此立刻淡出（见 globals.css 的 `.splash-skip`）。
+ *   React 的 onClick 仍在，只是负责把这一层从渲染里摘掉。
  */
 export function SplashScreen({ onFinish }: { onFinish: () => void }) {
   const [leaving, setLeaving] = useState(false);
@@ -43,25 +47,26 @@ export function SplashScreen({ onFinish }: { onFinish: () => void }) {
   }
 
   return (
-    <div
-      role="button"
-      aria-label="点击跳过开屏"
-      // 自动退场已经起步（>2.3s）就别再重启淡出动画——那会把淡下去的一层
-      // 重新拉回不透明、闪一下；此时直接卸载。
-      onClick={() => beginLeave(Date.now() - mountedAt.current < 2300)}
-      className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#0b0a14]"
-      style={
-        leaving
-          ? {
-              animation: "splash-auto-out 0.4s ease-out 0s both",
-              pointerEvents: "none",
-            }
-          : {
-              // 1.12.98：不等 JS。CSS 自己在 2.4 秒起淡出、2.8 秒时已 hidden。
-              animation: "splash-auto-out 0.4s ease-out 2.4s both",
-            }
-      }
-    >
+    <>
+      {/* 看不见的开关：label 点它会勾上，全程原生行为、不需要脚本。 */}
+      <input
+        type="radio"
+        id="stellasei-splash-skip"
+        name="stellasei-splash-skip"
+        className="splash-skip"
+        aria-hidden="true"
+        tabIndex={-1}
+      />
+      <label
+        htmlFor="stellasei-splash-skip"
+        aria-label="点击跳过开屏"
+        // 自动退场已经起步（>2.3s）就别再重启淡出动画——那会把淡下去的一层
+        // 重新拉回不透明、闪一下；此时直接卸载。
+        onClick={() => beginLeave(Date.now() - mountedAt.current < 2300)}
+        className={`splash-panel absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#0b0a14]${
+          leaving ? " splash-leaving" : ""
+        }`}
+      >
       {/* 星点背景 */}
       <div
         className="absolute inset-0 opacity-70"
@@ -103,6 +108,7 @@ export function SplashScreen({ onFinish }: { onFinish: () => void }) {
       <p className="absolute bottom-10 text-[10px] tracking-widest text-white/25">
         点击任意处进入
       </p>
-    </div>
+      </label>
+    </>
   );
 }

@@ -287,14 +287,41 @@ textarea,
   }
 }
 
-/* 开屏：不依赖 JS 的自动退场（1.12.98）。「2.8 秒走」原先只写在组件里，
-   脚本一旦没到位（旧缓存、包没下完、脚本报错），整层就一直盖着、点也没反应。
-   这一条让 CSS 自己按时淡出并 hidden，JS 在不在都不会卡在开屏。 */
+/* 开屏：到点自己退场，**不依赖 JS**。「2.8 秒走」原先只写在组件里，脚本一旦
+   没到位（旧缓存指着已删除的分片、脚本报错），整层就一直盖着、点也没反应。 */
 @keyframes splash-auto-out {
   to {
     opacity: 0;
     visibility: hidden;
   }
+}
+
+/* 开屏层（1.12.99）：没被点就 2.4 秒起自己淡出，2.8 秒已 hidden。
+   JS 只负责到点把这层从渲染里摘掉，摘不摘都不影响它可见与否。 */
+.splash-panel {
+  animation: splash-auto-out 0.4s ease-out 2.4s both;
+}
+
+/* 那枚看不见的开关：绝对定位、1px、全透明，只为了让 <label for> 有得点。 */
+.splash-skip {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 开屏：**手指点一下就立刻走，同样不经过 JS**。
+   点的是 `<label for>`，勾选那枚隐藏 radio 是浏览器原生行为——应用包没起来时，
+   「点击任意处进入」也照样管用。用 radio 而不是 checkbox：勾上就取消不掉，
+   连点两下也不会把开屏「点回来」（真要 unchecked，动画会从头再来一遍）。 */
+.splash-skip:checked + .splash-panel,
+.splash-panel.splash-leaving {
+  animation: splash-auto-out 0.3s ease-out both;
+  pointer-events: none;
 }
 
 /* 开屏：内容入场（微升＋淡入）与退场（先一步微升离开＋淡出）。 */
