@@ -60,3 +60,13 @@ next-env.d.ts
 /dist/
 .vinext/
 .cloudflare/
+
+# 仓库只留代码（2026-10-29 恩熙要求）：项目记忆、工作日志、参考资料、调试快照都只留在本机，
+# 仍可在 d:\Stellasei-New 里读到，只是不再进版本管理、GitHub 上也看不见。
+/docs/
+/AGENTS.md
+/CLAUDE.md
+/debug-*.md
+/设计风格参考.md
+/.dbg/
+/.trae/
