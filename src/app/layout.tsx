@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { APP_VERSION } from "@/lib/version";
 
 /* 1.12.98：字体一个都不下载。
    原先是 next/font 自托管 Geist／Geist Mono／Playfair，Next 会把它们作为
@@ -115,14 +116,16 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="zh-CN" className="h-full antialiased">
       <body className="h-full overflow-hidden">
-        {/* 中文衬线（京华老宋体）：一枚单独的样式表，里面是按码点切的 @font-face 分片，
+        {/* 中文衬线（京华老宋体）：一枚单独的样式表，里面是按字频重排的 @font-face 分片，
             每片自带 unicode-range——浏览器**只下当前这屏用到的字**，不是整包。
             放 public 下、用相对 url()，dev 与 GitHub Pages 的子路径
-            都能自己解析对，不必在 CSS 里拼 basePath。 */}
+            都能自己解析对，不必在 CSS 里拼 basePath。
+            地址带版本号：分片换名后旧 CSS 还会被强缓存，不加这一串浏览器会一直用
+            旧的 unicode-range 表去要旧分片，「给」这类新片里的字就掉出来了。 */}
         <link
           rel="stylesheet"
           precedence="default"
-          href={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/fonts/kinghwa-oldsong.css`}
+          href={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/fonts/kinghwa-oldsong.css?v=${APP_VERSION}`}
         />
         {/* 必须排在 children 之前：整页一旦卡住，靠它给出人话和刷新。 */}
         <script dangerouslySetInnerHTML={{ __html: BOOT_WATCHDOG }} />
