@@ -6,7 +6,7 @@ import {
   clampBubbleMax,
   type ConversationPatch,
 } from "@/lib/settings/chat";
-import { AVATAR_GRADIENT, CHAT_BG_DEFAULT, EN, SANS, T } from "./shared";
+import { AVATAR_GRADIENT, CHAT_BG_DEFAULT, EN, SERIF, T } from "./shared";
 import type { ArchiveEntry } from "@/types/contact";
 import { TRANSLATE_LANGS, type Conversation, type TranslateSetting } from "@/types/chat";
 
@@ -275,7 +275,7 @@ export default function ChatSettingsPanel({
         display: "flex",
         flexDirection: "column",
         background: T.bg,
-        fontFamily: SANS,
+        fontFamily: SERIF,
         color: T.ink,
         overflow: "hidden",
       }}
@@ -347,7 +347,7 @@ export default function ChatSettingsPanel({
           style={{
             margin: "14px 0 0",
             fontSize: 26,
-            fontWeight: 800,
+            fontWeight: 500,
             letterSpacing: "-.01em",
             lineHeight: 1,
             color: T.ink,
@@ -431,7 +431,7 @@ export default function ChatSettingsPanel({
             <span
               style={{
                 fontSize: 13,
-                fontWeight: 700,
+                fontWeight: 600,
                 letterSpacing: ".04em",
                 color: "#FFF",
                 textShadow: "0 1px 6px rgba(20,19,24,.45)",
@@ -1266,7 +1266,7 @@ function LangPick({ value, onChange }: { value: string; onChange: (v: string) =>
         borderRadius: 10,
         background: "#FFFFFF",
         color: T.ink,
-        fontFamily: SANS,
+        fontFamily: SERIF,
         fontSize: 12.5,
         padding: "4px 10px",
         cursor: "pointer",
@@ -1305,7 +1305,7 @@ function GroupTitle({ title, en }: { title: string; en: string }) {
           display: "block",
           marginTop: 6,
           fontSize: 19,
-          fontWeight: 800,
+          fontWeight: 600,
           letterSpacing: "-.01em",
           lineHeight: 1.1,
           color: T.ink,
