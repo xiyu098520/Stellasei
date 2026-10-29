@@ -62,9 +62,11 @@ export const HZ = {
   accentSoft: "#E7ECF2", // 淡雾蓝
 } as const;
 
-/** 界面无衬线。新配色是干净现代的路子，主文字不用宋体。 */
+/** 界面主字体（1.13.11 起）：京华老宋体。
+    全站只留这一支——原来的系统无衬线栈退到后面兜底，名字仍叫 SANS
+    （调用点有一百多处，改名不值当），但实际落到的就是宋体。 */
 export const SANS =
-  "var(--font-sans), -apple-system, 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif";
+  "'KingHwa OldSong', 'Noto Serif SC', 'Songti SC', 'STSong', 'Noto Serif CJK SC', 'Source Han Serif SC', 'SimSun', -apple-system, 'PingFang SC', 'Microsoft YaHei', serif";
 
 /** 小字拉丁（分区小标、时间、未读数字、tab 英文）：等宽，冷静克制。 */
 export const LAT = 'ui-monospace, "SFMono-Regular", Consolas, monospace';

@@ -77,7 +77,14 @@
      Playfair，Next 会把它们作为 `<link rel="preload" as="font">` 塞进 <head>——
      冷启动时这几条与 JS 分片抢带宽，开屏就得多等一会儿。全部换成系统栈：
      零请求、零换装、开屏不必等任何一个字节。 */
-  --font-sans: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  /* 1.13.11：**主字体换成京华老宋体**——全站一个字体，无衬线只是兜底。
+     原先这里挂的是系统无衬线栈（-apple-system / 苹方 / 雅黑），各处顺手写
+     `var(--font-sans)` 的地方就都是黑体；现在主字体统一，`--font-sans` 也指向
+     宋体那一支，等于「默认字体＝宋体」，不必逐个组件去改。
+     真要黑体（极少数图标旁的小字）才显式写系统栈。 */
+  --font-sans: "KingHwa OldSong", "Noto Serif SC", "Songti SC", "STSong",
+    "Noto Serif CJK SC", "Source Han Serif SC", "SimSun", -apple-system,
+    "PingFang SC", "Microsoft YaHei", serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   /* 中文衬线＝京华老宋体／KingHwa OldSong（自托管，1.13.5 起）。
      参考图那种字是**六十年代的旧铅字宋体**（横粗、字面扁、三角字肩、鹅头勾），
@@ -90,10 +97,11 @@
     "Noto Serif CJK SC", "Source Han Serif SC", "SimSun", serif;
   --font-song: "KingHwa OldSong", "Noto Serif SC", "Songti SC", "STSong", "Noto Serif CJK SC",
     "Source Han Serif SC", "SimSun", Georgia, serif;
-  /* 塔罗牌面上那一版字——原先用自托管「志莽行」手写行书，但它走 font-display:swap，
-     冷启动必闪一下。现改用系统行楷／楷体（iOS 自带，零下载、零闪）。 */
-  --font-arcana: "Xingkai SC", "STXingkai", "Kaiti SC", "STKaiti", "KaiTi",
-    "Songti SC", Georgia, serif;
+  /* 塔罗牌面上那一版字：1.13.11 起也归主字体（京华老宋体）。
+     原先挂系统行楷，为的是牌面上那点手写味；全站只留一个字体之后，
+     牌面跟着统一，靠字号／字距／金色压出仪式感。 */
+  --font-arcana: "KingHwa OldSong", "Noto Serif SC", "Songti SC", "STSong", "SimSun",
+    Georgia, serif;
 }
 
 /* 页面永远不该有文档级滚动（手机壳内部各区自理）。锁死所有设备、不只触屏。

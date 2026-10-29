@@ -55,7 +55,7 @@ const IOS_DARK = "#141318";
 /** 纸白：主聊天页的字白（`#FFFDF8`），压在墨上。 */
 const IOS_PAPER = "#FFFDF8";
 const IOS_FONT =
-  "-apple-system, BlinkMacSystemFont, 'Helvetica Neue', 'PingFang SC', 'Microsoft YaHei', sans-serif";
+  "'KingHwa OldSong', 'Noto Serif SC', 'Songti SC', 'STSong', 'SimSun', -apple-system, 'PingFang SC', 'Microsoft YaHei', serif";
 
 type Tab = "chat" | "moments" | "contacts" | "me";
 

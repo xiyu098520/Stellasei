@@ -104,9 +104,8 @@ const OFFSET_SHADOW = "3px 3px 0 rgba(27,25,24,.06)";
 
 const SERIF =
   "'KingHwa OldSong', 'Noto Serif SC', 'Songti SC', 'STSong', 'Noto Serif CJK SC', 'SimSun', Georgia, serif";
-/** 标题：书写体——笔画有起有收、横画微仰，像编者亲手写在卡片上的，不是活字砖块。
- *  走系统楷体（iOS 自带，零下载、零闪）。 */
-const TITLE = "'Kaiti SC', 'STKaiti', 'KaiTi', 'Songti SC', Georgia, serif";
+/** 标题：1.13.11 起与正文同一支京华老宋体（原先是系统楷体，现在全站一个字体）。 */
+const TITLE = SERIF;
 const EN = "var(--font-serif)";
 /** 编目数字（日期戳、编号、计数）一律等宽，像打上去的。 */
 const MONO = "var(--font-mono), ui-monospace, Menlo, monospace";

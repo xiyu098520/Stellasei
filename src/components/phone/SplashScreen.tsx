@@ -96,13 +96,13 @@ export function SplashScreen({ onFinish }: { onFinish: () => void }) {
         </svg>
         <h1
           className="mt-7 text-[28px] font-medium tracking-[0.42em] text-[#efeaff] pl-[0.42em]"
-          style={{ fontFamily: 'Georgia, "Times New Roman", "Songti SC", "SimSun", serif' }}
+          style={{ fontFamily: '"KingHwa OldSong", Georgia, "Times New Roman", serif' }}
         >
           STELLASEI
         </h1>
         <p
           className="mt-3 text-[12px] tracking-[0.5em] text-white/45 pl-[0.5em]"
-          style={{ fontFamily: '"Songti SC", "STSong", "SimSun", Georgia, serif' }}
+          style={{ fontFamily: '"KingHwa OldSong", "Songti SC", "STSong", "SimSun", Georgia, serif' }}
         >
           星绥 · 星空传讯
         </p>

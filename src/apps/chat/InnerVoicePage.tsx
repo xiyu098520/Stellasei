@@ -43,8 +43,9 @@ const TONE = {
 const FP =
   "'KingHwa OldSong', 'Noto Serif SC', 'Songti SC', 'STSong', 'Noto Serif CJK SC', 'SimSun', Georgia, serif";
 
-/** 正文那一支（仿宋）：成句要读的字全归它。系统仿宋（iOS 自带，零下载、零闪）。 */
-const FK = "'FangSong', 'STFangsong', 'Songti SC', Georgia, serif";
+/** 正文那一支：1.13.11 起与标题同一支京华老宋体（原先是系统仿宋）。
+ *  名字沿用 FK，调用点不必动。 */
+const FK = FP;
 
 /** 英文衬线（系统 Georgia，不再下载 Playfair）：数字、小标、时间与序号用它。 */
 const FE = "var(--font-serif), 'Songti SC', serif";

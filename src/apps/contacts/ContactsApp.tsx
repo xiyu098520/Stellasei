@@ -142,11 +142,9 @@ const A_EN = "var(--font-serif)";
 /** 名字与资料：宋体。乙游立绘屏上的名字用宋体最稳（游戏里也是这类衬线大字）。 */
 const A_SERIF =
   "'KingHwa OldSong', 'Noto Serif SC', 'Songti SC', 'STSong', 'Noto Serif CJK SC', 'SimSun', Georgia, serif";
-/** 卡面上的中文：楷体。
- *  宋体是方块骨架（一横一竖、笔画等粗），端正但不「艺术」；楷体是书写体，
- *  横画微仰、笔画有起有收，多一点手写的温度，又不至于像书法体那样只认得几个字。
- *  走系统楷体（iOS 自带，零下载、零闪）。 */
-const A_ART = "'Kaiti SC', 'STKaiti', 'KaiTi', Georgia, serif";
+/** 卡面上的中文：1.13.11 起与正文同一支京华老宋体（不再单挂系统楷体）。
+ *  名字沿用 A_ART，调用点不必动——「艺术字」那一层只是字号与字距，字体归主字体管。 */
+const A_ART = A_SERIF;
 
 /** 纸纹：极淡的斜纹，像刊物内页的底。 */
 const A_GRAIN: CSSProperties = {
