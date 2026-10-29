@@ -1,22 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Playfair_Display } from "next/font/google";
-// 中文「思源宋体」现自托管在 public/fonts/siyuan/（unicode-range 101 片 +
-// font-display:block），并在此预载最常用的几片——开屏（SplashScreen）本就会等
-// document.fonts.ready，故不再有换装闪。@font-face 由 siyuan-font.ts 按 basePath
-// 拼好路径后内联进 <head>（Next 不会给 CSS 里 url() 的绝对路径补 basePath）。
+// 中文字体全部走系统宋体（见 globals.css 的 --font-serif / --font-song）：
+// 不再自托管思源宋体分片，也就没有「先系统宋体、再换思源」的换装闪。
 // Playfair 只用于拉丁字母，体积小，仍由 next/font 自托管。
 import "./globals.css";
-import { siyuanFontCss } from "./siyuan-font";
-
-/* GitHub Pages 是子路径站点（构建时注入 NEXT_PUBLIC_BASE_PATH="/Stellasei"），
-   字体文件的绝对地址得带上 basePath；本地开发该变量为空。 */
-const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-
-/* 预载首批「界面基础文字」子集三片（ui-0/1/2，family 'Noto Serif SC UI'）：
-   开屏那 2.8s 内把它们抢下来，界面文案即可用思源宋体即刻上屏、不留空窗。
-   其余整量分片（000–100）由后台预取模块在进 App 后静默补齐（见 lib/font-prefetch.ts），
-   不在此预载，省首屏流量。 */
-const FONT_PRELOAD = ["ui-0", "ui-1", "ui-2"];
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -64,25 +51,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="zh-CN"
       className={`${geistSans.variable} ${geistMono.variable} ${playfair.variable} h-full antialiased`}
     >
-      {/* 思源宋体 @font-face：服务端按 basePath 生成后内联（见 siyuan-font.ts）。
-          带 precedence 让 React 把它提进 <head>，随首屏样式一起就位，避免换装闪。 */}
-      <style
-        href="siyuan-font"
-        precedence="siyuan-font"
-        dangerouslySetInnerHTML={{ __html: siyuanFontCss(basePath) }}
-      />
       <body className="h-full overflow-hidden">
-        {/* 思源宋体常用分片预载（字体是同源，必须带 crossorigin）；React 会提到 <head>。 */}
-        {FONT_PRELOAD.map((n) => (
-          <link
-            key={n}
-            rel="preload"
-            as="font"
-            type="font/woff2"
-            crossOrigin="anonymous"
-            href={`${basePath}/fonts/siyuan/${n}.woff2`}
-          />
-        ))}
         {children}
       </body>
     </html>

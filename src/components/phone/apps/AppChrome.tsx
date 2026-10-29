@@ -3,10 +3,9 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { usePhone } from "@/context/PhoneContext";
 
-/** 内页正文统一用「思源宋体」：界面基础文字子集（'Noto Serif SC UI'）在前，
-    命中即走开屏已下的小文件，其余落到整量（进 App 后后台补齐）。 */
+/** 内页正文统一用系统宋体：零下载、零换装闪（iOS/macOS「Songti SC」最接近思源宋体）。 */
 const A_FONT =
-  "'Noto Serif SC UI', 'Noto Serif SC', 'Songti SC', 'STSong', 'SimSun', Georgia, serif";
+  "'Songti SC', 'STSong', 'Noto Serif CJK SC', 'Source Han Serif SC', 'SimSun', Georgia, serif";
 
 /**
  * App 内页通用框架：返回列＋标题＋滚动内容，自动避开安全区。
