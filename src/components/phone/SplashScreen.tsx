@@ -4,52 +4,62 @@ import { useEffect, useRef, useState } from "react";
 
 /**
  * 开屏：深紫星空、星芒呼吸、STELLASEI 淡入。
- * - 2.8 秒后自动进入，亦可点击跳过。
+ * - 2.4 秒起自动淡出（CSS 自己走完，2.8 秒已不可见，见下），亦可点击跳过。
  * - 用 sessionStorage 记住本次浏览工作階段已看过；严格仅客户端读写。
  * - **2026-10-13 恩熙：开屏不许再等字体下载。** 原先是等 `document.fonts.ready`
  *   （即等思源宋体子集下完）才播入场，PWA 冷启动时若脚本迟迟没接管，内容会被
- *   `opacity:0` 门禁永久藏住、只剩一行「点击任意处进入」。现刊头直接改用系统
- *   衬线／宋体（iOS／Windows 自带，零下载、零闪），并删掉等字体的门禁——
- *   挂载即播入场，任何情况下都能立刻看到 STELLASEI。
+ *   `opacity:0` 门禁永久藏住、只剩一行「点击任意处进入」。
+ * - **1.12.98：开屏也不许再等脚本。** 退场原先 100% 靠 React 的 setTimeout，
+ *   应用包一旦没起来（旧 HTML 缓存指着已删除的分片是最常见的一种），这层就永久
+ *   盖着、「点击任意处进入」也点不动。现在退场有两条线：
+ *   CSS 的 `splash-auto-out` 到点自己把它淡成 `visibility:hidden`（脚本在不在都算数），
+ *   JS 只负责到点把这层从渲染里摘掉。
  */
 export function SplashScreen({ onFinish }: { onFinish: () => void }) {
   const [leaving, setLeaving] = useState(false);
   const finishedRef = useRef(false);
+  const mountedAt = useRef(Date.now());
 
   useEffect(() => {
     const alreadySeen =
       window.sessionStorage.getItem("stellasei:splash-seen") === "1";
-    const duration = alreadySeen ? 900 : 2800;
-
-    const leaveTimer = setTimeout(beginLeave, duration);
-    return () => clearTimeout(leaveTimer);
+    // 首次到访：2.4 秒交给 CSS 自己淡出，JS 只陪着卸载。
+    // 本次会话已看过：900ms 就用 JS 淡出，不必再等满一遍。
+    const timer = setTimeout(() => beginLeave(alreadySeen), alreadySeen ? 900 : 2400);
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function beginLeave() {
+  /** withFade=false：画面交给 CSS 的自动退场，这里只按时卸载。 */
+  function beginLeave(withFade: boolean) {
     // 自动逾时与手动跳过可能竞相调用，只允许进入一次。
     if (finishedRef.current) return;
     finishedRef.current = true;
 
     window.sessionStorage.setItem("stellasei:splash-seen", "1");
-    setLeaving(true);
-    // 与 splash-fade-out 的 380ms 对齐：动画结束时整层已透明，卸载零闪跳。
-    setTimeout(onFinish, 380);
+    if (withFade) setLeaving(true);
+    // 淡出 400ms：withFade 时对齐 splash-auto-out 的时长，否则对齐 CSS 预留的余量。
+    setTimeout(onFinish, withFade ? 400 : 420);
   }
 
   return (
     <div
       role="button"
       aria-label="点击跳过开屏"
-      onClick={beginLeave}
+      // 自动退场已经起步（>2.3s）就别再重启淡出动画——那会把淡下去的一层
+      // 重新拉回不透明、闪一下；此时直接卸载。
+      onClick={() => beginLeave(Date.now() - mountedAt.current < 2300)}
       className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#0b0a14]"
       style={
         leaving
           ? {
-              animation: "splash-fade-out 0.38s ease-out both",
+              animation: "splash-auto-out 0.4s ease-out 0s both",
               pointerEvents: "none",
             }
-          : undefined
+          : {
+              // 1.12.98：不等 JS。CSS 自己在 2.4 秒起淡出、2.8 秒时已 hidden。
+              animation: "splash-auto-out 0.4s ease-out 2.4s both",
+            }
       }
     >
       {/* 星点背景 */}

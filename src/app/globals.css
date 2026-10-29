@@ -73,15 +73,18 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans), -apple-system, "PingFang SC",
-    "Microsoft YaHei", sans-serif;
-  --font-mono: var(--font-geist-mono), monospace;
-  /* 英文刊头用的衬线（Playfair）；中文全部走系统宋体：零下载、零换装闪。
+  /* 1.12.98：字体**一个都不下载**。原先前三行还挂着 next/font 的 Geist／Geist Mono／
+     Playfair，Next 会把它们作为 `<link rel="preload" as="font">` 塞进 <head>——
+     冷启动时这几条与 JS 分片抢带宽，开屏就得多等一会儿。全部换成系统栈：
+     零请求、零换装、开屏不必等任何一个字节。 */
+  --font-sans: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  /* 英文刊头用的衬线；中文全部走系统宋体：零下载、零换装闪。
    iOS/macOS 的「Songti SC」是与思源宋体最接近的系统宋体（同为宋体骨架、
    笔画对比接近，只是字重档位少一档）；Windows 退到 SimSun，装了思源/
    Noto CJK 的机器再优先命中本地那份。不再自托管思源宋体分片。 */
-  --font-serif: var(--font-playfair), Georgia, "Songti SC", "STSong",
-    "Noto Serif CJK SC", "Source Han Serif SC", "SimSun", serif;
+  --font-serif: Georgia, "Songti SC", "STSong", "Noto Serif CJK SC",
+    "Source Han Serif SC", "SimSun", serif;
   --font-song: "Songti SC", "STSong", "Noto Serif CJK SC",
     "Source Han Serif SC", "SimSun", Georgia, serif;
   /* 塔罗牌面上那一版字——原先用自托管「志莽行」手写行书，但它走 font-display:swap，
@@ -281,6 +284,16 @@ textarea,
   }
   to {
     opacity: 0;
+  }
+}
+
+/* 开屏：不依赖 JS 的自动退场（1.12.98）。「2.8 秒走」原先只写在组件里，
+   脚本一旦没到位（旧缓存、包没下完、脚本报错），整层就一直盖着、点也没反应。
+   这一条让 CSS 自己按时淡出并 hidden，JS 在不在都不会卡在开屏。 */
+@keyframes splash-auto-out {
+  to {
+    opacity: 0;
+    visibility: hidden;
   }
 }
 

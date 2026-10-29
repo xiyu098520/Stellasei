@@ -30,6 +30,12 @@ function PhoneOs() {
     document.documentElement.style.backgroundColor = bg;
   }, [splashDone, currentApp]);
 
+  // 告诉 layout 里那段启动看门狗「应用已经接管」——它据此决定要不要浮出
+  // 「刷新」那张兜底卡片（见 layout.tsx 的 BOOT_WATCHDOG）。
+  useEffect(() => {
+    (window as unknown as { __stellaseiReady?: boolean }).__stellaseiReady = true;
+  }, []);
+
   // 兜住 iOS 选字后 click 假死（WebKit 288461）：见 lib/tapFallback.ts。
   useEffect(() => installTapFallback(), []);
 

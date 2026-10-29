@@ -45,8 +45,8 @@ const FP = "'Songti SC', 'STSong', 'Noto Serif CJK SC', 'SimSun', Georgia, serif
 /** 正文那一支（仿宋）：成句要读的字全归它。系统仿宋（iOS 自带，零下载、零闪）。 */
 const FK = "'FangSong', 'STFangsong', 'Songti SC', Georgia, serif";
 
-/** 英文衬线（Playfair）：数字、小标、时间与序号用它，自带真斜体面。 */
-const FE = "var(--font-playfair), Georgia, 'Songti SC', serif";
+/** 英文衬线（系统 Georgia，不再下载 Playfair）：数字、小标、时间与序号用它。 */
+const FE = "var(--font-serif), 'Songti SC', serif";
 
 /** 虚文字（空态）：跟正文同一支仿宋，靠淡色跟实文字分开。 */
 const VAGUE: React.CSSProperties = {

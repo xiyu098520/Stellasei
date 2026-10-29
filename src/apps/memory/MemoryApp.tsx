@@ -106,7 +106,7 @@ const SERIF = "'Songti SC', 'STSong', 'Noto Serif CJK SC', 'SimSun', Georgia, se
 /** 标题：书写体——笔画有起有收、横画微仰，像编者亲手写在卡片上的，不是活字砖块。
  *  走系统楷体（iOS 自带，零下载、零闪）。 */
 const TITLE = "'Kaiti SC', 'STKaiti', 'KaiTi', 'Songti SC', Georgia, serif";
-const EN = "var(--font-playfair), Georgia, serif";
+const EN = "var(--font-serif)";
 /** 编目数字（日期戳、编号、计数）一律等宽，像打上去的。 */
 const MONO = "var(--font-mono), ui-monospace, Menlo, monospace";
 

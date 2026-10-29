@@ -1,26 +1,92 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono, Playfair_Display } from "next/font/google";
-// 中文字体全部走系统宋体（见 globals.css 的 --font-serif / --font-song）：
-// 不再自托管思源宋体分片，也就没有「先系统宋体、再换思源」的换装闪。
-// Playfair 只用于拉丁字母，体积小，仍由 next/font 自托管。
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
+/* 1.12.98：字体一个都不下载。
+   原先是 next/font 自托管 Geist／Geist Mono／Playfair，Next 会把它们作为
+   `<link rel="preload" as="font">` 写进 <head>——冷启动那几条与 JS 分片抢带宽，
+   开屏就得多等；中文早已全走系统宋体。现在连这三个拉丁字体也交给系统栈
+   （见 globals.css 的 @theme），首屏零字体请求。 */
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+/**
+ * 启动看门狗（1.12.98）：一段**不依赖任何 JS 分片**的内联脚本。
+ *
+ * 要解决的病：手机上卡在开屏、点也没反应。根子是整页只有静态 HTML 落了地，
+ * 应用包没起来（旧 HTML 缓存把分片地址指到已经不存在的文件是最常见的一种），
+ * 于是 React 从未接管——开屏的「点击任意处进入」与 2.8 秒自动走全都不存在。
+ *
+ * 它做三件事：
+ * 1. 逮住脚本加载失败（分片 404）与首个运行时错误；
+ * 2. 4 秒后应用还没标记就绪 → 分片加载失败就**静默换地址重载一次**
+ *    （`?r=时间戳` 绕过 HTML 缓存；30 秒内只试一次，防坏环境里无限刷）；
+ * 3. 否则在底部浮一张小卡片：一句人话 + 错误原文 + 「刷新」按钮。
+ */
+const BOOT_WATCHDOG = `
+(function () {
+  var err = "";
+  var scriptFailed = false;
+  function ready() { return window.__stellaseiReady === true; }
 
-// 杂志刊头与英文小字用的高级感衬线。
-const playfair = Playfair_Display({
-  variable: "--font-playfair",
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-});
+  /* 捕获期监听：分片 404／加载失败也走 error，只是 target 是 <script> 元素。 */
+  window.addEventListener("error", function (e) {
+    var t = e.target;
+    if (t && t.tagName === "SCRIPT") { scriptFailed = true; return; }
+    if (e && e.message) { err = String(e.message); }
+  }, true);
+  window.addEventListener("unhandledrejection", function (e) {
+    var r = e && e.reason;
+    err = String((r && r.message) || r || "Promise 被拒绝");
+  });
+
+  function reload() { location.replace(location.pathname + "?r=" + Date.now()); }
+
+  function paint() {
+    if (document.getElementById("stellasei-boot-tip")) return;
+    var box = document.createElement("div");
+    box.id = "stellasei-boot-tip";
+    box.style.cssText = "position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:2147483647;max-width:86vw;padding:14px 16px;border-radius:16px;background:rgba(18,16,28,.96);color:#fff;font:13px/1.65 -apple-system,'PingFang SC',sans-serif;box-shadow:0 12px 34px rgba(0,0,0,.5);";
+    var p = document.createElement("div");
+    p.textContent = scriptFailed
+      ? "页面文件过期了（新版本换掉了一部分），所以界面起不来。点「刷新」一次就好。"
+      : "界面没有启动完成。点「刷新」一次就好。";
+    box.appendChild(p);
+    if (err) {
+      var d = document.createElement("div");
+      d.style.cssText = "margin-top:6px;opacity:.55;font-size:11px;word-break:break-all;";
+      d.textContent = err.slice(0, 160);
+      box.appendChild(d);
+    }
+    var b = document.createElement("button");
+    b.textContent = "刷新";
+    b.style.cssText = "margin-top:10px;padding:8px 20px;border:0;border-radius:999px;background:#cbbfff;color:#1b1630;font:600 13px -apple-system,'PingFang SC',sans-serif;";
+    b.onclick = reload;
+    box.appendChild(b);
+    document.body.appendChild(box);
+  }
+
+  function watch() {
+    if (ready()) return;
+    if (scriptFailed) {
+      var last = 0;
+      try { last = Number(sessionStorage.getItem("stellasei:boot-reload") || 0); } catch (e) {}
+      if (Date.now() - last > 30000) {
+        try { sessionStorage.setItem("stellasei:boot-reload", String(Date.now())); } catch (e) {}
+        reload();
+        return;
+      }
+    }
+    paint();
+    /* 卡片只是兜底：应用稍后自己起来了就把它收走，别挡着。 */
+    var iv = setInterval(function () {
+      if (!ready()) return;
+      clearInterval(iv);
+      var el = document.getElementById("stellasei-boot-tip");
+      if (el && el.parentNode) el.parentNode.removeChild(el);
+    }, 500);
+  }
+
+  setTimeout(watch, 4000);
+})();
+`;
 
 export const metadata: Metadata = {
   title: "星绥 · 星空传讯",
@@ -47,11 +113,10 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html
-      lang="zh-CN"
-      className={`${geistSans.variable} ${geistMono.variable} ${playfair.variable} h-full antialiased`}
-    >
+    <html lang="zh-CN" className="h-full antialiased">
       <body className="h-full overflow-hidden">
+        {/* 必须排在 children 之前：整页一旦卡住，靠它给出人话和刷新。 */}
+        <script dangerouslySetInnerHTML={{ __html: BOOT_WATCHDOG }} />
         {children}
       </body>
     </html>

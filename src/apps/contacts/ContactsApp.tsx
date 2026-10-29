@@ -136,9 +136,9 @@ const A = {
 } as const;
 
 /** 编号与数值字：仍是这套等宽字——乙游那一屏的编号、数值槽、页码都用它（数字要一样宽）。 */
-const A_MONO = "var(--font-geist-mono), monospace";
+const A_MONO = "var(--font-mono), monospace";
 /** 英文小标：印刷体大写衬线（详情页与弹窗还在用）。 */
-const A_EN = "var(--font-playfair), Georgia, serif";
+const A_EN = "var(--font-serif)";
 /** 名字与资料：宋体。乙游立绘屏上的名字用宋体最稳（游戏里也是这类衬线大字）。 */
 const A_SERIF = "'Songti SC', 'STSong', 'Noto Serif CJK SC', 'SimSun', Georgia, serif";
 /** 卡面上的中文：楷体。

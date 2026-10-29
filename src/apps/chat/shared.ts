@@ -79,7 +79,7 @@ export const KAI =
   "'Kaiti SC', 'STKaiti', 'KaiTi', 'Songti SC', Georgia, serif";
 
 /** 英文装饰衬线（斜体小字：messages / pinned / lucky money…）。 */
-export const EN = "var(--font-playfair), Georgia, serif";
+export const EN = "var(--font-serif)";
 
 /** 头像渐变兜底（**没照片**时画首字用的底）。
     落在主粉上（`T.pink` 起、深一档收尾，白首字能看清），别用暖棕。

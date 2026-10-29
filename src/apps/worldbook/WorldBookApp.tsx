@@ -1557,7 +1557,7 @@ function EntryCard({
                 />
                 <span
                   className="w-10 shrink-0 text-right text-[11px]"
-                  style={{ color: ARCANA_INK_SOFT, fontFamily: "var(--font-geist-mono), monospace" }}
+                  style={{ color: ARCANA_INK_SOFT, fontFamily: "var(--font-mono), monospace" }}
                 >
                   {entry.probability}%
                 </span>
