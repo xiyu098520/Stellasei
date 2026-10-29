@@ -3,10 +3,10 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { usePhone } from "@/context/PhoneContext";
 
-/** 内页正文统一用中文衬线：首位移到自托管的「思源宋体」（见 layout.tsx），
-    系统宋体往后排兜底。 */
+/** 内页正文统一用中文衬线：首位是自托管的「京华老宋体」（见 layout.tsx），
+    思源宋体与系统宋体往后排兜底。 */
 const A_FONT =
-  "'Noto Serif SC', 'Songti SC', 'STSong', 'Noto Serif CJK SC', 'Source Han Serif SC', 'SimSun', Georgia, serif";
+  "'KingHwa OldSong', 'Noto Serif SC', 'Songti SC', 'STSong', 'Noto Serif CJK SC', 'Source Han Serif SC', 'SimSun', Georgia, serif";
 
 /**
  * App 内页通用框架：返回列＋标题＋滚动内容，自动避开安全区。

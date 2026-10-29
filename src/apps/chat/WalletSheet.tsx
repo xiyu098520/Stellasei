@@ -17,9 +17,9 @@ import type { CSSProperties, ReactNode } from "react";
 import { X } from "lucide-react";
 import { SANS, T } from "./shared";
 
-/** 标题书写体：思源宋体（自托管，见 layout.tsx），系统宋体兜底。 */
+/** 标题书写体：京华老宋体（自托管，见 layout.tsx），系统宋体兜底。 */
 export const WALLET_TITLE =
-  "'Noto Serif SC', 'Kaiti SC', 'STKaiti', 'KaiTi', 'Songti SC', Georgia, serif";
+  "'KingHwa OldSong', 'Noto Serif SC', 'Kaiti SC', 'STKaiti', 'KaiTi', 'Songti SC', Georgia, serif";
 
 /** 账目上的数字一律等宽（金额、尾号），像打上去的。 */
 export const WALLET_MONO = "var(--font-mono), ui-monospace, Menlo, monospace";

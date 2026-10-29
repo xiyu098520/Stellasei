@@ -70,15 +70,15 @@ export const SANS =
 export const LAT = 'ui-monospace, "SFMono-Regular", Consolas, monospace';
 
 /** 中文衬线：全 App 统一用它。
-    1.13.4 起换成**真字体文件**「思源宋体／Noto Serif SC」——参考图是极细的明朝体，
-    系统宋体（Songti SC／SimSun）粗细与骨架都对不上，调字号字距补不回来。
+    1.13.5 起换成**真字体文件**「京华老宋体／KingHwa OldSong」——参考图是六十年代的
+    旧铅字宋体（横粗、字面扁），系统宋体与「新宋」都对不上那种旧味。
     分片托管在 public/fonts（见 layout.tsx），每片自带 unicode-range，
     屏上出现哪几个字才下哪几片；系统宋体全部留在后面兜底，缺字不会变方块。 */
 export const SERIF =
-  "'Noto Serif SC', 'Songti SC', 'STSong', 'Noto Serif CJK SC', 'Source Han Serif SC', 'SimSun', Georgia, serif";
+  "'KingHwa OldSong', 'Noto Serif SC', 'Songti SC', 'STSong', 'Noto Serif CJK SC', 'Source Han Serif SC', 'SimSun', Georgia, serif";
 /** 中文书写体：与衬线共用同一支（同一份分片，不额外下载）。 */
 export const KAI =
-  "'Noto Serif SC', 'Kaiti SC', 'STKaiti', 'KaiTi', 'Songti SC', Georgia, serif";
+  "'KingHwa OldSong', 'Noto Serif SC', 'Kaiti SC', 'STKaiti', 'KaiTi', 'Songti SC', Georgia, serif";
 
 /** 英文装饰衬线（斜体小字：messages / pinned / lucky money…）。 */
 export const EN = "var(--font-serif)";

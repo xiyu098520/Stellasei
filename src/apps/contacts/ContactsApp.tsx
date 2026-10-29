@@ -141,7 +141,7 @@ const A_MONO = "var(--font-mono), monospace";
 const A_EN = "var(--font-serif)";
 /** 名字与资料：宋体。乙游立绘屏上的名字用宋体最稳（游戏里也是这类衬线大字）。 */
 const A_SERIF =
-  "'Noto Serif SC', 'Songti SC', 'STSong', 'Noto Serif CJK SC', 'SimSun', Georgia, serif";
+  "'KingHwa OldSong', 'Noto Serif SC', 'Songti SC', 'STSong', 'Noto Serif CJK SC', 'SimSun', Georgia, serif";
 /** 卡面上的中文：楷体。
  *  宋体是方块骨架（一横一竖、笔画等粗），端正但不「艺术」；楷体是书写体，
  *  横画微仰、笔画有起有收，多一点手写的温度，又不至于像书法体那样只认得几个字。

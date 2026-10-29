@@ -79,17 +79,16 @@
      零请求、零换装、开屏不必等任何一个字节。 */
   --font-sans: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  /* 中文衬线＝思源宋体／Noto Serif SC（自托管，1.13.4 起）。
-     参考图那种字是**极细的明朝体**（横画细、字形窄、字距宽），系统宋体（Songti SC／SimSun）
-     只是「宋」，粗细与骨架都不对；霞鹜文楷又是楷体，品类就偏了。所以这一层用真字体文件：
-     300／400／500 三档、每档分片 101 枚、每枚带 unicode-range，
+  /* 中文衬线＝京华老宋体／KingHwa OldSong（自托管，1.13.5 起）。
+     参考图那种字是**六十年代的旧铅字宋体**（横粗、字面扁、三角字肩、鹅头勾），
+     思源宋体那类「新宋」太干净太瘦，压不住这种旧味。京华老宋体按 1961 年
+     北京新华字模厂的字模复刻，是这一族里笔画连续、不掉墨的一支。
+     分片托管在 public/fonts（见 layout.tsx），每片自带 unicode-range，
      **屏上出现哪几个字才下哪几片**；下过一次就进强缓存，之后不再请求。
-     三档是有意为之：代码里写 600 的地方会落到最近的 500（真字重），
-     不会触发浏览器合成伪粗——上一版标题发粗发糊就是伪粗造成的。
      后面的系统宋体全部保留作回退：某片没下来、或字不在字库里，自动落回宋体。 */
-  --font-serif: "Noto Serif SC", Georgia, "Songti SC", "STSong", "Noto Serif CJK SC",
-    "Source Han Serif SC", "SimSun", serif;
-  --font-song: "Noto Serif SC", "Songti SC", "STSong", "Noto Serif CJK SC",
+  --font-serif: "KingHwa OldSong", "Noto Serif SC", Georgia, "Songti SC", "STSong",
+    "Noto Serif CJK SC", "Source Han Serif SC", "SimSun", serif;
+  --font-song: "KingHwa OldSong", "Noto Serif SC", "Songti SC", "STSong", "Noto Serif CJK SC",
     "Source Han Serif SC", "SimSun", Georgia, serif;
   /* 塔罗牌面上那一版字——原先用自托管「志莽行」手写行书，但它走 font-display:swap，
      冷启动必闪一下。现改用系统行楷／楷体（iOS 自带，零下载、零闪）。 */
